@@ -12,6 +12,9 @@ function show_help {
     echo "  stop        - Stop the background systemd service"
     echo "  restart     - Restart the background systemd service"
     echo "  status      - Show the current service status and logs"
+    echo "  autostart   - Show whether the service starts automatically on boot"
+    echo "  autostart-on  - Enable automatic startup on boot"
+    echo "  autostart-off - Disable automatic startup on boot"
     echo "  uninstall   - Permanently remove the server from this machine"
     echo "  dashboard   - Print the web interface URLs"
     echo "  logs        - Follow the service logs in real-time"
@@ -54,6 +57,18 @@ case "$1" in
         ;;
     status)
         sudo systemctl status hashcat-wpa-server
+        ;;
+    autostart)
+        echo "[*] Checking boot autostart status..."
+        sudo /opt/hashcat-wpa-server/bash/autostart_service.sh status
+        ;;
+    autostart-on)
+        echo "[*] Enabling automatic startup on boot..."
+        sudo /opt/hashcat-wpa-server/bash/autostart_service.sh enable
+        ;;
+    autostart-off)
+        echo "[*] Disabling automatic startup on boot..."
+        sudo /opt/hashcat-wpa-server/bash/autostart_service.sh disable
         ;;
     logs)
         sudo journalctl -u hashcat-wpa-server -f

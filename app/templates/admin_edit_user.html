@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% import "bootstrap/wtf.html" as wtf %}
+
+{% block page_content %}
+<div class="container">
+    <h1>Edit User</h1>
+    <p class="text-muted">Update the selected operator's username, password, and assigned roles.</p>
+    <hr>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="panel panel-primary">
+                <div class="panel-heading">Editing {{ managed_user.username }}</div>
+                <div class="panel-body">
+                    <form method="POST">
+                        {{ form.hidden_tag() }}
+                        {{ wtf.form_field(form.username) }}
+                        {{ wtf.form_field(form.new_password) }}
+                        {{ wtf.form_field(form.confirm_password) }}
+                        {{ wtf.form_field(form.roles) }}
+                        {{ wtf.form_field(form.submit_user, class="btn btn-primary") }}
+                        <a href="{{ url_for('admin_users') }}" class="btn btn-default">Back to User Management</a>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="panel panel-info">
+                <div class="panel-heading">User Summary</div>
+                <div class="panel-body">
+                    <p><strong>ID:</strong> {{ managed_user.id }}</p>
+                    <p><strong>Current username:</strong> {{ managed_user.username }}</p>
+                    <p><strong>Uploads:</strong> {{ managed_user.uploads|length }}</p>
+                    <p><strong>Current roles:</strong></p>
+                    {% for role in managed_user.roles %}
+                    <span class="label label-info">{{ role.name.value }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

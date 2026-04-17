@@ -118,6 +118,30 @@
         </div>
     </div>
     <hr>
+    <h1>Server Autostart</h1>
+    <p>Choose whether the Hashcat WPA/WPA2 Server should start automatically when the machine boots.</p>
+    <div class="row">
+        <div class="col-md-6">
+            <div class="panel panel-primary">
+                <div class="panel-heading">Boot Startup Control</div>
+                <div class="panel-body">
+                    <p>
+                        Current status:
+                        <span class="label {% if autostart_status == 'enabled' %}label-success{% elif autostart_status == 'disabled' %}label-default{% else %}label-warning{% endif %}">
+                            {{ autostart_status|capitalize }}
+                        </span>
+                    </p>
+                    <p>Enable this if you want the web server to come online automatically after a reboot without starting it manually.</p>
+                    <form method="POST" style="margin-bottom: 10px;">
+                        {{ autostart_form.hidden_tag() }}
+                        {{ autostart_form.submit_enable_autostart(class_="btn btn-success") }}
+                        {{ autostart_form.submit_disable_autostart(class_="btn btn-default") }}
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <hr>
     <h1>Software Update</h1>
     <p>Keep your hacking rig up to date with the latest features from GitHub.</p>
     <div class="row">

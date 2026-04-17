@@ -11,7 +11,7 @@ from app.config import BENCHMARK_FILE
 from app.domain import Rule, TaskInfoStatus, InvalidFileError, ProgressLock
 from app.logger import logger
 from app.uploader import UploadForm, UploadedTask
-from app.utils import read_plain_key, date_formatted, subprocess_call, read_hashcat_brain_password
+from app.utils import read_plain_key, date_formatted, subprocess_call, read_hashcat_brain_password, build_rainbow_wordlist
 
 
 class CapAttack(BaseAttack):
@@ -102,6 +102,26 @@ class CapAttack(BaseAttack):
         hashcat_cmd.add_rule(self.rule)
         self.runner(hashcat_cmd)
 
+    def run_rainbow_attack(self):
+        """
+        Reuse previously found passwords before the regular attack chain.
+        """
+        if not self.is_attack_needed():
+            return
+
+        with app.app_context():
+            rainbow_wordlist = build_rainbow_wordlist()
+
+        if rainbow_wordlist is None or not rainbow_wordlist.exists():
+            return
+
+        with self.lock:
+            self.lock.set_status("Running rainbow reuse list")
+
+        hashcat_cmd = self.new_cmd()
+        hashcat_cmd.add_wordlists(rainbow_wordlist)
+        self.runner(hashcat_cmd)
+
     def run_all(self):
         """
         Run all attacks.
@@ -111,6 +131,10 @@ class CapAttack(BaseAttack):
                 task = UploadedTask.query.get(self.lock.task_id)
                 task.status = TaskInfoStatus.RUNNING
                 db.session.commit()
+
+        with self.lock:
+            self.lock.set_status("Running rainbow reuse list...")
+        self.run_rainbow_attack()
         
         with self.lock:
             self.lock.set_status("Running top1k with rules...")

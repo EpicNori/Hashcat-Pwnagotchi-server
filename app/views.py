@@ -1,4 +1,5 @@
 import shlex
+import subprocess
 from http import HTTPStatus
 from pathlib import Path
 from threading import Thread
@@ -66,6 +67,28 @@ def get_version():
         return (Path(app.root_path).parent / "VERSION").read_text().strip()
     except Exception:
         return "1.0.0"
+
+
+def get_management_script_path(script_name: str) -> str:
+    installed_path = Path("/opt/hashcat-wpa-server/bash") / script_name
+    if installed_path.exists():
+        return str(installed_path)
+    return str(Path(app.root_path).parent / "bash" / script_name)
+
+
+def get_autostart_status():
+    try:
+        result = subprocess.run(
+            ["sudo", get_management_script_path("autostart_service.sh"), "status"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False
+        )
+        status = (result.stdout or result.stderr or "").strip()
+        return status or "unknown"
+    except Exception:
+        return "unknown"
 
 @app.context_processor
 def inject_version():
@@ -378,11 +401,23 @@ class UpdateAppForm(FlaskForm):
 class UninstallAppForm(FlaskForm):
     submit_uninstall = SubmitField('Permanently Uninstall Server')
 
+class AutostartForm(FlaskForm):
+    submit_enable_autostart = SubmitField('Enable Autostart')
+    submit_disable_autostart = SubmitField('Disable Autostart')
+
 class AccountSettingsForm(FlaskForm):
     new_username = StringField('Update Username', validators=[DataRequired()])
     new_password = PasswordField('New Password (leave blank to keep current)')
     confirm_password = PasswordField('Confirm New Password', validators=[EqualTo('new_password', message='Passwords must match')])
     submit_account = SubmitField('Update Account')
+
+
+class EditUserForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired()])
+    new_password = PasswordField('New Password (leave blank to keep current)')
+    confirm_password = PasswordField('Confirm New Password', validators=[EqualTo('new_password', message='Passwords must match')])
+    roles = MultiCheckboxField('Roles', choices=[])
+    submit_user = SubmitField('Save User Changes')
 
 @app.route('/settings', methods=['GET', 'POST'])
 @login_required
@@ -392,6 +427,7 @@ def admin_settings():
     ts_form = TailscaleForm()
     update_form = UpdateAppForm()
     uninstall_form = UninstallAppForm()
+    autostart_form = AutostartForm()
     account_form = AccountSettingsForm()
     
     from app.utils.utils import get_hashcat_devices
@@ -463,6 +499,40 @@ def admin_settings():
         except Exception as e:
             flask.flash(f'Failed to start uninstall script: {e}', category='error')
         return redirect(url_for('admin_settings'))
+
+    if autostart_form.submit_enable_autostart.data and autostart_form.validate():
+        try:
+            subprocess.run(
+                ["sudo", get_management_script_path("autostart_service.sh"), "enable"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=True
+            )
+            flask.flash('Autostart enabled. The server will now start automatically on boot.', category='success')
+        except subprocess.CalledProcessError as e:
+            message = (e.stderr or e.stdout or str(e)).strip()
+            flask.flash(f'Failed to enable autostart: {message}', category='error')
+        except Exception as e:
+            flask.flash(f'Failed to enable autostart: {e}', category='error')
+        return redirect(url_for('admin_settings'))
+
+    if autostart_form.submit_disable_autostart.data and autostart_form.validate():
+        try:
+            subprocess.run(
+                ["sudo", get_management_script_path("autostart_service.sh"), "disable"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=True
+            )
+            flask.flash('Autostart disabled. The server will no longer start automatically on boot.', category='success')
+        except subprocess.CalledProcessError as e:
+            message = (e.stderr or e.stdout or str(e)).strip()
+            flask.flash(f'Failed to disable autostart: {message}', category='error')
+        except Exception as e:
+            flask.flash(f'Failed to disable autostart: {e}', category='error')
+        return redirect(url_for('admin_settings'))
     
     # Ensure we always have a valid dictionary even if keys are ints
     settings = read_settings()
@@ -473,11 +543,14 @@ def admin_settings():
     if request.method == 'GET':
         form.cpu_percent.data = settings.get('cpu_percent', 100)
         account_form.new_username.data = current_user.username
+
+    autostart_status = get_autostart_status()
         
     return render_template('settings.html', title='Admin Settings', form=form, ts_form=ts_form, 
                            update_form=update_form, uninstall_form=uninstall_form,
                            devices=devices, device_intensities=device_intensities,
-                           account_form=account_form)
+                           account_form=account_form, autostart_form=autostart_form,
+                           autostart_status=autostart_status)
 
 
 @app.route('/api/stats')
@@ -513,10 +586,49 @@ def admin_users():
     users = User.query.all()
     return render_template('admin_users.html', title='User Management', users=users)
 
+
+@app.route('/admin/edit_user/<int:user_id>', methods=['GET', 'POST'])
+@login_required
+@roles_required(RoleEnum.ADMIN)
+def edit_user(user_id):
+    user = User.query.get_or_404(user_id)
+    if user_id == current_user.id:
+        flask.flash('Use the settings page to edit your own administrator account.', category='info')
+        return redirect(url_for('admin_settings'))
+    if user.username == 'guest':
+        flask.flash('The guest account is protected and cannot be edited here.', category='error')
+        return redirect(url_for('admin_users'))
+
+    form = EditUserForm()
+    form.roles.choices = [(role.name.value, role.name.value) for role in Role.query.order_by(Role.id).all()]
+
+    if form.validate_on_submit():
+        existing_user = User.query.filter_by(username=form.username.data).first()
+        if existing_user and existing_user.id != user.id:
+            flask.flash('Username already exists.', category='error')
+        elif not form.roles.data:
+            flask.flash('Please select at least one role.', category='error')
+        else:
+            user.username = form.username.data
+            if form.new_password.data:
+                user.set_password(form.new_password.data)
+            user.roles = [Role.by_enum(RoleEnum(role_name)) for role_name in form.roles.data]
+            db.session.commit()
+            flask.flash(f"User '{user.username}' updated successfully.", category='success')
+            return redirect(url_for('admin_users'))
+
+    if request.method == 'GET':
+        form.username.data = user.username
+        form.roles.data = [role.name.value for role in user.roles]
+
+    return render_template('admin_edit_user.html', title='Edit User', form=form, managed_user=user)
+
 @app.route('/admin/delete_user/<int:user_id>', methods=['POST'])
 @login_required
 @roles_required(RoleEnum.ADMIN)
 def delete_user(user_id):
+    from app.uploader import UploadedTask
+
     if user_id == current_user.id:
         flask.flash('You cannot delete your own account!', category='error')
         return redirect(url_for('admin_users'))
@@ -526,6 +638,7 @@ def delete_user(user_id):
         flask.flash('The guest account is protected.', category='error')
         return redirect(url_for('admin_users'))
 
+    UploadedTask.query.filter_by(user_id=user.id).delete()
     db.session.delete(user)
     db.session.commit()
     flask.flash(f'User {user.username} has been deleted.', category='success')

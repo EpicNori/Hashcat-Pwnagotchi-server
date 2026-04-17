@@ -7,6 +7,7 @@ from typing import Union, List
 
 from app.config import HASHCAT_STATUS_TIMER
 from app.domain import Rule, WordList, ProgressLock, TaskInfoStatus, Mask, HashcatMode
+from app.logger import logger
 
 HASHCAT_WARNINGS = (
     "nvmlDeviceGetCurrPcieLinkWidth",

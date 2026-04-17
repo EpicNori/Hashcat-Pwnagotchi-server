@@ -1,11 +1,11 @@
 import hashlib
-from pathlib import Path
 import secrets
+from pathlib import Path
 
 from app import lock_app
-from app.logger import logger
-from app.config import BENCHMARK_FILE, HASHCAT_BRAIN_PASSWORD_PATH
+from app.config import BENCHMARK_FILE, HASHCAT_BRAIN_PASSWORD_PATH, CAPTURES_DIR, WORDLISTS_USER_DIR
 from app.domain import Benchmark, InvalidFileError
+from app.logger import logger
 
 
 def read_plain_key(key_path):
@@ -71,3 +71,39 @@ def calculate_md5(fpath, chunk_size=1024 * 1024):
         for chunk in iter(lambda: f.read(chunk_size), b''):
             md5.update(chunk)
     return md5.hexdigest()
+
+
+def extract_password_from_found_key(found_key):
+    if not found_key:
+        return None
+    return str(found_key).rsplit(':', 1)[-1].strip() or None
+
+
+def build_rainbow_wordlist():
+    from app.uploader import UploadedTask
+
+    rainbow_wordlist = WORDLISTS_USER_DIR / "rainbow_processed.txt"
+    seen_passwords = set()
+    ordered_passwords = []
+
+    tasks = UploadedTask.query.filter(UploadedTask.found_key.is_not(None)) \
+        .order_by(UploadedTask.uploaded_time.desc()).all()
+    for task in tasks:
+        password = extract_password_from_found_key(task.found_key)
+        if password and password not in seen_passwords:
+            seen_passwords.add(password)
+            ordered_passwords.append(password)
+
+    if CAPTURES_DIR.exists():
+        for key_file in sorted(CAPTURES_DIR.rglob("*.key"), key=lambda path: path.stat().st_mtime, reverse=True):
+            try:
+                found_key = read_plain_key(key_file)
+            except Exception:
+                continue
+            password = extract_password_from_found_key(found_key)
+            if password and password not in seen_passwords:
+                seen_passwords.add(password)
+                ordered_passwords.append(password)
+
+    rainbow_wordlist.write_text('\n'.join(ordered_passwords) + ('\n' if ordered_passwords else ''))
+    return rainbow_wordlist if ordered_passwords else None
