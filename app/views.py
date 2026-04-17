@@ -17,7 +17,7 @@ from app.logger import logger
 from app.login import LoginForm, RegistrationForm, User, RoleEnum, register_user, create_first_users, Role, \
     roles_required, user_has_roles
 from app.uploader import cap_uploads, UploadForm, UploadedTask, check_incomplete_tasks, backward_db_compatibility
-from app.utils.file_io import read_last_benchmark, bssid_essid_from_22000
+from app.utils.file_io import read_last_benchmark, bssid_essid_from_22000, build_rainbow_wordlist
 from app.utils.utils import is_safe_url, hashcat_devices_info
 from app.word_magic import create_digits_wordlist, estimate_runtime_fmt, create_fast_wordlists
 from app.word_magic.wordlist import download_wordlist, find_wordlist_by_name
@@ -350,6 +350,24 @@ def download_all_results():
         output.getvalue(),
         mimetype="text/plain",
         headers={"Content-disposition": f"attachment; filename=cracked_passwords_{current_user.username}.txt"}
+    )
+
+
+@app.route('/download_rainbow_wordlist')
+@login_required
+def download_rainbow_wordlist():
+    if not user_has_roles(current_user, RoleEnum.ADMIN):
+        return flask.abort(HTTPStatus.FORBIDDEN, description="You do not have permission to download the rainbow wordlist.")
+
+    rainbow_wordlist = build_rainbow_wordlist()
+    if rainbow_wordlist is None or not rainbow_wordlist.exists():
+        flask.flash("No rainbow wordlist is available yet.", category="info")
+        return redirect(url_for('user_profile'))
+
+    return flask.send_file(
+        str(rainbow_wordlist),
+        as_attachment=True,
+        download_name=rainbow_wordlist.name
     )
 
 

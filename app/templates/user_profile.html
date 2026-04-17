@@ -43,6 +43,11 @@ danger
             <input type="text" id="taskSearchInput" class="form-control" onkeyup="filterTasks()" placeholder="🔍 Quick Search for WiFi Name, Capture File, or Cracked Password...">
         </div>
         <div class="col-md-5 text-right">
+            {% if current_user.is_authenticated and not current_user.is_anonymous and 'Admin' in current_user.roles|string %}
+            <a href="{{ url_for('download_rainbow_wordlist') }}" class="btn btn-info" style="margin-right: 8px;">
+                <span class="glyphicon glyphicon-download-alt"></span> Download Rainbow Wordlist
+            </a>
+            {% endif %}
             <a href="{{ url_for('download_all_results') }}" class="btn btn-success">
                 <span class="glyphicon glyphicon-download-alt"></span> Download All Found Passwords (.txt)
             </a>
