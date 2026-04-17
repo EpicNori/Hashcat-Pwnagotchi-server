@@ -2,23 +2,29 @@ import json
 from app.config import ADMIN_SETTINGS_PATH
 
 
-def workload_profile_for_intensity(intensity: int) -> str:
+def hashcat_tuning_for_intensity(intensity: int):
     """
-    Map the UI intensity slider to the nearest safer hashcat workload profile.
+    Map the UI percentage to steady hashcat tuning knobs.
 
-    Hashcat only exposes four coarse workload profiles, so a percentage here
-    cannot be enforced as a real-time GPU utilization ceiling.
+    This keeps the GPU running continuously with a lighter kernel configuration
+    instead of pulse-throttling the whole process on and off.
     """
     intensity = max(0, min(100, int(intensity)))
     if intensity == 0:
-        return "1"
-    if intensity <= 30:
-        return "1"
-    if intensity <= 55:
-        return "2"
+        return {"workload_profile": "1", "kernel_accel": 8, "kernel_loops": 64}
+    if intensity <= 20:
+        return {"workload_profile": "1", "kernel_accel": 8, "kernel_loops": 64}
+    if intensity <= 35:
+        return {"workload_profile": "1", "kernel_accel": 16, "kernel_loops": 128}
+    if intensity <= 50:
+        return {"workload_profile": "2", "kernel_accel": 24, "kernel_loops": 128}
+    if intensity <= 65:
+        return {"workload_profile": "2", "kernel_accel": 32, "kernel_loops": 256}
     if intensity <= 80:
-        return "3"
-    return "4"
+        return {"workload_profile": "3", "kernel_accel": 48, "kernel_loops": 256}
+    if intensity <= 90:
+        return {"workload_profile": "3", "kernel_accel": 64, "kernel_loops": 512}
+    return {"workload_profile": "4", "kernel_accel": 96, "kernel_loops": 1024}
 
 def read_settings():
     if not ADMIN_SETTINGS_PATH.exists():
@@ -84,11 +90,27 @@ def apply_hashcat_limits(hashcat_args: list):
         hashcat_args.append("-d")
         hashcat_args.append(",".join(active_devices))
 
-        # Use the highest enabled device intensity as a coarse workload cap.
+        # Use the highest enabled device intensity to pick a stable hashcat
+        # tuning profile rather than pause/resume throttling.
         max_val = max(device_intensities.values()) if device_intensities else 100
-        wp = workload_profile_for_intensity(max_val)
-        
-        hashcat_args = [arg for arg in hashcat_args if not arg.startswith("--workload-profile=")]
-        hashcat_args.append(f"--workload-profile={wp}")
+        tuning = hashcat_tuning_for_intensity(max_val)
+
+        filtered_args = []
+        skip_next = False
+        for arg in hashcat_args:
+            if skip_next:
+                skip_next = False
+                continue
+            if arg in ("-n", "-u"):
+                skip_next = True
+                continue
+            if arg.startswith("--workload-profile=") or arg.startswith("--kernel-accel=") or arg.startswith("--kernel-loops="):
+                continue
+            filtered_args.append(arg)
+
+        filtered_args.append(f"--workload-profile={tuning['workload_profile']}")
+        filtered_args.append(f"--kernel-accel={tuning['kernel_accel']}")
+        filtered_args.append(f"--kernel-loops={tuning['kernel_loops']}")
+        hashcat_args = filtered_args
         
     return hashcat_args
