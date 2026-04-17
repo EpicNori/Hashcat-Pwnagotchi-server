@@ -3,6 +3,7 @@ import shlex
 import signal
 import subprocess
 import time
+from collections import defaultdict, deque
 from pathlib import Path
 from typing import List, Union
 
@@ -123,6 +124,8 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
     last_temp_check = 0
     is_paused_for_temp = False
     paused_status_context = None
+    gpu_util_history = defaultdict(lambda: deque(maxlen=3))
+    last_throttle_at = 0.0
     from app.utils.settings import read_settings
     from app.utils.utils import get_live_usage
 
@@ -147,26 +150,40 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
                     hottest_gpu = gpu
 
             cpu_usage_over_limit = usage.get('cpu_usage', 0) > cpu_usage_limit
-            busiest_gpu = None
-            for gpu in usage.get('gpus', []):
-                gpu_id = str(gpu.get('id'))
-                gpu_usage_limit = device_intensities.get(gpu_id, 100)
-                gpu_usage = int(gpu.get('util', 0))
-                if gpu_usage_limit < 100 and gpu_usage > gpu_usage_limit:
-                    if busiest_gpu is None or gpu_usage > int(busiest_gpu.get('util', 0)):
-                        busiest_gpu = gpu
-
             pause_message = None
+            throttle_gpu = None
+            throttle_duration = 0.0
             if cpu_over_limit:
                 pause_message = f"Paused for CPU cooldown: {usage['cpu_temp']} C / {cpu_limit} C"
             elif hottest_gpu is not None:
                 pause_message = f"Paused for GPU cooldown: GPU #{hottest_gpu.get('id')} {hottest_gpu.get('temp')} C / {gpu_limit} C"
             elif cpu_usage_over_limit:
                 pause_message = f"Paused for CPU usage cap: {usage.get('cpu_usage', 0)}% / {cpu_usage_limit}%"
-            elif busiest_gpu is not None:
-                gpu_id = str(busiest_gpu.get('id'))
-                gpu_usage_limit = device_intensities.get(gpu_id, 100)
-                pause_message = f"Paused for GPU usage cap: GPU #{gpu_id} {busiest_gpu.get('util')}% / {gpu_usage_limit}%"
+            else:
+                for gpu in usage.get('gpus', []):
+                    gpu_id = str(gpu.get('id'))
+                    gpu_limit_target = device_intensities.get(gpu_id, 100)
+                    if gpu_limit_target >= 100:
+                        continue
+
+                    gpu_util = int(gpu.get('util', 0))
+                    history = gpu_util_history[gpu_id]
+                    history.append(gpu_util)
+                    avg_util = sum(history) / len(history)
+                    excess = avg_util - gpu_limit_target
+                    if excess <= 3:
+                        continue
+
+                    candidate = dict(gpu)
+                    candidate["avg_util"] = avg_util
+                    candidate["target_util"] = gpu_limit_target
+                    candidate["excess"] = excess
+                    if throttle_gpu is None or candidate["excess"] > throttle_gpu["excess"]:
+                        throttle_gpu = candidate
+
+                if throttle_gpu is not None and current_time - last_throttle_at >= 4:
+                    # Short pauses steer the moving average down without the hard 100 -> 0 loop.
+                    throttle_duration = min(2.5, max(0.35, throttle_gpu["excess"] / 12.0))
 
             cpu_resume_limit = max(0, cpu_limit - temp_resume_delta)
             gpu_resume_limit = max(0, gpu_limit - temp_resume_delta)
@@ -174,14 +191,6 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
             cpu_temp_safe = usage['cpu_temp'] <= cpu_resume_limit
             gpu_temp_safe = all(int(gpu.get('temp', 0)) <= gpu_resume_limit for gpu in usage.get('gpus', []))
             cpu_usage_safe = usage.get('cpu_usage', 0) <= cpu_usage_resume_limit
-            gpu_usage_safe = True
-            for gpu in usage.get('gpus', []):
-                gpu_id = str(gpu.get('id'))
-                gpu_usage_limit = device_intensities.get(gpu_id, 100)
-                gpu_usage = int(gpu.get('util', 0))
-                if gpu_usage_limit < 100 and gpu_usage > max(0, gpu_usage_limit - 5):
-                    gpu_usage_safe = False
-                    break
 
             if pause_message is not None:
                 if not is_paused_for_temp:
@@ -191,12 +200,27 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
                     is_paused_for_temp = True
                 with lock:
                     lock.set_status(pause_message + (f" | {paused_status_context}" if paused_status_context else ""))
-            elif is_paused_for_temp and cpu_temp_safe and gpu_temp_safe and cpu_usage_safe and gpu_usage_safe:
+            elif is_paused_for_temp and cpu_temp_safe and gpu_temp_safe and cpu_usage_safe:
                 process.send_signal(signal.SIGCONT)
                 is_paused_for_temp = False
                 with lock:
                     lock.set_status("Resumed after limit cooldown" + (f" | {paused_status_context}" if paused_status_context else ""))
                 paused_status_context = None
+            elif throttle_duration > 0 and throttle_gpu is not None:
+                with lock:
+                    throttle_context = lock.status
+                    lock.set_status(
+                        f"Throttling GPU #{throttle_gpu['id']} to stay near {throttle_gpu['target_util']}% "
+                        f"(avg {throttle_gpu['avg_util']:.0f}%)"
+                        + (f" | {throttle_context}" if throttle_context else "")
+                    )
+                process.send_signal(signal.SIGSTOP)
+                time.sleep(throttle_duration)
+                process.send_signal(signal.SIGCONT)
+                last_throttle_at = time.time()
+                with lock:
+                    if throttle_context:
+                        lock.set_status(throttle_context)
 
         with lock:
             if lock.cancelled:

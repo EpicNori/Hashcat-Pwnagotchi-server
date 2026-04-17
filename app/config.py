@@ -15,7 +15,8 @@ ESSID_TRIED = DATABASE_DIR / "essid_tried"
 DATABASE_PATH = DATABASE_DIR / "hashcat_wpa.db"
 
 # Hashcat
-HASHCAT_STATUS_TIMER = 20  # seconds
+# Keep status updates responsive enough for throttling and UI progress.
+HASHCAT_STATUS_TIMER = 5  # seconds
 BENCHMARK_FILE = HASHCAT_WPA_CACHE_DIR / "benchmark.csv"
 HASHCAT_BRAIN_PASSWORD_PATH = HASHCAT_WPA_CACHE_DIR / "brain" / "hashcat_brain_password"
 ADMIN_SETTINGS_PATH = HASHCAT_WPA_CACHE_DIR / "admin_settings.json"

@@ -1,6 +1,25 @@
 import json
 from app.config import ADMIN_SETTINGS_PATH
 
+
+def workload_profile_for_intensity(intensity: int) -> str:
+    """
+    Map the UI intensity slider to the nearest safer hashcat workload profile.
+
+    Hashcat only exposes four coarse workload profiles, so a percentage here
+    cannot be enforced as a real-time GPU utilization ceiling.
+    """
+    intensity = max(0, min(100, int(intensity)))
+    if intensity == 0:
+        return "1"
+    if intensity <= 30:
+        return "1"
+    if intensity <= 55:
+        return "2"
+    if intensity <= 80:
+        return "3"
+    return "4"
+
 def read_settings():
     if not ADMIN_SETTINGS_PATH.exists():
         return {
@@ -56,7 +75,7 @@ def write_settings(device_intensities: dict, cpu_percent: int, gpu_temp_limit: i
 def apply_hashcat_limits(hashcat_args: list):
     """ Modifies the hashcat args based on configured settings. """
     settings = read_settings()
-    device_intensities = settings.get("device_intensities", {"1": 100})
+    device_intensities = {str(k): int(v) for k, v in settings.get("device_intensities", {"1": 100}).items()}
     
     # identify enabled devices
     active_devices = [str(id) for id, val in device_intensities.items() if int(val) > 0]
@@ -65,13 +84,9 @@ def apply_hashcat_limits(hashcat_args: list):
         hashcat_args.append("-d")
         hashcat_args.append(",".join(active_devices))
 
-        # Map intensities to workload profiles (1-4)
-        # ... (rest of the logic)
+        # Use the highest enabled device intensity as a coarse workload cap.
         max_val = max(device_intensities.values()) if device_intensities else 100
-        if max_val <= 25: wp = "1"
-        elif max_val <= 50: wp = "2"
-        elif max_val <= 75: wp = "3"
-        else: wp = "4"
+        wp = workload_profile_for_intensity(max_val)
         
         hashcat_args = [arg for arg in hashcat_args if not arg.startswith("--workload-profile=")]
         hashcat_args.append(f"--workload-profile={wp}")
