@@ -55,16 +55,8 @@ def apply_hashcat_limits(hashcat_args: list):
         hashcat_args = [arg for arg in hashcat_args if not arg.startswith("--workload-profile=")]
         hashcat_args.append(f"--workload-profile={wp}")
         
-        # Throttling Logic for all devices
-        avg_intensity = sum(device_intensities.values()) / len(device_intensities)
-        if avg_intensity < 100:
-            throttle = int(Math.pow(100 - avg_intensity, 2) * 5) 
-            hashcat_args.append(f"--backend-throttle={throttle}")
-
     # Safety: Hard temperature kill-switch
     gpu_limit = settings.get("gpu_temp_limit", 90)
     hashcat_args.append(f"--gpu-temp-abort={gpu_limit}")
         
     return hashcat_args
-
-import math as Math

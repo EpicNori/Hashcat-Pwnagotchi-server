@@ -151,6 +151,14 @@
                 <div class="panel-body">
                     <p>Clicking the button below will automatically contact GitHub, pull the latest codebase, recompile the backend, and automatically restart the web-server daemon.</p>
                     <p><i>Note: The server will be temporarily inaccessible for ~60 seconds during the upgrade process.</i></p>
+                    <p>
+                        Current update status:
+                        <span class="label {% if update_status == 'success' %}label-success{% elif update_status == 'running' %}label-warning{% elif update_status == 'failed' %}label-danger{% else %}label-default{% endif %}">
+                            {{ update_status|capitalize }}
+                        </span>
+                    </p>
+                    <p>{{ update_summary }}</p>
+                    <pre style="max-height: 220px; overflow-y: auto; white-space: pre-wrap;">{{ update_log_excerpt }}</pre>
                     <form method="POST">
                         {{ update_form.hidden_tag() }}
                         {{ update_form.submit_update(class_="btn btn-danger") }}

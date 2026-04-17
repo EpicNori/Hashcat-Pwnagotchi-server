@@ -1,10 +1,15 @@
 #!/bin/bash
 set -e
 
+UPDATE_LOG="/var/log/hashcat-wpa-server/updater.log"
+
 echo "Starting application update..."
 # We use systemd-run to spawn the update in a NEW transient service.
 # This ensures that when we call "systemctl stop", it DOES NOT kill the update process!
 systemd-run --unit=hashcat-server-updater --remain-after-exit bash -c '
+  mkdir -p /var/log/hashcat-wpa-server
+  exec > "'"$UPDATE_LOG"'" 2>&1
+  echo "===== $(date) ====="
   sleep 3
   export DEBIAN_FRONTEND=noninteractive
   echo "[*] Updater: Ensuring dpkg is clean..."

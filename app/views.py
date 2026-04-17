@@ -90,6 +90,47 @@ def get_autostart_status():
     except Exception:
         return "unknown"
 
+
+def get_update_status():
+    update_log = Path("/var/log/hashcat-wpa-server/updater.log")
+    status = "idle"
+    summary = "No update log available yet."
+
+    try:
+        result = subprocess.run(
+            ["systemctl", "is-active", "hashcat-server-updater.service"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False
+        )
+        service_state = (result.stdout or "").strip()
+        if service_state == "active":
+            status = "running"
+            summary = "Update is currently running in the background."
+    except Exception:
+        service_state = "unknown"
+
+    if update_log.exists():
+        try:
+            lines = update_log.read_text(errors="ignore").splitlines()
+            tail_lines = lines[-12:]
+            log_excerpt = "\n".join(tail_lines) if tail_lines else "Log file is empty."
+            joined = "\n".join(lines[-25:])
+            if "failed to start after update" in joined.lower() or "[!]" in joined:
+                status = "failed"
+                summary = "The last update reported an error."
+            elif "[+] hashcat-wpa-server.service is active." in joined or "[*] Update complete." in joined:
+                status = "success"
+                summary = "The last update finished and the service reported active."
+            elif status != "running":
+                summary = "Last update log found, but completion could not be confirmed."
+            return status, summary, log_excerpt
+        except Exception as e:
+            return "unknown", f"Could not read update log: {e}", "Log read failed."
+
+    return status, summary, "No update log available yet."
+
 @app.context_processor
 def inject_version():
     import socket
@@ -640,12 +681,14 @@ def admin_settings():
         account_form.new_username.data = current_user.username
 
     autostart_status = get_autostart_status()
+    update_status, update_summary, update_log_excerpt = get_update_status()
         
     return render_template('settings.html', title='Admin Settings', form=form, ts_form=ts_form, 
                            update_form=update_form, uninstall_form=uninstall_form,
                            devices=devices, device_intensities=device_intensities,
                            account_form=account_form, autostart_form=autostart_form,
-                           autostart_status=autostart_status)
+                           autostart_status=autostart_status, update_status=update_status,
+                           update_summary=update_summary, update_log_excerpt=update_log_excerpt)
 
 
 @app.route('/api/stats')
