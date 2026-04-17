@@ -1,4 +1,5 @@
 import os
+import select
 import shlex
 import signal
 import subprocess
@@ -19,6 +20,11 @@ HASHCAT_WARNINGS = (
     "nvmlDeviceGetPowerManagementLimit",
     "nvmlDeviceGetUtilizationRates",
 )
+
+CONTROL_LOOP_INTERVAL = 1.0
+GPU_UTIL_HISTORY_SIZE = 6
+GPU_UTIL_TOLERANCE = 2
+GPU_THROTTLE_COOLDOWN = 1.25
 
 
 def split_warnings_errors(stderr: str):
@@ -124,7 +130,7 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
     last_temp_check = 0
     is_paused_for_temp = False
     paused_status_context = None
-    gpu_util_history = defaultdict(lambda: deque(maxlen=3))
+    gpu_util_history = defaultdict(lambda: deque(maxlen=GPU_UTIL_HISTORY_SIZE))
     last_throttle_at = 0.0
     from app.utils.settings import read_settings
     from app.utils.utils import get_live_usage
@@ -132,7 +138,7 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
     while True:
         current_time = time.time()
 
-        if current_time - last_temp_check > 5:
+        if current_time - last_temp_check >= CONTROL_LOOP_INTERVAL:
             last_temp_check = current_time
             settings = read_settings()
             cpu_limit = settings.get("cpu_temp_limit", 90)
@@ -171,7 +177,7 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
                     history.append(gpu_util)
                     avg_util = sum(history) / len(history)
                     excess = avg_util - gpu_limit_target
-                    if excess <= 3:
+                    if excess <= GPU_UTIL_TOLERANCE:
                         continue
 
                     candidate = dict(gpu)
@@ -181,9 +187,10 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
                     if throttle_gpu is None or candidate["excess"] > throttle_gpu["excess"]:
                         throttle_gpu = candidate
 
-                if throttle_gpu is not None and current_time - last_throttle_at >= 4:
-                    # Short pauses steer the moving average down without the hard 100 -> 0 loop.
-                    throttle_duration = min(2.5, max(0.35, throttle_gpu["excess"] / 12.0))
+                if throttle_gpu is not None and current_time - last_throttle_at >= GPU_THROTTLE_COOLDOWN:
+                    # Frequent short pauses keep the moving average near the target
+                    # more precisely than long stop/start cycles.
+                    throttle_duration = min(0.9, max(0.08, throttle_gpu["excess"] / 40.0))
 
             cpu_resume_limit = max(0, cpu_limit - temp_resume_delta)
             gpu_resume_limit = max(0, gpu_limit - temp_resume_delta)
@@ -237,11 +244,19 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
             raise TimeoutError(f"Timed out after {timeout_minutes} minutes")
 
         if is_paused_for_temp:
-            time.sleep(1)
+            time.sleep(0.25)
+            continue
+
+        ready, _, _ = select.select([process.stdout], [], [], CONTROL_LOOP_INTERVAL)
+        if not ready:
+            if process.poll() is not None:
+                break
             continue
 
         line = process.stdout.readline()
         if line == '':
+            if process.poll() is not None:
+                break
             break
         if line.startswith("STATUS"):
             parts = line.split()
