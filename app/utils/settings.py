@@ -55,8 +55,4 @@ def apply_hashcat_limits(hashcat_args: list):
         hashcat_args = [arg for arg in hashcat_args if not arg.startswith("--workload-profile=")]
         hashcat_args.append(f"--workload-profile={wp}")
         
-    # Safety: Hard temperature kill-switch
-    gpu_limit = settings.get("gpu_temp_limit", 90)
-    hashcat_args.append(f"--gpu-temp-abort={gpu_limit}")
-        
     return hashcat_args

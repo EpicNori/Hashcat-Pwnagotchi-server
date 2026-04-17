@@ -133,10 +133,17 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
             last_temp_check = current_time
             settings = read_settings()
             cpu_limit = settings.get("cpu_temp_limit", 90)
+            gpu_limit = settings.get("gpu_temp_limit", 90)
             usage = get_live_usage()
             if usage['cpu_temp'] > cpu_limit:
                 process.terminate()
                 raise RuntimeError(f"CPU Overheat: {usage['cpu_temp']}°C (Limit: {cpu_limit}°C)")
+
+            for gpu in usage.get('gpus', []):
+                gpu_temp = int(gpu.get('temp', 0))
+                if gpu_temp > gpu_limit:
+                    process.terminate()
+                    raise RuntimeError(f"GPU Overheat: GPU #{gpu.get('id')} at {gpu_temp} C (Limit: {gpu_limit} C)")
 
         with lock:
             if lock.cancelled:
