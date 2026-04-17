@@ -3,9 +3,11 @@ import secrets
 from pathlib import Path
 
 from app import lock_app
-from app.config import BENCHMARK_FILE, HASHCAT_BRAIN_PASSWORD_PATH, CAPTURES_DIR, WORDLISTS_USER_DIR
+from app.config import BENCHMARK_FILE, HASHCAT_BRAIN_PASSWORD_PATH, HASHCAT_WPA_CACHE_DIR, WORDLISTS_USER_DIR
 from app.domain import Benchmark, InvalidFileError
 from app.logger import logger
+
+CAPTURES_DIR = HASHCAT_WPA_CACHE_DIR / "captures"
 
 
 def read_plain_key(key_path):
