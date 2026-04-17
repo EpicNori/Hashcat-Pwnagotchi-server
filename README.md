@@ -8,6 +8,14 @@ A production-grade, automated WPA/WPA2 handshake cracking server. Designed for n
 
 ---
 
+## Acknowledgement
+
+Special thanks to **Danylo Ulianych** ([dizcza/hashcat-wpa-server](https://github.com/dizcza/hashcat-wpa-server)), the original creator of the upstream project that made this repository possible.
+
+All changes and adaptations in this repository were done by **EpicNori**, with respect and appreciation for the original architecture, idea, and open source foundation created by the upstream author.
+
+---
+
 ## ⚡ Quick Start (Automated Installer)
 
 The absolute easiest way to deploy the server on **Debian, Ubuntu, or Kali Linux**. This one-liner handles all dependencies, Python environments, and background system services automatically.
@@ -94,4 +102,4 @@ To run the development server locally:
 1. `pip install -r requirements.txt`
 2. `python run.py`
 
-**Credits**: Built upon the foundational work of the original `hashcat-wpa-server` project, now expanded into a fully managed system utility.
+**Credits**: Built upon the foundational work of the original `hashcat-wpa-server` project by Danylo Ulianych (`dizcza`), with the changes in this repository carried out by EpicNori.
