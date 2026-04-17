@@ -36,25 +36,13 @@ def apply_hashcat_limits(hashcat_args: list):
     """ Modifies the hashcat args based on configured settings. """
     settings = read_settings()
     device_intensities = settings.get("device_intensities", {"1": 100})
-    cpu_limit = settings.get("cpu_percent", 100)
     
     # identify enabled devices
     active_devices = [str(id) for id, val in device_intensities.items() if int(val) > 0]
     
     if active_devices:
-        from app.utils.utils import get_hashcat_devices
-        devices = get_hashcat_devices()
-        
         hashcat_args.append("-d")
         hashcat_args.append(",".join(active_devices))
-
-        # Check if we are using any CPU devices
-        using_cpu = any("cpu" in d['name'].lower() for d in devices if d['id'] in active_devices)
-        if using_cpu:
-            import os
-            total_cores = os.cpu_count() or 1
-            threads = max(1, int(total_cores * (cpu_limit / 100)))
-            hashcat_args.append(f"--threads={threads}")
 
         # Map intensities to workload profiles (1-4)
         # ... (rest of the logic)
