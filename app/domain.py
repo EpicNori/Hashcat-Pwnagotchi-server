@@ -123,14 +123,17 @@ class HashcatMode:
 @unique
 class Workload(Enum):
     Low = "1"
-    Default = "2"
-    High = "3"
+    Fast = "2"
+    Normal = "3"
 
     @staticmethod
     def to_form():
         # (id_value, description) pairs
-        choices = tuple((wl.value, wl.name) for wl in Workload)
-        return choices
+        return (
+            (Workload.Low.value, "Low"),
+            (Workload.Fast.value, "Fast"),
+            (Workload.Normal.value, "Normal"),
+        )
 
 
 class TaskInfoStatus:

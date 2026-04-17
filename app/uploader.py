@@ -53,7 +53,8 @@ class UploadForm(FlaskForm):
     wordlist = RadioField('Wordlist', choices=wordlist_choices(), default=NONE_STR, description="The higher the rate, the better")
     rule = RadioField('Rule', choices=Rule.to_form(), default=NONE_STR)
     timeout = IntegerField('Timeout in minutes, optional', validators=[Optional(), NumberRange(min=1)])
-    workload = RadioField("Workload", choices=Workload.to_form(), default=Workload.Default.value)
+    workload = RadioField("Work Mode", choices=Workload.to_form(), default=Workload.Fast.value,
+                          description="Fast is the new default. Normal keeps working through the longer attack chain until the overall time limit is reached.")
     brain = BooleanField("Hashcat Brain", default=False, description="Hashcat Brain skips already tried password candidates")
     brain_client_feature = RadioField("Brain client features", choices=BrainClientFeature.to_form(),
                                       default=BrainClientFeature.POSITIONS.value)

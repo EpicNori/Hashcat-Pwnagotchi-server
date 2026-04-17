@@ -3,33 +3,45 @@ import re
 import time
 from asyncio import CancelledError
 from pathlib import Path
+import math
 
 from app import app, db, lock_app
 from app.attack.base_attack import BaseAttack
 from app.attack.hashcat_cmd import run_with_status, HashcatCmdCapture
 from app.config import BENCHMARK_FILE
-from app.domain import Rule, TaskInfoStatus, InvalidFileError, ProgressLock
+from app.domain import Rule, TaskInfoStatus, InvalidFileError, ProgressLock, Workload
 from app.logger import logger
 from app.uploader import UploadForm, UploadedTask
 from app.utils import read_plain_key, date_formatted, subprocess_call, read_hashcat_brain_password, build_rainbow_wordlist
+from app.word_magic.wordlist import WordListDefault
 
 
 class CapAttack(BaseAttack):
 
     def __init__(self, file_22000, lock: ProgressLock, wordlist: Path = None, rule: Rule = None,
-                 hashcat_args=(), timeout=None):
+                 hashcat_args=(), timeout=None, work_mode=Workload.Fast.value):
         super().__init__(file_22000=file_22000,
                          hashcat_args=hashcat_args,
                          verbose=False)
         self.lock = lock
         self.timeout = timeout
+        self.deadline = None if timeout is None else time.time() + (timeout * 60)
         self.wordlist = wordlist
         self.rule = rule
+        self.work_mode = str(work_mode)
         # Use run_with_status for ALL sub-attacks in BaseAttack
         self.runner = self._monitored_runner
 
     def _monitored_runner(self, cmd: HashcatCmdCapture):
-        run_with_status(cmd, lock=self.lock, timeout_minutes=self.timeout)
+        run_with_status(cmd, lock=self.lock, timeout_minutes=self._remaining_timeout_minutes())
+
+    def _remaining_timeout_minutes(self):
+        if self.deadline is None:
+            return None
+        remaining_seconds = self.deadline - time.time()
+        if remaining_seconds <= 0:
+            raise TimeoutError("Timed out before starting the next attack step")
+        return max(1, math.ceil(remaining_seconds / 60))
 
     def cancel_if_needed(self):
         with self.lock:
@@ -102,6 +114,16 @@ class CapAttack(BaseAttack):
         hashcat_cmd.add_rule(self.rule)
         self.runner(hashcat_cmd)
 
+    def run_default_wordlist_chain(self):
+        for default_wordlist in WordListDefault.list():
+            if not self.is_attack_needed():
+                return
+            with self.lock:
+                self.lock.set_status(f"Running fallback wordlist: {default_wordlist.name}")
+            hashcat_cmd = self.new_cmd()
+            hashcat_cmd.add_wordlists(default_wordlist.path)
+            self.runner(hashcat_cmd)
+
     def run_rainbow_attack(self):
         """
         Reuse previously found passwords before the regular attack chain.
@@ -159,6 +181,16 @@ class CapAttack(BaseAttack):
         with self.lock:
             self.lock.set_status("Running the main wordlist...")
         self.run_main_wordlist()
+
+        if self.work_mode == Workload.Normal.value:
+            with self.lock:
+                self.lock.set_status("Running name mutations with digits...")
+            self.run_names_with_digits()
+
+            if self.wordlist is None:
+                with self.lock:
+                    self.lock.set_status("Running extended default wordlists...")
+                self.run_default_wordlist_chain()
 
 
 def _crack_async(attack: CapAttack):
@@ -246,7 +278,6 @@ class HashcatWorker:
         lock = ProgressLock(task_id=task.id)
         from app.utils.settings import apply_hashcat_limits, read_settings
         hashcat_args = uploaded_form.hashcat_args(secret=True)
-        hashcat_args.append(f"--workload-profile={uploaded_form.workload.data}")
         hashcat_args = apply_hashcat_limits(hashcat_args)
         settings = read_settings()
         configured_max_time = settings.get("max_job_time_minutes")
@@ -261,7 +292,8 @@ class HashcatWorker:
                            wordlist=wordlist_path,
                            rule=rule,
                            hashcat_args=hashcat_args,
-                           timeout=effective_timeout)
+                           timeout=effective_timeout,
+                           work_mode=uploaded_form.workload.data)
         future = self.executor.submit(_crack_async, attack=attack)
         future.add_done_callback(self.callback_attack)
         with lock:
