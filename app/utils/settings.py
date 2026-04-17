@@ -3,7 +3,7 @@ from app.config import ADMIN_SETTINGS_PATH
 
 def read_settings():
     if not ADMIN_SETTINGS_PATH.exists():
-        return {"device_intensities": {"1": 100}, "cpu_percent": 100, "gpu_temp_limit": 90, "cpu_temp_limit": 90, "default_devices": ["1"]}
+        return {"device_intensities": {"1": 100}, "cpu_percent": 100, "gpu_temp_limit": 90, "cpu_temp_limit": 90, "temp_resume_delta": 5, "default_devices": ["1"]}
     try:
         with open(ADMIN_SETTINGS_PATH, "r") as f:
             data = json.load(f)
@@ -16,19 +16,21 @@ def read_settings():
             # Defaults for new fields
             if "gpu_temp_limit" not in data: data["gpu_temp_limit"] = 90
             if "cpu_temp_limit" not in data: data["cpu_temp_limit"] = 90
+            if "temp_resume_delta" not in data: data["temp_resume_delta"] = 5
             if "default_devices" not in data: data["default_devices"] = ["1"]
             
             return data
     except Exception:
-        return {"device_intensities": {"1": 100}, "cpu_percent": 100, "gpu_temp_limit": 90, "cpu_temp_limit": 90, "default_devices": ["1"]}
+        return {"device_intensities": {"1": 100}, "cpu_percent": 100, "gpu_temp_limit": 90, "cpu_temp_limit": 90, "temp_resume_delta": 5, "default_devices": ["1"]}
 
-def write_settings(device_intensities: dict, cpu_percent: int, gpu_temp_limit: int = 90, cpu_temp_limit: int = 90, default_devices: list = None):
+def write_settings(device_intensities: dict, cpu_percent: int, gpu_temp_limit: int = 90, cpu_temp_limit: int = 90, temp_resume_delta: int = 5, default_devices: list = None):
     with open(ADMIN_SETTINGS_PATH, "w") as f:
         json.dump({
             "device_intensities": device_intensities, 
             "cpu_percent": cpu_percent,
             "gpu_temp_limit": gpu_temp_limit,
             "cpu_temp_limit": cpu_temp_limit,
+            "temp_resume_delta": temp_resume_delta,
             "default_devices": default_devices or ["1"]
         }, f)
 

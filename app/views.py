@@ -524,6 +524,7 @@ class SettingsForm(FlaskForm):
     cpu_percent = IntegerField('Global CPU Thread Limit (%)', validators=[DataRequired(), NumberRange(min=1, max=100)], description="Limit total CPU threads for host operations.")
     gpu_temp_limit = IntegerField('GPU Max Temp (°C)', validators=[DataRequired(), NumberRange(min=50, max=100)], default=90, description="Hashcat will abort if GPU exceeds this temperature.")
     cpu_temp_limit = IntegerField('CPU Max Temp (°C)', validators=[DataRequired(), NumberRange(min=50, max=100)], default=90, description="Server will pause jobs if CPU exceeds this temperature.")
+    temp_resume_delta = IntegerField('Resume Margin (C)', validators=[DataRequired(), NumberRange(min=1, max=30)], default=5, description="Jobs resume after temperatures cool down by this many degrees below the limit.")
     default_devices = MultiCheckboxField('Default Devices (for Pwnagotchi/API)', choices=[])
     submit = SubmitField('Save Performance Settings')
 
@@ -598,6 +599,7 @@ def admin_settings():
             cpu_percent=form.cpu_percent.data,
             gpu_temp_limit=form.gpu_temp_limit.data,
             cpu_temp_limit=form.cpu_temp_limit.data,
+            temp_resume_delta=form.temp_resume_delta.data,
             default_devices=form.default_devices.data
         )
         flask.flash('Performance settings updated successfully!')
@@ -607,6 +609,7 @@ def admin_settings():
     form.cpu_percent.data = settings.get("cpu_percent", 100)
     form.gpu_temp_limit.data = settings.get("gpu_temp_limit", 90)
     form.cpu_temp_limit.data = settings.get("cpu_temp_limit", 90)
+    form.temp_resume_delta.data = settings.get("temp_resume_delta", 5)
     form.default_devices.data = settings.get("default_devices", ["1"])
         
     if ts_form.submit_tailscale.data and ts_form.validate():
@@ -678,6 +681,7 @@ def admin_settings():
 
     if request.method == 'GET':
         form.cpu_percent.data = settings.get('cpu_percent', 100)
+        form.temp_resume_delta.data = settings.get('temp_resume_delta', 5)
         account_form.new_username.data = current_user.username
 
     autostart_status = get_autostart_status()

@@ -1,12 +1,13 @@
 import os
 import shlex
+import signal
 import subprocess
 import time
 from pathlib import Path
-from typing import Union, List
+from typing import List, Union
 
 from app.config import HASHCAT_STATUS_TIMER
-from app.domain import Rule, WordList, ProgressLock, TaskInfoStatus, Mask, HashcatMode
+from app.domain import HashcatMode, Mask, ProgressLock, Rule, TaskInfoStatus, WordList
 from app.logger import logger
 
 HASHCAT_WARNINGS = (
@@ -62,7 +63,6 @@ class HashcatCmd:
             command.append("--session={}".format(shlex.quote(self.session)))
         self._populate_class_specific(command)
         if self.mask is not None:
-            # masks are not compatible with wordlists
             command.extend(['-a3', self.mask])
         else:
             for word_list in self.wordlists:
@@ -96,7 +96,6 @@ class HashcatCmdCapture(HashcatCmd):
 
     def _populate_class_specific(self, command: List[str]):
         if int(os.getenv('POTFILE_DISABLE', 0)):
-            # localhost debug mode
             command.append("--potfile-disable")
         command.append("--status")
         command.append("--status-timer={}".format(HASHCAT_STATUS_TIMER))
@@ -115,44 +114,78 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
     timeout_seconds = timeout_minutes * 60
     start = time.time()
     hashcat_cmd_list = hashcat_cmd.build()
-    process = subprocess.Popen(hashcat_cmd_list,
-                               universal_newlines=True,
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE)
+    process = subprocess.Popen(
+        hashcat_cmd_list,
+        universal_newlines=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
     last_temp_check = 0
+    is_paused_for_temp = False
     from app.utils.settings import read_settings
     from app.utils.utils import get_live_usage
-    
-    stderr_buffer = []
-    
-    # Read stdout for progress updates
-    for line in iter(process.stdout.readline, ''):
+
+    while True:
         current_time = time.time()
-        # Temperature & Cancellation Check
+
         if current_time - last_temp_check > 5:
             last_temp_check = current_time
             settings = read_settings()
             cpu_limit = settings.get("cpu_temp_limit", 90)
             gpu_limit = settings.get("gpu_temp_limit", 90)
+            temp_resume_delta = settings.get("temp_resume_delta", 5)
             usage = get_live_usage()
-            if usage['cpu_temp'] > cpu_limit:
-                process.terminate()
-                raise RuntimeError(f"CPU Overheat: {usage['cpu_temp']}°C (Limit: {cpu_limit}°C)")
 
+            cpu_over_limit = usage['cpu_temp'] > cpu_limit
+            hottest_gpu = None
             for gpu in usage.get('gpus', []):
                 gpu_temp = int(gpu.get('temp', 0))
-                if gpu_temp > gpu_limit:
-                    process.terminate()
-                    raise RuntimeError(f"GPU Overheat: GPU #{gpu.get('id')} at {gpu_temp} C (Limit: {gpu_limit} C)")
+                if gpu_temp > gpu_limit and (hottest_gpu is None or gpu_temp > int(hottest_gpu.get('temp', 0))):
+                    hottest_gpu = gpu
+
+            if cpu_over_limit or hottest_gpu is not None:
+                if not is_paused_for_temp:
+                    process.send_signal(signal.SIGSTOP)
+                    is_paused_for_temp = True
+                with lock:
+                    if cpu_over_limit:
+                        lock.set_status(f"Paused for CPU cooldown: {usage['cpu_temp']} C / {cpu_limit} C")
+                    else:
+                        lock.set_status(
+                            f"Paused for GPU cooldown: GPU #{hottest_gpu.get('id')} {hottest_gpu.get('temp')} C / {gpu_limit} C"
+                        )
+            elif is_paused_for_temp:
+                cpu_resume_limit = max(0, cpu_limit - temp_resume_delta)
+                gpu_resume_limit = max(0, gpu_limit - temp_resume_delta)
+                cpu_safe = usage['cpu_temp'] <= cpu_resume_limit
+                gpu_safe = all(int(gpu.get('temp', 0)) <= gpu_resume_limit for gpu in usage.get('gpus', []))
+                if cpu_safe and gpu_safe:
+                    process.send_signal(signal.SIGCONT)
+                    is_paused_for_temp = False
+                    with lock:
+                        lock.set_status("Resumed after cooldown")
 
         with lock:
             if lock.cancelled:
+                if is_paused_for_temp:
+                    process.send_signal(signal.SIGCONT)
                 process.terminate()
                 raise InterruptedError(TaskInfoStatus.CANCELLED)
+
         time_spent = current_time - start
         if time_spent > timeout_seconds:
+            if is_paused_for_temp:
+                process.send_signal(signal.SIGCONT)
             process.terminate()
             raise TimeoutError(f"Timed out after {timeout_minutes} minutes")
+
+        if is_paused_for_temp:
+            time.sleep(1)
+            continue
+
+        line = process.stdout.readline()
+        if line == '':
+            break
         if line.startswith("STATUS"):
             parts = line.split()
             try:
@@ -160,7 +193,7 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
                 tried_keys = parts[progress_index + 1]
                 total_keys = parts[progress_index + 2]
                 progress = 100. * int(tried_keys) / int(total_keys)
-                
+
                 speed_str = "0 H/s"
                 if "SPEED" in parts:
                     speed_index = parts.index("SPEED")
@@ -171,25 +204,21 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
                         speed_str = f"{speed_val / 1000:.1f} kH/s"
                     else:
                         speed_str = f"{speed_val} H/s"
-                
+
                 with lock:
                     lock.progress = progress
                     lock.speed = speed_str
             except (ValueError, IndexError):
                 pass
-    
-    # Process has finished, wait and check stderr
+
     _, stderr = process.communicate()
     if stderr:
-        # Filter out common warnings we don't care about
         warn, err = split_warnings_errors(stderr)
         if err.strip():
             logger.error(f"Hashcat error detected: {err.strip()}")
-            # If it failed immediately, the status should reflect the error
             if time.time() - start < 2:
                 raise RuntimeError(f"Hashcat failed to start: {err.splitlines()[0]}")
 
     if process.returncode != 0:
-        # If it's not a success and it's not 'already cracked' (3 or 4)
         if process.returncode not in (0, 1):
-             raise RuntimeError(f"Hashcat exited with code {process.returncode}")
+            raise RuntimeError(f"Hashcat exited with code {process.returncode}")

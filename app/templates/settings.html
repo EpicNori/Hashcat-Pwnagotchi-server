@@ -56,8 +56,9 @@
                     <div class="panel-heading">Global Safety & Routing</div>
                     <div class="panel-body">
                         <div class="row">
-                            <div class="col-md-6">{{ wtf.form_field(form.gpu_temp_limit) }}</div>
-                            <div class="col-md-6">{{ wtf.form_field(form.cpu_temp_limit) }}</div>
+                            <div class="col-md-4">{{ wtf.form_field(form.gpu_temp_limit) }}</div>
+                            <div class="col-md-4">{{ wtf.form_field(form.cpu_temp_limit) }}</div>
+                            <div class="col-md-4">{{ wtf.form_field(form.temp_resume_delta) }}</div>
                         </div>
                         {{ wtf.form_field(form.cpu_percent) }}
                         {{ wtf.form_field(form.default_devices) }}
@@ -67,7 +68,7 @@
                 </div>
             </form>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-4">
             <div class="panel panel-info">
                 <div class="panel-heading">How do these limits work?</div>
                 <div class="panel-body">
@@ -97,9 +98,13 @@
             </div>
         </div>
     </div>
-    <hr>
-    <h1>Remote Access (Tailscale)</h1>
-    <p>Enable secure global access to your server from anywhere using a free <a href="https://tailscale.com/" target="_blank">Tailscale</a> VPN tunnel.</p>
+    <div class="row" style="margin-top: 25px;">
+        <div class="col-md-12">
+            <hr>
+            <h1>Remote Access (Tailscale)</h1>
+            <p>Enable secure global access to your server from anywhere using a free <a href="https://tailscale.com/" target="_blank">Tailscale</a> VPN tunnel.</p>
+        </div>
+    </div>
     <div class="row" style="margin-bottom: 10px;">
         <div class="col-md-12">
             <span id="tailscale-status" class="label label-default">Checking Tailscale…</span>
@@ -117,9 +122,13 @@
             </div>
         </div>
     </div>
-    <hr>
-    <h1>Server Autostart</h1>
-    <p>Choose whether the Hashcat WPA/WPA2 Server should start automatically when the machine boots.</p>
+    <div class="row">
+        <div class="col-md-12" style="margin-top: 15px;">
+            <hr>
+            <h1>Server Autostart</h1>
+            <p>Choose whether the Hashcat WPA/WPA2 Server should start automatically when the machine boots.</p>
+        </div>
+    </div>
     <div class="row">
         <div class="col-md-6">
             <div class="panel panel-primary">
@@ -141,9 +150,13 @@
             </div>
         </div>
     </div>
-    <hr>
-    <h1>Software Update</h1>
-    <p>Keep your hacking rig up to date with the latest features from GitHub.</p>
+    <div class="row">
+        <div class="col-md-12" style="margin-top: 15px;">
+            <hr>
+            <h1>Software Update</h1>
+            <p>Keep your hacking rig up to date with the latest features from GitHub.</p>
+        </div>
+    </div>
     <div class="row">
         <div class="col-md-6">
             <div class="panel panel-danger">
