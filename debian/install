@@ -1,0 +1,7 @@
+app opt/hashcat-wpa-server/
+bash opt/hashcat-wpa-server/
+masks opt/hashcat-wpa-server/
+rules opt/hashcat-wpa-server/
+wordlists opt/hashcat-wpa-server/
+requirements.txt opt/hashcat-wpa-server/
+debian/hashcat-wpa-server.service etc/systemd/system/

@@ -1,0 +1,80 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Create hashcat user if not exists
+        if ! id "hashcat" >/dev/null 2>&1; then
+            useradd --system --home-dir /var/lib/hashcat-wpa-server --no-create-home --shell /usr/sbin/nologin hashcat
+        fi
+
+        # Create required directories
+        mkdir -p /opt/hashcat-wpa-server
+        mkdir -p /var/lib/hashcat-wpa-server
+        mkdir -p /var/log/hashcat-wpa-server
+
+        # Set ownership of the source files first
+        chown -R hashcat:hashcat /opt/hashcat-wpa-server
+        
+        # Set permissions on source files BEFORE creating venv, carefully excluding the venv directory 
+        # to ensure we don't accidentally remove executable flags from pip/python binaries during upgrades.
+        find /opt/hashcat-wpa-server -path "/opt/hashcat-wpa-server/venv" -prune -o -type d -exec chmod 755 {} \;
+        find /opt/hashcat-wpa-server -path "/opt/hashcat-wpa-server/venv" -prune -o -type f -exec chmod 644 {} \;
+        find /opt/hashcat-wpa-server/app -name "*.py" -exec chmod 755 {} \;
+        if [ -d "/opt/hashcat-wpa-server/bash" ]; then
+            find /opt/hashcat-wpa-server/bash -type f -exec chmod 755 {} \;
+        fi
+
+        # Ensure binaries in venv are executable (fix for bug where debhelper strips bits)
+        chmod 755 /opt/hashcat-wpa-server/venv/bin/* || true
+
+        # Install the crackserver CLI utility
+        echo "[*] Installing 'crackserver' global command..."
+        ln -sf /opt/hashcat-wpa-server/bash/crackserver /usr/local/bin/crackserver
+        chmod +x /usr/local/bin/crackserver
+
+        # Create venv and install dependencies
+        if [ ! -d "/opt/hashcat-wpa-server/venv" ]; then
+            python3 -m venv /opt/hashcat-wpa-server/venv
+        fi
+
+        # Install requirements
+        if [ -f "/opt/hashcat-wpa-server/requirements.txt" ]; then
+            /opt/hashcat-wpa-server/venv/bin/pip install --upgrade pip
+            /opt/hashcat-wpa-server/venv/bin/pip install -r /opt/hashcat-wpa-server/requirements.txt
+        fi
+
+        # Setup data and log directory ownership
+        chown -R hashcat:hashcat /var/lib/hashcat-wpa-server
+        chown -R hashcat:hashcat /var/log/hashcat-wpa-server
+
+        # Also ensure venv is owned by hashcat
+        chown -R hashcat:hashcat /opt/hashcat-wpa-server/venv
+
+        # Setup sudoers so the web interface can run tailscale securely
+        if [ -d /etc/sudoers.d ]; then
+            echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/install_tailscale.sh" > /etc/sudoers.d/hashcat-tailscale
+            echo "hashcat ALL=(ALL) NOPASSWD: /usr/bin/tailscale" >> /etc/sudoers.d/hashcat-tailscale
+            echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/update_app.sh" >> /etc/sudoers.d/hashcat-tailscale
+            echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/uninstall_app.sh" >> /etc/sudoers.d/hashcat-tailscale
+            chmod 440 /etc/sudoers.d/hashcat-tailscale
+        fi
+
+        # Ensure gunicorn knows about the service and starts it
+        systemctl daemon-reload
+        systemctl enable hashcat-wpa-server.service
+        systemctl start hashcat-wpa-server.service
+    ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+#DEBHELPER#
+
+exit 0

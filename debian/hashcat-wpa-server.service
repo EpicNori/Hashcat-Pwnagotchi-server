@@ -1,0 +1,20 @@
+[Unit]
+Description=Hashcat WPA Server
+After=network.target
+
+[Service]
+Type=simple
+User=hashcat
+Group=hashcat
+WorkingDirectory=/opt/hashcat-wpa-server
+Environment="HASHCAT_ADMIN_USER=admin"
+Environment="HASHCAT_ADMIN_PASSWORD=changeme"
+Environment="HOME=/var/lib/hashcat-wpa-server"
+
+# Ensure gunicorn runs from our venv (ipv4 only to prevent crashes if OS disables ipv6)
+ExecStart=/opt/hashcat-wpa-server/venv/bin/gunicorn app:app --bind 0.0.0.0:9111
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

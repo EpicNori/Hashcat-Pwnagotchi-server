@@ -1,0 +1,15 @@
+.idea
+__pycache__
+ignored
+migrations
+database/
+.git
+captures
+env
+logs
+wordlists
+rsync.exclude
+app/benchmark.csv
+README.md
+LICENCE
+OMEN

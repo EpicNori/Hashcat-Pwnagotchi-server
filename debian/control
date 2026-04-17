@@ -1,0 +1,15 @@
+Source: hashcat-wpa-server
+Section: utils
+Priority: optional
+Maintainer: Senior Debian Package Maintainer <maintainer@example.com>
+Build-Depends: debhelper (>= 10)
+Standards-Version: 4.1.4
+Homepage: https://github.com/dizcza/hashcat-wpa-server
+
+Package: hashcat-wpa-server
+Architecture: all
+Depends: ${shlibs:Depends}, ${misc:Depends}, python3, python3-venv, systemd
+Description: Hashcat WPA Server
+ A self-hosted hashcat WPA task manager.
+ It installs the python app into a virtual environment, configures
+ a systemd service, and automatically manages the hashcat WPA server.

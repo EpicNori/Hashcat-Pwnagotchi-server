@@ -1,0 +1,75 @@
+#!/bin/bash
+
+# CrackServer CLI Wrapper
+
+function show_help {
+    echo "Usage: crackserver [COMMAND]"
+    echo ""
+    echo "Commands:"
+    echo "  update      - Safe Update: Updates app code but PRESERVES all data"
+    echo "  reset       - Factory Reset: Wipes all user data and databases"
+    echo "  start       - Start the background systemd service"
+    echo "  stop        - Stop the background systemd service"
+    echo "  restart     - Restart the background systemd service"
+    echo "  status      - Show the current service status and logs"
+    echo "  uninstall   - Permanently remove the server from this machine"
+    echo "  dashboard   - Print the web interface URLs"
+    echo "  logs        - Follow the service logs in real-time"
+    echo ""
+}
+
+case "$1" in
+    update)
+        echo "[*] Triggering SAFE automated update from GitHub..."
+        echo "[*] (This preserves your database, handshakes, and accounts)"
+        curl -sL https://raw.githubusercontent.com/EpicNori/hashcat-wpa-server/master/update.sh | sudo bash
+        ;;
+    reset)
+        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        echo "!!! WARNING: THIS WILL WIPE ALL USERS AND RESULTS !!!"
+        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        read -p "Are you sure you want a factory reset? (y/n) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo "[*] Shuting down server..."
+            sudo systemctl stop hashcat-wpa-server
+            echo "[*] Wiping database and captures..."
+            sudo rm -rf /var/lib/hashcat-wpa-server/*
+            echo "[*] Re-initializing system..."
+            sudo systemctl start hashcat-wpa-server
+            echo "[+] Factory reset complete. You may need to log in as 'admin' again."
+        fi
+        ;;
+    start)
+        echo "[*] Starting Hashcat WPA Server..."
+        sudo systemctl start hashcat-wpa-server
+        ;;
+    stop)
+        echo "[*] Stopping Hashcat WPA Server..."
+        sudo systemctl stop hashcat-wpa-server
+        ;;
+    restart)
+        echo "[*] Restarting Hashcat WPA Server..."
+        sudo systemctl restart hashcat-wpa-server
+        ;;
+    status)
+        sudo systemctl status hashcat-wpa-server
+        ;;
+    logs)
+        sudo journalctl -u hashcat-wpa-server -f
+        ;;
+    uninstall)
+        sudo bash /opt/hashcat-wpa-server/bash/uninstall_app.sh
+        ;;
+    dashboard)
+        echo "====================================================="
+        echo "  Hashcat WPA Server Dashboard"
+        echo "====================================================="
+        echo "  Local:   http://127.0.0.1:9111"
+        echo "  Network: http://$(hostname -I | awk '{print $1}'):9111"
+        echo "====================================================="
+        ;;
+    *)
+        show_help
+        ;;
+esac

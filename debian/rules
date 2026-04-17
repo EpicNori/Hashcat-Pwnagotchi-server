@@ -1,0 +1,13 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	# Do nothing (we handle processing in postinst)
+
+override_dh_auto_test:
+	# Do nothing
+
+override_dh_auto_install:
+	# Do nothing (handled by debian/install)

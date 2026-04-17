@@ -1,0 +1,33 @@
+# Usage:
+#   mkdir -p ~/.hashcat/wpa-server
+#   cd ./docker
+#   docker-compose build --build-arg branch=latest (or intel-cpu)
+#   docker-compose up -d
+
+version: '3.7'
+
+services:
+  hashcat-wpa-server:
+    image: "hashcat-wpa-server:latest"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [ gpu ]
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        branch: latest
+    ports:
+     - "9111:80"
+    environment:
+       - "HASHCAT_ADMIN_USER=${HASHCAT_ADMIN_USER}"
+       - "HASHCAT_ADMIN_PASSWORD=${HASHCAT_ADMIN_PASSWORD}"
+       - "TERM=xterm"
+    volumes:
+      - type: bind
+        source: ${HOME}/.hashcat/wpa-server
+        target: /root/.hashcat/wpa-server
+    restart: always
