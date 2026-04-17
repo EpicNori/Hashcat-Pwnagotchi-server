@@ -1,6 +1,9 @@
 import datetime
+import os
 import re
 import shutil
+import subprocess
+import tempfile
 from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
@@ -29,17 +32,26 @@ class WordListInfo:
 
     def update_count(self):
         if self.custom:
+            if self.script:
+                self.count = None
+                return
             self.count = count_wordlist(self.path)
 
     @property
     def name(self):
         if self.custom:
+            if self.script:
+                return f"user/{self.path.name} (script)"
             return f"user/{self.path.name}"
         return self.path.name
 
     @property
     def custom(self) -> bool:
         return str(self.path).startswith(str(WORDLISTS_USER_DIR))
+
+    @property
+    def script(self) -> bool:
+        return is_wordlist_script(self.path)
 
     def __str__(self):
         extra = ""
@@ -157,6 +169,8 @@ def estimate_runtime_fmt(wordlist_path: Path, rule: Rule) -> str:
         wordlist = find_wordlist_by_path(wordlist_path)
         if wordlist is None:
             return "unknown"
+        if wordlist.script:
+            return "unknown"
         n_words += wordlist.count
 
     n_candidates = n_words * count_rules(rule)
@@ -232,6 +246,64 @@ def wordlist_choices():
     choices.extend((str(wlist.path), str(wlist)) for wlist in wlists_info)
 
     return choices
+
+
+SCRIPT_SUFFIXES = {".sh", ".bash", ".py"}
+
+
+def is_wordlist_script(path: Path) -> bool:
+    path = Path(path)
+    return path.suffix.lower() in SCRIPT_SUFFIXES
+
+
+def materialize_wordlist_source(wordlist_path: Path) -> Path:
+    """
+    Convert a user-provided wordlist source into a real text file path.
+
+    Plain text wordlists are returned as-is. Supported scripts are executed and
+    their stdout is written to a temporary wordlist file for the current job.
+    """
+    wordlist_path = Path(wordlist_path)
+    if not is_wordlist_script(wordlist_path):
+        return wordlist_path
+
+    if not wordlist_path.exists():
+        raise FileNotFoundError(f"Wordlist script not found: {wordlist_path}")
+
+    suffix = wordlist_path.suffix.lower()
+    if suffix == ".py":
+        command = ["python3", str(wordlist_path)]
+    else:
+        command = ["/bin/bash", str(wordlist_path)]
+
+    completed = subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+        check=False,
+        cwd=str(WORDLISTS_USER_DIR)
+    )
+    if completed.returncode != 0:
+        error_output = (completed.stderr or completed.stdout or "").strip()
+        raise RuntimeError(f"Wordlist script failed: {error_output or wordlist_path.name}")
+
+    generated = tempfile.NamedTemporaryFile(
+        mode="w",
+        prefix=f"generated_{wordlist_path.stem}_",
+        suffix=".txt",
+        delete=False
+    )
+    with generated:
+        generated.write(completed.stdout)
+
+    return Path(generated.name)
+
+
+def iter_user_wordlist_scripts():
+    for custom_path in sorted(WORDLISTS_USER_DIR.iterdir()):
+        if custom_path.is_file() and is_wordlist_script(custom_path):
+            yield custom_path
 
 
 def cyrrilic2qwerty(wlist: WordList):

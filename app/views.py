@@ -20,7 +20,7 @@ from app.uploader import cap_uploads, UploadForm, UploadedTask, check_incomplete
 from app.utils.file_io import read_last_benchmark, bssid_essid_from_22000, build_rainbow_wordlist
 from app.utils.utils import is_safe_url, hashcat_devices_info
 from app.word_magic import create_digits_wordlist, estimate_runtime_fmt, create_fast_wordlists
-from app.word_magic.wordlist import download_wordlist, find_wordlist_by_name
+from app.word_magic.wordlist import download_wordlist, find_wordlist_by_name, WordListDefault
 
 hashcat_worker = HashcatWorker(app)
 
@@ -198,7 +198,38 @@ def upload():
             hashcat_worker.submit_capture(file_essid, uploaded_form=form, task=task)
         flask.flash(f"Uploaded {filename}")
         return redirect(url_for('user_profile'))
-    return render_template('upload.html', title='Upload', form=form)
+    missing_default_wordlists = [wlist for wlist in WordListDefault.list() if not wlist.path.exists()]
+    return render_template('upload.html', title='Upload', form=form, missing_default_wordlists=missing_default_wordlists)
+
+
+@app.route('/install_default_wordlist/<wordlist_name>', methods=['POST'])
+@login_required
+def install_default_wordlist(wordlist_name):
+    target = None
+    for wlist in WordListDefault.list():
+        if wordlist_name == wlist.path.name:
+            target = wlist
+            break
+
+    if target is None:
+        flask.flash("Unknown default wordlist.", category="error")
+        return redirect(url_for('upload'))
+
+    if target.path.exists():
+        flask.flash(f"{target.name} is already installed.", category="info")
+        return redirect(url_for('upload'))
+
+    try:
+        download_wordlist(target.path)
+        if target.path.exists():
+            flask.flash(f"Installed {target.name}.", category="success")
+        else:
+            flask.flash(f"Could not install {target.name}.", category="error")
+    except Exception as error:
+        logger.exception(error)
+        flask.flash(f"Failed to install {target.name}: {error}", category="error")
+
+    return redirect(url_for('upload'))
 
 @app.route('/api/upload', methods=['POST'])
 def api_upload():

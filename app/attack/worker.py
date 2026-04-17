@@ -13,7 +13,7 @@ from app.domain import Rule, TaskInfoStatus, InvalidFileError, ProgressLock, Wor
 from app.logger import logger
 from app.uploader import UploadForm, UploadedTask
 from app.utils import read_plain_key, date_formatted, subprocess_call, read_hashcat_brain_password, build_rainbow_wordlist
-from app.word_magic.wordlist import WordListDefault
+from app.word_magic.wordlist import WordListDefault, iter_user_wordlist_scripts, materialize_wordlist_source
 
 
 class CapAttack(BaseAttack):
@@ -110,7 +110,8 @@ class CapAttack(BaseAttack):
         with self.lock:
             self.lock.set_status("Running the main wordlist")
         hashcat_cmd = self.new_cmd()
-        hashcat_cmd.add_wordlists(self.wordlist)
+        resolved_wordlist = materialize_wordlist_source(self.wordlist)
+        hashcat_cmd.add_wordlists(resolved_wordlist)
         hashcat_cmd.add_rule(self.rule)
         self.runner(hashcat_cmd)
 
@@ -118,10 +119,27 @@ class CapAttack(BaseAttack):
         for default_wordlist in WordListDefault.list():
             if not self.is_attack_needed():
                 return
+            if not default_wordlist.path.exists():
+                with self.lock:
+                    self.lock.set_status(f"Skipping missing fallback wordlist: {default_wordlist.name}")
+                continue
             with self.lock:
                 self.lock.set_status(f"Running fallback wordlist: {default_wordlist.name}")
             hashcat_cmd = self.new_cmd()
             hashcat_cmd.add_wordlists(default_wordlist.path)
+            self.runner(hashcat_cmd)
+
+    def run_user_script_wordlist_chain(self):
+        for script_path in iter_user_wordlist_scripts():
+            if not self.is_attack_needed():
+                return
+            with self.lock:
+                self.lock.set_status(f"Running user wordlist script: {script_path.name}")
+            resolved_wordlist = materialize_wordlist_source(script_path)
+            if not resolved_wordlist.exists() or resolved_wordlist.stat().st_size == 0:
+                continue
+            hashcat_cmd = self.new_cmd()
+            hashcat_cmd.add_wordlists(resolved_wordlist)
             self.runner(hashcat_cmd)
 
     def run_rainbow_attack(self):
@@ -191,6 +209,10 @@ class CapAttack(BaseAttack):
                 with self.lock:
                     self.lock.set_status("Running extended default wordlists...")
                 self.run_default_wordlist_chain()
+
+                with self.lock:
+                    self.lock.set_status("Running user wordlist scripts...")
+                self.run_user_script_wordlist_chain()
 
 
 def _crack_async(attack: CapAttack):

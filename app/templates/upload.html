@@ -32,6 +32,7 @@
                 <div class="col-md-6">
                     <div class="col">{{ render_field(form.wordlist) }}</div>
                     <p>User-defined custom wordlists are read from the <code>~/.hashcat/wpa-server/wordlists</code> folder</p>
+                    <p class="text-muted small">You can also place generator scripts there. Supported script types currently include <code>.sh</code>, <code>.bash</code>, and <code>.py</code>; their stdout will be used as a wordlist.</p>
                 </div>
                 <div class="col-md-4">
                     <div class="col">{{ render_field(form.rule) }}</div>
@@ -42,6 +43,18 @@
         <p>Estimated runtime (per Access Point): <span id="runtime">{{ form.runtime }}</span></p>
         {{ wtf.form_field(form.timeout) }}
         {{ render_field(form.workload) }}
+
+        {% if missing_default_wordlists %}
+        <div class="field-boxed">
+            <h4>Optional Extra Wordlists</h4>
+            <p class="text-muted small">Normal mode can use these built-in fallback lists if they are installed. Missing ones are skipped unless you install them here.</p>
+            {% for wordlist in missing_default_wordlists %}
+            <form method="POST" action="{{ url_for('install_default_wordlist', wordlist_name=wordlist.path.name) }}" style="display: inline-block; margin-right: 10px; margin-bottom: 10px;">
+                <button type="submit" class="btn btn-info btn-sm">Install {{ wordlist.name }}</button>
+            </form>
+            {% endfor %}
+        </div>
+        {% endif %}
 
         <div class="field-boxed">
             <h4>Hardware Selection</h4>
