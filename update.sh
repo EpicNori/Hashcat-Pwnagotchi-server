@@ -16,6 +16,6 @@ if [ ! -d "/opt/hashcat-wpa-server" ]; then
 fi
 
 # Run the standard installer - it is already programmed to be non-destructive to user data
-curl -sL https://raw.githubusercontent.com/EpicNori/hashcat-wpa-server/master/install.sh | bash
+curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/install.sh | bash
 
 echo "[*] Update complete. All user data and settings have been preserved."

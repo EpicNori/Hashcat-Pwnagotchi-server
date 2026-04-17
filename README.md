@@ -1,6 +1,6 @@
 # Hashcat WPA/WPA2 Server 🚀
 
-[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/EpicNori/hashcat-wpa-server)
+[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/EpicNori/Hashcat-Pwnagotchi-server)
 [![Debian](https://img.shields.io/badge/platform-Debian%20%7C%20Ubuntu-orange.svg)](https://www.debian.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -13,7 +13,7 @@ A production-grade, automated WPA/WPA2 handshake cracking server. Designed for n
 The absolute easiest way to deploy the server on **Debian, Ubuntu, or Kali Linux**. This one-liner handles all dependencies, Python environments, and background system services automatically.
 
 ```bash
-curl -sL https://raw.githubusercontent.com/EpicNori/hashcat-wpa-server/master/install.sh | sudo bash
+curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/install.sh | sudo bash
 ```
 
 **Your dashboard will be available at:** `http://localhost:9111`

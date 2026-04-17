@@ -22,7 +22,7 @@ case "$1" in
     update)
         echo "[*] Triggering SAFE automated update from GitHub..."
         echo "[*] (This preserves your database, handshakes, and accounts)"
-        curl -sL https://raw.githubusercontent.com/EpicNori/hashcat-wpa-server/master/update.sh | sudo bash
+        curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/update.sh | sudo bash
         ;;
     reset)
         echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"

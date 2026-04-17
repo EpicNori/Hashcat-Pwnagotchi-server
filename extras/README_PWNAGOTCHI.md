@@ -25,7 +25,7 @@ If connected via USB data cable, open your computer's terminal:
    ```bash
    ssh pi@10.0.0.2
    cd /home/pi/custom-plugins/
-   wget https://raw.githubusercontent.com/EpicNori/hashcat-wpa-server/master/extras/pwnagotchi_hashcat_wpa.py
+   wget https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/extras/pwnagotchi_hashcat_wpa.py
    ```
 *(Note: Ensure `/home/pi/custom-plugins/` exists and is defined as the plugins directory inside your configurations).*
 

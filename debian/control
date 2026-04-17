@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Senior Debian Package Maintainer <maintainer@example.com>
 Build-Depends: debhelper (>= 10)
 Standards-Version: 4.1.4
-Homepage: https://github.com/dizcza/hashcat-wpa-server
+Homepage: https://github.com/EpicNori/Hashcat-Pwnagotchi-server
 
 Package: hashcat-wpa-server
 Architecture: all

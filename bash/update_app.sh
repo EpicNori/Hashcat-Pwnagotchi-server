@@ -11,7 +11,7 @@ systemd-run --unit=hashcat-server-updater --remain-after-exit bash -c '
   dpkg --configure -a || true
   
   echo "[*] Updater: Fetching latest code and installing..."
-  curl -sL https://raw.githubusercontent.com/EpicNori/hashcat-wpa-server/master/update.sh | bash
+  curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/update.sh | bash
   
   echo "[*] Updater: FINISHED. Server should be back online now."
 ' > /dev/null 2>&1

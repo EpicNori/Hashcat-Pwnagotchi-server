@@ -27,8 +27,8 @@ rm -rf hashcat-wpa-build-env
 mkdir hashcat-wpa-build-env
 cd hashcat-wpa-build-env
 
-git clone https://github.com/EpicNori/hashcat-wpa-server.git
-cd hashcat-wpa-server
+git clone https://github.com/EpicNori/Hashcat-Pwnagotchi-server.git
+cd Hashcat-Pwnagotchi-server
 
 echo "[*] Compiling the automated Debian package..."
 chmod +x debian/rules
