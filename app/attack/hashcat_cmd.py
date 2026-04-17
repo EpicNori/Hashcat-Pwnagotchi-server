@@ -25,6 +25,17 @@ CONTROL_LOOP_INTERVAL = 1.0
 GPU_UTIL_HISTORY_SIZE = 6
 GPU_UTIL_TOLERANCE = 2
 GPU_THROTTLE_COOLDOWN = 1.25
+TRANSIENT_STATUS_PREFIXES = (
+    "Paused for CPU cooldown",
+    "Paused for GPU cooldown",
+    "Paused for CPU usage cap",
+    "Resumed after limit cooldown",
+    "Throttling GPU #",
+)
+
+
+def is_transient_status(status: str) -> bool:
+    return any(status.startswith(prefix) for prefix in TRANSIENT_STATUS_PREFIXES)
 
 
 def split_warnings_errors(stderr: str):
@@ -130,6 +141,7 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
     last_temp_check = 0
     is_paused_for_temp = False
     paused_status_context = None
+    base_status_context = TaskInfoStatus.RUNNING
     gpu_util_history = defaultdict(lambda: deque(maxlen=GPU_UTIL_HISTORY_SIZE))
     last_throttle_at = 0.0
     from app.utils.settings import read_settings
@@ -137,6 +149,11 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
 
     while True:
         current_time = time.time()
+
+        with lock:
+            current_status = lock.status
+        if current_status and not is_transient_status(current_status):
+            base_status_context = current_status
 
         if current_time - last_temp_check >= CONTROL_LOOP_INTERVAL:
             last_temp_check = current_time
@@ -201,33 +218,30 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
 
             if pause_message is not None:
                 if not is_paused_for_temp:
-                    with lock:
-                        paused_status_context = lock.status
+                    paused_status_context = base_status_context
                     process.send_signal(signal.SIGSTOP)
                     is_paused_for_temp = True
                 with lock:
-                    lock.set_status(pause_message + (f" | {paused_status_context}" if paused_status_context else ""))
+                    lock.set_status(pause_message)
             elif is_paused_for_temp and cpu_temp_safe and gpu_temp_safe and cpu_usage_safe:
                 process.send_signal(signal.SIGCONT)
                 is_paused_for_temp = False
                 with lock:
-                    lock.set_status("Resumed after limit cooldown" + (f" | {paused_status_context}" if paused_status_context else ""))
+                    lock.set_status(paused_status_context or base_status_context or TaskInfoStatus.RUNNING)
                 paused_status_context = None
             elif throttle_duration > 0 and throttle_gpu is not None:
+                throttle_context = base_status_context
                 with lock:
-                    throttle_context = lock.status
                     lock.set_status(
                         f"Throttling GPU #{throttle_gpu['id']} to stay near {throttle_gpu['target_util']}% "
                         f"(avg {throttle_gpu['avg_util']:.0f}%)"
-                        + (f" | {throttle_context}" if throttle_context else "")
                     )
                 process.send_signal(signal.SIGSTOP)
                 time.sleep(throttle_duration)
                 process.send_signal(signal.SIGCONT)
                 last_throttle_at = time.time()
                 with lock:
-                    if throttle_context:
-                        lock.set_status(throttle_context)
+                    lock.set_status(throttle_context or TaskInfoStatus.RUNNING)
 
         with lock:
             if lock.cancelled:
