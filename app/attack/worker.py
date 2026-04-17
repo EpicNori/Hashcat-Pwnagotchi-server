@@ -244,10 +244,16 @@ class HashcatWorker:
         :param timeout: brute force timeout in minutes
         """
         lock = ProgressLock(task_id=task.id)
-        from app.utils.settings import apply_hashcat_limits
+        from app.utils.settings import apply_hashcat_limits, read_settings
         hashcat_args = uploaded_form.hashcat_args(secret=True)
         hashcat_args.append(f"--workload-profile={uploaded_form.workload.data}")
         hashcat_args = apply_hashcat_limits(hashcat_args)
+        settings = read_settings()
+        configured_max_time = settings.get("max_job_time_minutes")
+        requested_timeout = uploaded_form.timeout.data
+        effective_timeout = requested_timeout
+        if configured_max_time:
+            effective_timeout = configured_max_time if requested_timeout is None else min(requested_timeout, configured_max_time)
         wordlist_path = uploaded_form.get_wordlist_path()
         rule = uploaded_form.get_rule()
         attack = CapAttack(file_22000=file_22000,
@@ -255,7 +261,7 @@ class HashcatWorker:
                            wordlist=wordlist_path,
                            rule=rule,
                            hashcat_args=hashcat_args,
-                           timeout=uploaded_form.timeout.data)
+                           timeout=effective_timeout)
         future = self.executor.submit(_crack_async, attack=attack)
         future.add_done_callback(self.callback_attack)
         with lock:

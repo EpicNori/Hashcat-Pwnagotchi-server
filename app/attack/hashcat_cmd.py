@@ -156,76 +156,47 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
                     if busiest_gpu is None or gpu_usage > int(busiest_gpu.get('util', 0)):
                         busiest_gpu = gpu
 
-            if cpu_over_limit or hottest_gpu is not None:
-                if not is_paused_for_temp:
-                    with lock:
-                        paused_status_context = lock.status
-                    process.send_signal(signal.SIGSTOP)
-                    is_paused_for_temp = True
-                with lock:
-                    if cpu_over_limit:
-                        lock.set_status(
-                            f"Paused for CPU cooldown: {usage['cpu_temp']} C / {cpu_limit} C"
-                            + (f" | {paused_status_context}" if paused_status_context else "")
-                        )
-                    else:
-                        lock.set_status(
-                            f"Paused for GPU cooldown: GPU #{hottest_gpu.get('id')} {hottest_gpu.get('temp')} C / {gpu_limit} C"
-                            + (f" | {paused_status_context}" if paused_status_context else "")
-                        )
-            elif is_paused_for_temp:
-                cpu_resume_limit = max(0, cpu_limit - temp_resume_delta)
-                gpu_resume_limit = max(0, gpu_limit - temp_resume_delta)
-                cpu_safe = usage['cpu_temp'] <= cpu_resume_limit
-                gpu_safe = all(int(gpu.get('temp', 0)) <= gpu_resume_limit for gpu in usage.get('gpus', []))
-                if cpu_safe and gpu_safe:
-                    process.send_signal(signal.SIGCONT)
-                    is_paused_for_temp = False
-                    with lock:
-                        lock.set_status(
-                            "Resumed after cooldown"
-                            + (f" | {paused_status_context}" if paused_status_context else "")
-                        )
-                    paused_status_context = None
+            pause_message = None
+            if cpu_over_limit:
+                pause_message = f"Paused for CPU cooldown: {usage['cpu_temp']} C / {cpu_limit} C"
+            elif hottest_gpu is not None:
+                pause_message = f"Paused for GPU cooldown: GPU #{hottest_gpu.get('id')} {hottest_gpu.get('temp')} C / {gpu_limit} C"
+            elif cpu_usage_over_limit:
+                pause_message = f"Paused for CPU usage cap: {usage.get('cpu_usage', 0)}% / {cpu_usage_limit}%"
+            elif busiest_gpu is not None:
+                gpu_id = str(busiest_gpu.get('id'))
+                gpu_usage_limit = device_intensities.get(gpu_id, 100)
+                pause_message = f"Paused for GPU usage cap: GPU #{gpu_id} {busiest_gpu.get('util')}% / {gpu_usage_limit}%"
 
-            if cpu_usage_over_limit or busiest_gpu is not None:
+            cpu_resume_limit = max(0, cpu_limit - temp_resume_delta)
+            gpu_resume_limit = max(0, gpu_limit - temp_resume_delta)
+            cpu_usage_resume_limit = max(0, cpu_usage_limit - 5)
+            cpu_temp_safe = usage['cpu_temp'] <= cpu_resume_limit
+            gpu_temp_safe = all(int(gpu.get('temp', 0)) <= gpu_resume_limit for gpu in usage.get('gpus', []))
+            cpu_usage_safe = usage.get('cpu_usage', 0) <= cpu_usage_resume_limit
+            gpu_usage_safe = True
+            for gpu in usage.get('gpus', []):
+                gpu_id = str(gpu.get('id'))
+                gpu_usage_limit = device_intensities.get(gpu_id, 100)
+                gpu_usage = int(gpu.get('util', 0))
+                if gpu_usage_limit < 100 and gpu_usage > max(0, gpu_usage_limit - 5):
+                    gpu_usage_safe = False
+                    break
+
+            if pause_message is not None:
                 if not is_paused_for_temp:
                     with lock:
                         paused_status_context = lock.status
                     process.send_signal(signal.SIGSTOP)
                     is_paused_for_temp = True
                 with lock:
-                    if busiest_gpu is not None:
-                        gpu_id = str(busiest_gpu.get('id'))
-                        gpu_usage_limit = device_intensities.get(gpu_id, 100)
-                        lock.set_status(
-                            f"Paused for GPU usage cap: GPU #{gpu_id} {busiest_gpu.get('util')}% / {gpu_usage_limit}%"
-                            + (f" | {paused_status_context}" if paused_status_context else "")
-                        )
-                    else:
-                        lock.set_status(
-                            f"Paused for CPU usage cap: {usage.get('cpu_usage', 0)}% / {cpu_usage_limit}%"
-                            + (f" | {paused_status_context}" if paused_status_context else "")
-                        )
-            elif is_paused_for_temp:
-                cpu_usage_resume_limit = max(0, cpu_usage_limit - 5)
-                gpu_usage_safe = True
-                for gpu in usage.get('gpus', []):
-                    gpu_id = str(gpu.get('id'))
-                    gpu_usage_limit = device_intensities.get(gpu_id, 100)
-                    gpu_usage = int(gpu.get('util', 0))
-                    if gpu_usage_limit < 100 and gpu_usage > max(0, gpu_usage_limit - 5):
-                        gpu_usage_safe = False
-                        break
-                if usage.get('cpu_usage', 0) <= cpu_usage_resume_limit and gpu_usage_safe:
-                    process.send_signal(signal.SIGCONT)
-                    is_paused_for_temp = False
-                    with lock:
-                        lock.set_status(
-                            "Resumed after usage cooldown"
-                            + (f" | {paused_status_context}" if paused_status_context else "")
-                        )
-                    paused_status_context = None
+                    lock.set_status(pause_message + (f" | {paused_status_context}" if paused_status_context else ""))
+            elif is_paused_for_temp and cpu_temp_safe and gpu_temp_safe and cpu_usage_safe and gpu_usage_safe:
+                process.send_signal(signal.SIGCONT)
+                is_paused_for_temp = False
+                with lock:
+                    lock.set_status("Resumed after limit cooldown" + (f" | {paused_status_context}" if paused_status_context else ""))
+                paused_status_context = None
 
         with lock:
             if lock.cancelled:

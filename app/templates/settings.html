@@ -60,7 +60,10 @@
                             <div class="col-md-4">{{ wtf.form_field(form.cpu_temp_limit) }}</div>
                             <div class="col-md-4">{{ wtf.form_field(form.temp_resume_delta) }}</div>
                         </div>
-                        {{ wtf.form_field(form.cpu_percent) }}
+                        <div class="row">
+                            <div class="col-md-6">{{ wtf.form_field(form.cpu_percent) }}</div>
+                            <div class="col-md-6">{{ wtf.form_field(form.max_job_time_minutes) }}</div>
+                        </div>
                         {{ wtf.form_field(form.default_devices) }}
                         <hr>
                         {{ wtf.form_field(form.submit, class="btn btn-primary btn-lg btn-block") }}
