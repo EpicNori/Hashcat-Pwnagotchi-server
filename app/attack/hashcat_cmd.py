@@ -227,9 +227,12 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
             parts = line.split()
             try:
                 progress_index = parts.index("PROGRESS")
-                tried_keys = parts[progress_index + 1]
-                total_keys = parts[progress_index + 2]
-                progress = 100. * int(tried_keys) / int(total_keys)
+                tried_keys = int(parts[progress_index + 1])
+                total_keys = int(parts[progress_index + 2])
+                if total_keys > 0:
+                    progress = 100. * tried_keys / total_keys
+                else:
+                    progress = 0.0
 
                 speed_str = "0 H/s"
                 if "SPEED" in parts:
@@ -245,7 +248,7 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
                 with lock:
                     lock.progress = progress
                     lock.speed = speed_str
-            except (ValueError, IndexError):
+            except (ValueError, IndexError, ZeroDivisionError):
                 pass
 
     _, stderr = process.communicate()
