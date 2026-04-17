@@ -1,0 +1,39 @@
+.idea/
+__pycache__/
+wordlists/*
+logs/
+env/
+ignored/
+database/
+captures/
+OMEN/
+
+!wordlists/names_ua-ru.txt
+!wordlists/names_ru-cyrrilic.txt
+
+# found keys
+*.key
+
+# sqlite database
+*.db
+
+# certificate
+*.pem
+*.p12
+
+# nvidia-docker-compose automatically generated
+nvidia-docker-compose.yml
+
+# hashcat benchmarks
+app/benchmark.csv
+
+# hashcat brain server
+brain/
+
+# Alembic database migration
+migrations/
+
+rules/*
+!rules/best64.rule
+!rules/essid.rule
+
