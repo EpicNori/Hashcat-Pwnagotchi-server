@@ -1,0 +1,70 @@
+#topheader .navbar-nav li > a {
+  color: #333;
+  -webkit-transition: background-color 0.2s, color 0.2s;
+  transition: background-color 0.2s, color 0.2s;
+}
+#topheader .navbar-nav li > a:hover, #topheader .navbar-nav li > a:focus {
+  background-color: #333;
+  color: #fff;
+}
+
+#topheader .navbar-nav li.active > a {
+  background-color: #333;
+  color: #fff;
+}
+
+/* --- Responsive & Mobile First UI Improvements --- */
+
+html, body {
+  overflow-x: hidden; /* Prevent horizontal scroll on mobile */
+  width: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Ensure tables dont break layout on small screens */
+.table-responsive-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 20px;
+}
+
+table {
+  max-width: 100% !important;
+}
+
+/* Make wide hashes and ESSIDs break onto new lines if needed */
+td, th {
+  max-width: 250px;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-all;
+  white-space: normal !important;
+}
+
+/* Jumbotron adjustments for mobile */
+@media (max-width: 768px) {
+  .jumbotron h1 {
+    font-size: 28px !important;
+  }
+  .jumbotron p {
+    font-size: 14px !important;
+  }
+  .container {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
+
+/* Dashboard search bar mobile width */
+#taskSearchInput {
+  margin-bottom: 15px;
+  width: 100%;
+}

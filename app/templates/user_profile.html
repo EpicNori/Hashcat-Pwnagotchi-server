@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% macro class_status(task) %}
+
+{% if task.found_key != None %}
+success
+{% elif task.status == "Completed" %}
+info
+{% elif task.status == "Running" %}
+warning
+{% elif "Error" in task.status or "Exception" in task.status or task.status == "Aborted" %}
+danger
+{% endif %}
+
+{% endmacro %}
+
+
+{% block page_content %}
+
+<div class="container-fluid">
+    {% if current_user.is_active %}
+    <p>You're logged in as <b>{{ current_user.username }}</b>. Privileges: {{ current_user.roles }}</p>
+    {% endif %}
+    <p>
+      <a class="btn btn-primary" data-toggle="collapse" href="#hashcat-devices" role="button" aria-expanded="false" aria-controls="collapseExample">
+        Available devices
+      </a>
+    </p>
+    <div class="collapse" id="hashcat-devices">
+      <div class="card card-body">
+        {{ devices }}
+      </div>
+    </div>
+    <hr>
+
+    <h2>Uploaded captures</h2>
+    <p>Hashcat WPA/WPA2 benchmark speed: <b>{{ benchmark.speed }}</b> H/s.
+        Last update: {{ benchmark.date }}
+        <button onclick="updateBenchmark()">Update</button>
+    </p>
+
+    <div class="row" style="margin-bottom: 20px; margin-top: 10px;">
+        <div class="col-md-7">
+            <input type="text" id="taskSearchInput" class="form-control" onkeyup="filterTasks()" placeholder="🔍 Quick Search for WiFi Name, Capture File, or Cracked Password...">
+        </div>
+        <div class="col-md-5 text-right">
+            <a href="{{ url_for('download_all_results') }}" class="btn btn-success">
+                <span class="glyphicon glyphicon-download-alt"></span> Download All Found Passwords (.txt)
+            </a>
+        </div>
+    </div>
+
+    <div class="table-responsive-wrapper">
+        <table class="table table-hover" id="tasksTable">
+            <tr>
+                <th>#</th>
+                <th>Capture</th>
+                <th>Date</th>
+                <th>Duration</th>
+                <th>BSSID</th>
+                <th>ESSID</th>
+                <th>Wordlist</th>
+                <th>Rule</th>
+                <th>Status</th>
+                <th>Files</th>
+                <th>Progress</th>
+                <th>Found Key</th>
+                <th>Actions</th>
+            </tr>
+            {%- for task in tasks %}
+            <tr class="{{ class_status(task) }}" id="task{{ task.id }}">
+                <td>{{ task.id }}</td>
+                <td>{{ task.filename }}</td>
+                <td>{{ task.uploaded_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td class="duration">{{ task.duration }}</td>
+                <td>{{ task.bssid }}</td>
+                <td>{{ task.essid }}</td>
+                <td>{{ task.wordlist }}</td>
+                <td>{{ task.rule }}</td>
+                <td class="status">{{ task.status }}</td>
+                <td>
+                    <div class="btn-group">
+                        <a href="{{ url_for('download', task_id=task.id, file_type='capture') }}" class="btn btn-default btn-xs" title="Download Capture">💾 PCAP</a>
+                        {% if task.found_key %}
+                        <a href="{{ url_for('download', task_id=task.id, file_type='result') }}" class="btn btn-success btn-xs" title="Download Result">🔑 KEY</a>
+                        {% endif %}
+                    </div>
+                </td>
+                <td class="progress"></td>
+                <td class="found_key">{{ task.found_key }}</td>
+                <td>
+                 {% if not task.completed %}
+                    <button class="btn btn-danger btn-xs" onclick="cancelTask({{ task.id }})">Cancel</button>
+                 {% endif %}
+                </td>
+            </tr>
+            {%- endfor %}
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+{{super()}}
+<script>
+    function updateBenchmark() {
+       $.get('/benchmark').done(function(message) {
+            alert(message);
+       })
+    }
+
+    function cancelTask(task_id) {
+        $.get('/cancel/' + task_id).done(function(message) {
+            alert(message);
+       })
+    }
+
+    function updateProgress(response) {
+        for (let task_progress of response) {
+            let task_row = $("#task" + task_progress.task_id);
+            let progressText = task_progress.progress + "%";
+            if (task_progress.speed && task_progress.speed !== "0 H/s") {
+                progressText += " (" + task_progress.speed + ")";
+            }
+            task_row.find("td.progress").text(progressText);
+            task_row.find("td.status").text(task_progress.status);
+            task_row.find("td.duration").text(task_progress.duration);
+            task_row.find("td.found_key").text(task_progress.found_key);
+        }
+    }
+
+    function filterTasks() {
+        var input, filter, table, tr, i, tdFile, tdBSSID, tdESSID, tdKey;
+        input = document.getElementById("taskSearchInput");
+        filter = input.value.toUpperCase();
+        table = document.getElementById("tasksTable");
+        tr = table.getElementsByTagName("tr");
+        
+        for (i = 1; i < tr.length; i++) {
+            tdFile = tr[i].getElementsByTagName("td")[1];
+            tdBSSID = tr[i].getElementsByTagName("td")[4];
+            tdESSID = tr[i].getElementsByTagName("td")[5];
+            tdKey = tr[i].getElementsByTagName("td")[10];
+            
+            if (tdFile || tdESSID || tdBSSID || tdKey) {
+                var txtFile = tdFile.textContent || tdFile.innerText;
+                var txtESSID = tdESSID.textContent || tdESSID.innerText;
+                var txtBSSID = tdBSSID.textContent || tdBSSID.innerText;
+                var txtKey = tdKey.textContent || tdKey.innerText;
+                
+                if (txtFile.toUpperCase().indexOf(filter) > -1 || 
+                    txtESSID.toUpperCase().indexOf(filter) > -1 || 
+                    txtBSSID.toUpperCase().indexOf(filter) > -1 ||
+                    txtKey.toUpperCase().indexOf(filter) > -1) {
+                    tr[i].style.display = "";
+                } else {
+                    tr[i].style.display = "none";
+                }
+            }       
+        }
+    }
+
+
+    $(document).ready(function() {
+        {% if current_user.is_active and current_user.is_authenticated %}
+        $.get('/progress').done(updateProgress);
+        {% endif %}
+        setTimeout(arguments.callee, 10000);
+    });
+</script>
+{% endblock %}

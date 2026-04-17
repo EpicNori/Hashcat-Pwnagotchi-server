@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block page_content %}
+<div class="container">
+    <div class="jumbotron">
+        <h1>Pwnagotchi Integration</h1>
+        <p>Automate your handshake uploads directly from your Pwnagotchi to this server.</p>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="panel panel-default">
+                <div class="panel-heading">1. Install the Plugin</div>
+                <div class="panel-body">
+                    <p>Log in to your Pwnagotchi via SSH and run this command to download the high-speed upload plugin:</p>
+                    <pre style="word-wrap: break-word; white-space: pre-wrap;">wget https://raw.githubusercontent.com/EpicNori/hashcat-wpa-server/master/pwnagotchi/hwps.py -O /usr/local/share/pwnagotchi/installed-plugins/hwps.py</pre>
+                </div>
+            </div>
+
+            <div class="panel panel-default">
+                <div class="panel-heading">2. Configure your Settings</div>
+                <div class="panel-body">
+                    <p>Edit your <code>/etc/pwnagotchi/config.toml</code> and add the following entry. Replace the IP with your server's IP address.</p>
+                    <pre style="word-wrap: break-word; white-space: pre-wrap;">
+main.plugins.hwps.enabled = true
+main.plugins.hwps.server_url = "http://{{ network_ip }}:9111/upload"
+main.plugins.hwps.username = "admin"
+main.plugins.hwps.password = "changeme"
+main.plugins.hwps.auto_upload = true</pre>
+                </div>
+            </div>
+
+            <div class="panel panel-default">
+                <div class="panel-heading">3. How it Works</div>
+                <div class="panel-body">
+                    <p>Once configured and restarted (<code>systemctl restart pwnagotchi</code>), your Pwnagotchi will:</p>
+                    <ul>
+                        <li>Scan for new handshakes in the background.</li>
+                        <li>Automatically upload them whenever it has an internet connection.</li>
+                        <li>You can check the <b>User Profile</b> on this dashboard to see real-time updates!</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="well">
+                <h4>Quick Tips</h4>
+                <p><b>Bluetooth Tethering:</b> Tether your phone to your Pwnagotchi to enable instant uploads while mobile.</p>
+                <p><b>Multiple Users:</b> You can create separate operator accounts for each of your Pwnagotchi units.</p>
+            </div>
+            <div class="text-center">
+                <img src="https://pwnagotchi.ai/images/pwnagotchi-header.png" class="img-responsive img-rounded" alt="Pwnagotchi">
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

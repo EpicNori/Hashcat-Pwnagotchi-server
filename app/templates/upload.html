@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% import "bootstrap/wtf.html" as wtf %}
+
+{% block styles %}
+{{super()}}
+<link rel="stylesheet" href="{{url_for('static', filename='upload.css')}}">
+{% endblock %}
+
+{% macro render_field(field, inline=False) %}
+<div title="{{ field.description }}">
+    {% if inline %}
+    {{ wtf.form_field(field, form_type="inline") }}
+    {% else %}
+    <h4>{{ field.label.text }}</h4>
+    {{ wtf.form_field(field) }}
+    {% endif %}
+</div>
+{% endmacro %}
+
+
+{% block page_content %}
+
+<div class="container-fluid">
+    <h1>Upload a handshake capture</h1>
+    <form action="" method="post" class="form" enctype="multipart/form-data" role="form" onchange="updateEstimatedRuntime()">
+        <!-- csrf_token is in the hidden_tag -->
+        {{ form.hidden_tag() }}
+        {{ wtf.form_errors(form) }}
+
+        <div class="field-boxed">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="col">{{ render_field(form.wordlist) }}</div>
+                    <p>User-defined custom wordlists are read from the <code>~/.hashcat/wpa-server/wordlists</code> folder</p>
+                </div>
+                <div class="col-md-4">
+                    <div class="col">{{ render_field(form.rule) }}</div>
+                </div>
+            </div>
+        </div>
+
+        <p>Estimated runtime (per Access Point): <span id="runtime">{{ form.runtime }}</span></p>
+        {{ wtf.form_field(form.timeout) }}
+        {{ render_field(form.workload) }}
+
+        <div class="field-boxed">
+            <h4>Hardware Selection</h4>
+            <p class="text-muted small">Select the GPUs/CPUs to use for this task.</p>
+            {{ wtf.form_field(form.devices) }}
+        </div>
+
+        <div class="row field-boxed">
+            {{ render_field(form.brain, inline=True) }}
+            <div id="brain-client-feature-div" style="display: none;">
+            {{ render_field(form.brain_client_feature) }}
+            </div>
+        </div>
+        {{ wtf.form_field(form.capture) }}
+        <button type="submit" class="btn btn-default btn-lg">Submit</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{super()}}
+
+<script>
+    const brain_checkbox = document.getElementById('brain');
+    const brain_feature = document.getElementById('brain-client-feature-div');
+
+    function updateEstimatedRuntime() {
+        $.post("/estimate_runtime", {
+            wordlist: document.querySelector('input[name="wordlist"]:checked').value,
+            rule: document.querySelector('input[name="rule"]:checked').value,
+        })
+        .done(function(response) {
+            $('#runtime').text(response);
+        });
+    }
+
+    brain_checkbox.addEventListener('change', (event) => {
+      if (event.target.checked) {
+        brain_feature.style.display = "block";
+      } else {
+        brain_feature.style.display = "none";
+      }
+    })
+
+</script>
+{% endblock %}

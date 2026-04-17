@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block page_content %}
+<div class="container">
+    <div class="jumbotron">
+        <h1>Server Status Dashboard</h1>
+        <p>Operational overview and real-time hardware utilization metrics.</p>
+    </div>
+
+    <div class="row">
+        <!-- System Stats -->
+        <div class="col-md-3">
+            <div class="panel panel-primary text-center">
+                <div class="panel-heading">📦 Handshakes</div>
+                <div class="panel-body">
+                    <h2 style="margin: 0;" id="stat-total-handshakes">{{ stats.total_handshakes }}</h2>
+                    <p class="text-muted">Total Processed</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="panel panel-success text-center">
+                <div class="panel-heading">✅ Success</div>
+                <div class="panel-body">
+                    <h2 style="margin: 0;" id="stat-total-cracked">{{ stats.total_cracked }}</h2>
+                    <p class="text-muted">Passwords Cracked</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="panel panel-danger text-center">
+                <div class="panel-heading">❌ Failed</div>
+                <div class="panel-body">
+                    <h2 style="margin: 0;" id="stat-total-failed">{{ stats.total_failed }}</h2>
+                    <p class="text-muted">No Password Found</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="panel panel-info text-center">
+                <div class="panel-heading">⚡ Active</div>
+                <div class="panel-body">
+                    <h2 style="margin: 0;" id="stat-total-active">{{ stats.total_active }}</h2>
+                    <p class="text-muted">Job Queue</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row" style="margin-top: 20px;">
+        <!-- Hardware Usage -->
+        <div class="col-md-8">
+            <div class="panel panel-default">
+                <div class="panel-heading">💻 Hardware Utilization</div>
+                <div class="panel-body">
+                    <div class="table-responsive-wrapper">
+                        <table class="table table-striped" id="hardware-table">
+                            <thead>
+                                <tr>
+                                    <th>Device Type</th>
+                                    <th>Model Name</th>
+                                    <th>Intensity Target</th>
+                                    <th>Actual Load</th>
+                                    <th>Temp</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for device in devices %}
+                                <tr id="row-device-{{ device['id'] }}">
+                                    <td>{% if device['is_gpu'] %}GPU{% else %}CPU{% endif %} #{{ device['id'] }}</td>
+                                    <td>{{ device['name'] }}</td>
+                                    <td id="td-intensity-{{ device['id'] }}">
+                                        <div class="progress" style="margin-bottom: 0;">
+                                            <div class="progress-bar {% if device['is_gpu'] %}progress-bar-success{% else %}progress-bar-info{% endif %}" 
+                                                 role="progressbar" style="width: {{ device_intensities.get(device['id']|string, 100) }}%;">
+                                                {{ device_intensities.get(device['id']|string, 100) }}%
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="actual-load">0%</td>
+                                    <td class="actual-temp">--</td>
+                                </tr>
+                                {% endfor %}
+                                <tr id="row-global-cpu">
+                                    <td>Global CPU Limit</td>
+                                    <td>OS Level Threads</td>
+                                    <td id="td-global-cpu">
+                                        <div class="progress" style="margin-bottom: 0;">
+                                            <div class="progress-bar progress-bar-warning" role="progressbar" style="width: {{ stats.cpu_limit }}%;">
+                                                {{ stats.cpu_limit }}%
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="actual-load">0%</td>
+                                    <td class="actual-temp">--</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="panel panel-default">
+                <div class="panel-heading">ℹ️ How it works</div>
+                <div class="panel-body">
+                    <p>Our automated pipeline handles the complex math so you don't have to. 
+                    Once you upload a capture, the server identifies the handshake, selects the optimal Hashcat mode, 
+                    and distributes the workload across your detected GPUs.</p>
+                    <p>Go to <b>Settings</b> to customize these performance limits.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function updateDashboard() {
+        if (document.hidden) return; // Save resources if tab is not visible
+
+        fetch('/api/stats')
+            .then(response => response.json())
+            .then(data => {
+                // Update simple counters
+                document.getElementById('stat-total-handshakes').innerText = data.total_handshakes;
+                document.getElementById('stat-total-cracked').innerText = data.total_cracked;
+                document.getElementById('stat-total-failed').innerText = data.total_failed;
+                document.getElementById('stat-total-active').innerText = data.total_active;
+
+                // Update Progress bars for hardware
+                data.devices.forEach(device => {
+                    const row = document.getElementById('row-device-' + device.id);
+                    if (row) {
+                        // Update Intensity Target
+                        const intensityCell = document.getElementById('td-intensity-' + device.id);
+                        const intensity = data.device_intensities[device.id] || 100;
+                        const intensityBar = intensityCell.querySelector('.progress-bar');
+                        intensityBar.style.width = intensity + '%';
+                        intensityBar.innerText = intensity + '%';
+
+                        // Update Actual GPU stats
+                        const gpuLive = data.live_usage.gpus.find(g => g.id == device.id);
+                        if (gpuLive) {
+                            row.querySelector('.actual-load').innerText = gpuLive.util + '%';
+                            row.querySelector('.actual-temp').innerText = gpuLive.temp + '°C';
+                        }
+                    }
+                });
+
+                // Update Global CPU
+                const cpuRow = document.getElementById('row-global-cpu');
+                if (cpuRow) {
+                    const intensityBar = document.getElementById('td-global-cpu').querySelector('.progress-bar');
+                    intensityBar.style.width = data.cpu_limit + '%';
+                    intensityBar.innerText = data.cpu_limit + '%';
+
+                    cpuRow.querySelector('.actual-load').innerText = Math.round(data.live_usage.cpu_usage) + '%';
+                    cpuRow.querySelector('.actual-temp').innerText = '(System)';
+                }
+            })
+            .catch(error => console.error('Error fetching stats:', error));
+    }
+
+    // Run every 5 seconds
+    setInterval(updateDashboard, 5000);
+</script>
+{% endblock %}

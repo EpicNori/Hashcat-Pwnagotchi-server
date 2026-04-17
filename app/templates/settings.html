@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% import "bootstrap/wtf.html" as wtf %}
+
+{% block page_content %}
+<div class="container">
+    <h1>Admin Performance Settings</h1>
+    <div class="row" style="margin-bottom: 30px;">
+        <div class="col-md-6">
+            <div class="panel panel-info">
+                <div class="panel-heading">🔒 Account Security</div>
+                <div class="panel-body">
+                    <p>Change your administrator login details here.</p>
+                    {{ wtf.quick_form(account_form) }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <p>Use these settings to limit how much CPU and GPU your hashcat tasks are allowed to consume. This affects all future cracking jobs.</p>
+    <div class="row">
+        <div class="col-md-8">
+            <form method="POST">
+                {{ form.hidden_tag() }}
+                
+                <h3 style="margin-top: 0;">Device Performance Cards</h3>
+                <div class="row">
+                    {% for device in devices %}
+                    <div class="col-md-6">
+                        <div class="panel panel-default" id="device-card-{{ device['id'] }}">
+                            <div class="panel-heading">
+                                <h3 class="panel-title">
+                                    {% if device['is_gpu'] %}🎮 GPU{% else %}💻 CPU{% endif %} #{{ device['id'] }}
+                                    <span class="pull-right label label-info" id="temp-badge-{{ device['id'] }}">--°C</span>
+                                </h3>
+                            </div>
+                            <div class="panel-body">
+                                <p><strong>{{ device['name'] }}</strong></p>
+                                <p class="text-muted small">Memory: {{ device['memory'] }}</p>
+                                
+                                <div class="form-group">
+                                    <label for="device_{{ device['id'] }}">Utilization Intensity (%)</label>
+                                    <input type="range" id="device_{{ device['id'] }}" name="device_{{ device['id'] }}" 
+                                           class="form-control" min="0" max="100" step="10"
+                                           value="{{ device_intensities.get(device['id']|string, 100) }}"
+                                           oninput="this.nextElementSibling.value = this.value + '%'">
+                                    <output>{{ device_intensities.get(device['id']|string, 100) }}%</output>
+                                    <p class="help-block small">Set to 0% to skip this device.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="panel panel-primary">
+                    <div class="panel-heading">Global Safety & Routing</div>
+                    <div class="panel-body">
+                        <div class="row">
+                            <div class="col-md-6">{{ wtf.form_field(form.gpu_temp_limit) }}</div>
+                            <div class="col-md-6">{{ wtf.form_field(form.cpu_temp_limit) }}</div>
+                        </div>
+                        {{ wtf.form_field(form.cpu_percent) }}
+                        {{ wtf.form_field(form.default_devices) }}
+                        <hr>
+                        {{ wtf.form_field(form.submit, class="btn btn-primary btn-lg btn-block") }}
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="col-md-6">
+            <div class="panel panel-info">
+                <div class="panel-heading">How do these limits work?</div>
+                <div class="panel-body">
+                    <ul>
+                        <li><b>Dual GPU Support</b>: You can now specify individual intensity for up to 2 GPUs. 
+                            <ul>
+                                <li><b>0%</b>: Disables the device completely.</li>
+                                <li><b>1-100%</b>: Enables the device and sets the global workload profile (-w) based on the highest setting.</li>
+                            </ul>
+                        </li>
+                        <li><b>Workload Mapping (-w)</b>: 
+                            <ul>
+                                <li>1-25%: Low usage (Desktop remains responsive)</li>
+                                <li>26-50%: Medium (Default balanced mode)</li>
+                                <li>51-75%: High (Intense cracking)</li>
+                                <li>76-100%: Nightmare (Maximum heat/Full utilization)</li>
+                            </ul>
+                        </li>
+                        <li><b>Cracking Strategy</b>: 
+                            <ul>
+                                <li><b>Wordlists</b>: By default, the server uses optimized lists of proven passwords.</li>
+                                <li><b>Every Number</b>: To try every possible 8-digit number, simply select the <code>digits_8.txt</code> wordlist on the upload page.</li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    <hr>
+    <h1>Remote Access (Tailscale)</h1>
+    <p>Enable secure global access to your server from anywhere using a free <a href="https://tailscale.com/" target="_blank">Tailscale</a> VPN tunnel.</p>
+    <div class="row" style="margin-bottom: 10px;">
+        <div class="col-md-12">
+            <span id="tailscale-status" class="label label-default">Checking Tailscale…</span>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="panel panel-success">
+                <div class="panel-heading">1. Connect / Install Tunnel</div>
+                <div class="panel-body">
+                    <p>Enter your Tailscale Auth Key below. If Tailscale is not yet installed on this server, the system will automatically download and install it before connecting.</p>
+                    {{ wtf.quick_form(ts_form) }}
+                </div>
+            </div>
+        </div>
+    </div>
+    <hr>
+    <h1>Software Update</h1>
+    <p>Keep your hacking rig up to date with the latest features from GitHub.</p>
+    <div class="row">
+        <div class="col-md-6">
+            <div class="panel panel-danger">
+                <div class="panel-heading">Automated Upgrade</div>
+                <div class="panel-body">
+                    <p>Clicking the button below will automatically contact GitHub, pull the latest codebase, recompile the backend, and automatically restart the web-server daemon.</p>
+                    <p><i>Note: The server will be temporarily inaccessible for ~60 seconds during the upgrade process.</i></p>
+                    <form method="POST">
+                        {{ update_form.hidden_tag() }}
+                        {{ update_form.submit_update(class_="btn btn-danger") }}
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="panel panel-danger">
+                <div class="panel-heading">Danger Zone: Permanent Uninstall</div>
+                <div class="panel-body">
+                    <p>Clicking this button will completely purge this application, its files, and the background systemd service from your machine natively.</p>
+                    <p><i>Note: The hash database will remain safely in <code>~/.hashcat/wpa-server</code>, but the server will shut down permanently.</i></p>
+                    <form method="POST" onsubmit="return confirm('Are you absolutely sure you want to permanently delete and uninstall this server?');">
+                        {{ uninstall_form.hidden_tag() }}
+                        {{ uninstall_form.submit_uninstall(class_="btn btn-danger btn-block") }}
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{super()}}
+<script>
+    function updateSensors() {
+        $.get("/api/stats", function(data) {
+            if (data.live_usage.cpu_temp) {
+                // Assuming CPU might be #1 or just checking matching IDs
+                $('#temp-badge-1').text(data.live_usage.cpu_temp + "°C");
+            }
+            if (data.live_usage.gpus) {
+                data.live_usage.gpus.forEach(function(gpu) {
+                    var selector = '#temp-badge-' + gpu.id;
+                    $(selector).text(gpu.temp + "°C");
+                    if (gpu.temp > 80) $(selector).addClass('label-danger').removeClass('label-info');
+                    else $(selector).addClass('label-info').removeClass('label-danger');
+                });
+            }
+        });
+    }
+    setInterval(updateSensors, 5000);
+    updateSensors();
+
+    function checkTailscale() {
+        $.get("/tailscale_status", function(data) {
+            var status = data.status;
+            var el = $("#tailscale-status");
+            el.text(status);
+            if (status.includes("Running")) {
+                el.addClass("label-success").removeClass("label-default");
+            } else if (status.includes("starting")) {
+                el.addClass("label-warning").removeClass("label-default");
+            } else {
+                el.addClass("label-danger").removeClass("label-default");
+            }
+        });
+    }
+    setInterval(checkTailscale, 10000);
+    checkTailscale();
+</script>
+{% endblock %}

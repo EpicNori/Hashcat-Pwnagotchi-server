@@ -1,0 +1,114 @@
+import datetime
+from pathlib import Path
+
+from flask_uploads import UploadSet, configure_uploads
+from flask_wtf import FlaskForm
+from flask_wtf.file import FileField, FileAllowed, FileRequired
+from wtforms.fields import RadioField, SubmitField, BooleanField, IntegerField
+from wtforms.validators import Optional, ValidationError, NumberRange
+
+from app import app, db
+from app.domain import Rule, NONE_STR, TaskInfoStatus, Workload, HashcatMode, BrainClientFeature
+from app.utils import read_hashcat_brain_password
+from app.word_magic.wordlist import estimate_runtime_fmt, wordlist_choices, find_wordlist_by_path
+
+
+def check_incomplete_tasks():
+    for task in UploadedTask.query.filter_by(completed=False):
+        task.status = TaskInfoStatus.ABORTED
+        task.completed = True
+    db.session.commit()
+
+
+def backward_db_compatibility():
+    for task in UploadedTask.query.filter(UploadedTask.status.startswith("InterruptedError('Cancelled'")):
+        task.status = TaskInfoStatus.CANCELLED
+    db.session.commit()
+
+
+class UploadedTask(db.Model):
+    __tablename__ = "uploads"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    filename = db.Column(db.String(128))
+    wordlist = db.Column(db.String(128))
+    rule = db.Column(db.String(128))
+    hashcat_args = db.Column(db.String(1024), default='')
+    uploaded_time = db.Column(db.DateTime, index=True, default=datetime.datetime.now)
+    duration = db.Column(db.Interval, default=datetime.timedelta)
+    status = db.Column(db.String(256), default=TaskInfoStatus.SCHEDULED)
+    found_key = db.Column(db.String(256))
+    completed = db.Column(db.Boolean, default=False)
+    essid = db.Column(db.String(64))
+    bssid = db.Column(db.String(64))
+
+
+from wtforms import SelectMultipleField, widgets
+
+class MultiCheckboxField(SelectMultipleField):
+    widget = widgets.ListWidget(prefix_label=False)
+    option_widget = widgets.CheckboxInput()
+
+class UploadForm(FlaskForm):
+    wordlist = RadioField('Wordlist', choices=wordlist_choices(), default=NONE_STR, description="The higher the rate, the better")
+    rule = RadioField('Rule', choices=Rule.to_form(), default=NONE_STR)
+    timeout = IntegerField('Timeout in minutes, optional', validators=[Optional(), NumberRange(min=1)])
+    workload = RadioField("Workload", choices=Workload.to_form(), default=Workload.Default.value)
+    brain = BooleanField("Hashcat Brain", default=False, description="Hashcat Brain skips already tried password candidates")
+    brain_client_feature = RadioField("Brain client features", choices=BrainClientFeature.to_form(),
+                                      default=BrainClientFeature.POSITIONS.value)
+    devices = MultiCheckboxField("Target Devices", choices=[])
+    capture = FileField('Capture', validators=[FileRequired(), FileAllowed(HashcatMode.valid_suffixes(),
+                                                                            message='Airodump & Hashcat capture files only')])
+    submit = SubmitField('Submit')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.wordlist.choices = wordlist_choices()
+        from app.utils.utils import get_hashcat_devices
+        try:
+            detected = get_hashcat_devices()
+            self.devices.choices = [(d['id'], f"{d['name']} ({d['memory']})") for d in detected]
+            # Default to settings-defined devices
+            if not self.devices.data:
+                from app.utils.settings import read_settings
+                self.devices.data = read_settings().get("default_devices", [d['id'] for d in detected])
+        except Exception:
+            self.devices.choices = []
+
+    def get_wordlist_path(self):
+        if self.wordlist.data == NONE_STR:
+            return None
+        return Path(self.wordlist.data)
+
+    def get_wordlist_name(self):
+        wordlist = find_wordlist_by_path(self.get_wordlist_path())
+        if wordlist is None:
+            return None
+        return wordlist.name
+
+    def get_rule(self):
+        return Rule.from_data(self.rule.data)
+
+    @property
+    def runtime(self):
+        runtime = estimate_runtime_fmt(wordlist_path=self.get_wordlist_path(), rule=self.get_rule())
+        return runtime
+
+    def hashcat_args(self, secret=False):
+        hashcat_args = []
+        if self.devices.data:
+            # -d X,Y,Z
+            hashcat_args.append("-d")
+            hashcat_args.append(",".join(self.devices.data))
+            
+        if self.brain.data:
+            hashcat_args.append("--brain-client")
+            hashcat_args.append(f"--brain-client-features={self.brain_client_feature.data}")
+            if secret:
+                hashcat_args.append(f"--brain-password={read_hashcat_brain_password()}")
+        return hashcat_args
+
+
+cap_uploads = UploadSet(name='files', extensions=HashcatMode.valid_suffixes(), default_dest=lambda app: app.config['CAPTURES_DIR'])
+configure_uploads(app, cap_uploads)
