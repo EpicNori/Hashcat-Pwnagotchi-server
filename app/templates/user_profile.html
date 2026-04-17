@@ -91,6 +91,8 @@ danger
                 <td>
                  {% if not task.completed %}
                     <button class="btn btn-danger btn-xs" onclick="cancelTask({{ task.id }})">Cancel</button>
+                 {% elif not task.found_key %}
+                    <a href="{{ url_for('requeue', task_id=task.id) }}" class="btn btn-warning btn-xs">Re-Queue</a>
                  {% endif %}
                 </td>
             </tr>

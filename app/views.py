@@ -20,7 +20,7 @@ from app.uploader import cap_uploads, UploadForm, UploadedTask, check_incomplete
 from app.utils.file_io import read_last_benchmark, bssid_essid_from_22000
 from app.utils.utils import is_safe_url, hashcat_devices_info
 from app.word_magic import create_digits_wordlist, estimate_runtime_fmt, create_fast_wordlists
-from app.word_magic.wordlist import download_wordlist
+from app.word_magic.wordlist import download_wordlist, find_wordlist_by_name
 
 hashcat_worker = HashcatWorker(app)
 
@@ -101,6 +101,19 @@ def inject_version():
     except Exception:
         network_ip = "YOUR_SERVER_IP"
     return dict(version=get_version(), network_ip=network_ip)
+
+
+def split_hashcat_args(hashcat_args_text: str):
+    if not hashcat_args_text:
+        return []
+    return shlex.split(hashcat_args_text)
+
+
+def decode_task_essid(file_22000: Path):
+    bssid_essid = next(bssid_essid_from_22000(file_22000))
+    bssid, essid_hex = bssid_essid.split(':')
+    essid = bytes.fromhex(essid_hex).decode('utf-8')
+    return bssid, essid
 
 @app.route('/pwnagotchi')
 def pwnagotchi():
@@ -352,6 +365,88 @@ def cancel(task_id):
         return jsonify(TaskInfoStatus.CANCELLED)
     else:
         return jsonify("Cancelling...")
+
+
+@app.route("/requeue/<int:task_id>")
+@login_required
+def requeue(task_id):
+    from types import SimpleNamespace
+
+    task = UploadedTask.query.get_or_404(task_id)
+    if not user_has_roles(current_user, RoleEnum.ADMIN) and task.user_id != current_user.id:
+        return flask.abort(HTTPStatus.FORBIDDEN, description="You do not have permission to re-queue this task.")
+
+    if not task.completed:
+        flask.flash("This task is still running. Cancel it first if you want to restart it.", category="info")
+        return redirect(url_for('user_profile'))
+
+    capture_path = Path(app.config['CAPTURES_DIR']) / task.filename
+    if not capture_path.exists():
+        flask.flash("The original capture file could not be found, so this task cannot be re-queued.", category="error")
+        return redirect(url_for('user_profile'))
+
+    try:
+        file_22000 = convert_to_22000(capture_path)
+        folder_split_by_essid = split_by_essid(file_22000)
+
+        matched_file = None
+        for file_essid in folder_split_by_essid.iterdir():
+            bssid, essid = decode_task_essid(file_essid)
+            if bssid == task.bssid and essid == task.essid:
+                matched_file = file_essid
+                break
+
+        if matched_file is None:
+            raise InvalidFileError("Could not match the original ESSID/BSSID pair in the capture file.")
+
+        wordlist_info = find_wordlist_by_name(task.wordlist)
+        wordlist_path = wordlist_info.path if wordlist_info is not None else None
+        rule = Rule.from_data(task.rule)
+
+        base_hashcat_args = split_hashcat_args(task.hashcat_args)
+        filtered_hashcat_args = []
+        skip_next = False
+        for arg in base_hashcat_args:
+            if skip_next:
+                skip_next = False
+                continue
+            if arg == "-d":
+                skip_next = True
+                continue
+            if arg.startswith("--brain-password="):
+                continue
+            filtered_hashcat_args.append(arg)
+
+        if "--brain-client" in filtered_hashcat_args and not any(arg.startswith("--brain-password=") for arg in filtered_hashcat_args):
+            filtered_hashcat_args.append(f"--brain-password={read_hashcat_brain_password()}")
+
+        requeue_form = SimpleNamespace(
+            timeout=SimpleNamespace(data=None),
+            workload=SimpleNamespace(data="2"),
+            get_wordlist_path=lambda: wordlist_path,
+            get_rule=lambda: rule,
+            hashcat_args=lambda secret=False: list(filtered_hashcat_args)
+        )
+
+        new_task = UploadedTask(
+            user_id=task.user_id,
+            filename=task.filename,
+            wordlist=task.wordlist,
+            rule=task.rule,
+            bssid=task.bssid,
+            essid=task.essid,
+            hashcat_args=' '.join(split_hashcat_args(task.hashcat_args))
+        )
+        db.session.add(new_task)
+        db.session.commit()
+
+        hashcat_worker.submit_capture(matched_file, uploaded_form=requeue_form, task=new_task)
+        flask.flash(f"Task #{task.id} was re-queued as task #{new_task.id}.", category="success")
+    except (FileNotFoundError, InvalidFileError, ValueError) as error:
+        logger.exception(error)
+        flask.flash(f"Failed to re-queue task #{task.id}: {error}", category="error")
+
+    return redirect(url_for('user_profile'))
 
 
 @app.route('/terminate')

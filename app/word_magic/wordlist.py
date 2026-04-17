@@ -202,6 +202,27 @@ def find_wordlist_by_path(wordlist_path) -> Union[WordListInfo, None]:
     return deepcopy(wlist)
 
 
+def find_wordlist_by_name(wordlist_name) -> Union[WordListInfo, None]:
+    if wordlist_name in (None, NONE_STR):
+        return None
+
+    for wlist in WordListDefault.list():
+        if wordlist_name in (wlist.name, wlist.path.name):
+            return deepcopy(wlist)
+
+    if str(wordlist_name).startswith("user/"):
+        custom_path = WORDLISTS_USER_DIR / str(wordlist_name).split("/", 1)[1]
+        if custom_path.exists():
+            return WordListInfo(custom_path)
+
+    for custom_path in sorted(WORDLISTS_USER_DIR.iterdir()):
+        custom_wlist = WordListInfo(path=custom_path)
+        if wordlist_name in (custom_wlist.name, custom_path.name):
+            return custom_wlist
+
+    return None
+
+
 def wordlist_choices():
     wlists_info = WordListDefault.list()
     for custom_path in sorted(WORDLISTS_USER_DIR.iterdir()):
