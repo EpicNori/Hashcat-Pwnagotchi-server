@@ -17,9 +17,29 @@
                         {{ wtf.form_field(form.username) }}
                         {{ wtf.form_field(form.new_password) }}
                         {{ wtf.form_field(form.confirm_password) }}
-                        {{ wtf.form_field(form.roles) }}
-                        {{ wtf.form_field(form.submit_user, class="btn btn-primary") }}
-                        <a href="{{ url_for('admin_users') }}" class="btn btn-default">Back to User Management</a>
+                        <div class="form-group">
+                            <label>{{ form.roles.label.text }}</label>
+                            <div class="panel panel-default" style="margin-bottom: 15px;">
+                                <div class="panel-body" style="padding-top: 10px; padding-bottom: 4px;">
+                                    {% for subfield in form.roles %}
+                                    <div class="checkbox" style="margin-top: 0; margin-bottom: 8px;">
+                                        <label>
+                                            {{ subfield() }} {{ subfield.label.text }}
+                                        </label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            {% if form.roles.errors %}
+                                {% for error in form.roles.errors %}
+                                <p class="help-block text-danger">{{ error }}</p>
+                                {% endfor %}
+                            {% endif %}
+                        </div>
+                        <div class="form-group" style="margin-top: 20px; margin-bottom: 0;">
+                            {{ form.submit_user(class="btn btn-primary") }}
+                            <a href="{{ url_for('admin_users') }}" class="btn btn-default">Back to User Management</a>
+                        </div>
                     </form>
                 </div>
             </div>

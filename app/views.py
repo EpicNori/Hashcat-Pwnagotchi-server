@@ -563,15 +563,15 @@ class AutostartForm(FlaskForm):
 
 class AccountSettingsForm(FlaskForm):
     new_username = StringField('Update Username', validators=[DataRequired()])
-    new_password = PasswordField('New Password (leave blank to keep current)')
-    confirm_password = PasswordField('Confirm New Password', validators=[EqualTo('new_password', message='Passwords must match')])
+    new_password = PasswordField('New Password (leave blank to keep current)', render_kw={"autocomplete": "new-password"})
+    confirm_password = PasswordField('Confirm New Password', validators=[EqualTo('new_password', message='Passwords must match')], render_kw={"autocomplete": "new-password"})
     submit_account = SubmitField('Update Account')
 
 
 class EditUserForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
-    new_password = PasswordField('New Password (leave blank to keep current)')
-    confirm_password = PasswordField('Confirm New Password', validators=[EqualTo('new_password', message='Passwords must match')])
+    new_password = PasswordField('New Password (leave blank to keep current)', render_kw={"autocomplete": "new-password"})
+    confirm_password = PasswordField('Confirm New Password', validators=[EqualTo('new_password', message='Passwords must match')], render_kw={"autocomplete": "new-password"})
     roles = MultiCheckboxField('Roles', choices=[])
     submit_user = SubmitField('Save User Changes')
 
