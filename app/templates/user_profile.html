@@ -36,7 +36,6 @@ danger
     <h2>Uploaded captures</h2>
     <p>Hashcat WPA/WPA2 benchmark speed: <b>{{ benchmark.speed }}</b> H/s.
         Last update: {{ benchmark.date }}
-        <button onclick="updateBenchmark()">Update</button>
     </p>
 
     <div class="row" style="margin-bottom: 20px; margin-top: 10px;">
@@ -106,12 +105,6 @@ danger
 {% block scripts %}
 {{super()}}
 <script>
-    function updateBenchmark() {
-       $.get('/benchmark').done(function(message) {
-            alert(message);
-       })
-    }
-
     function cancelTask(task_id) {
         $.get('/cancel/' + task_id).done(function(message) {
             alert(message);
@@ -166,9 +159,15 @@ danger
 
     $(document).ready(function() {
         {% if current_user.is_active and current_user.is_authenticated %}
-        $.get('/progress').done(updateProgress);
+        function pollProgress() {
+            if (!document.hidden) {
+                $.get('/progress').done(updateProgress);
+            }
+        }
+
+        pollProgress();
+        setInterval(pollProgress, 5000);
         {% endif %}
-        setTimeout(arguments.callee, 10000);
     });
 </script>
 {% endblock %}

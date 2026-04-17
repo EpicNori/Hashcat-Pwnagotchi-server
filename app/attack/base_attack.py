@@ -121,6 +121,9 @@ class BaseAttack:
 
     @monitor_timer
     def run_keyboard_walk(self):
+        if not WordList.KEYBOARD_WALK.path.exists():
+            logger.warning(f"{WordList.KEYBOARD_WALK.path} does not exist. Skipping keyboard walk attack.")
+            return
         hashcat_cmd = self.new_cmd()
         hashcat_cmd.add_wordlists(WordList.KEYBOARD_WALK)
         self.runner(hashcat_cmd)
