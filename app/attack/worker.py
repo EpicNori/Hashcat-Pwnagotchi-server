@@ -305,7 +305,10 @@ class HashcatWorker:
         configured_max_time = settings.get("max_job_time_minutes")
         requested_timeout = uploaded_form.timeout.data
         effective_timeout = requested_timeout
-        if configured_max_time:
+        work_mode = str(uploaded_form.workload.data)
+        if work_mode == Workload.Normal.value:
+            effective_timeout = None
+        elif configured_max_time:
             effective_timeout = configured_max_time if requested_timeout is None else min(requested_timeout, configured_max_time)
         wordlist_path = uploaded_form.get_wordlist_path()
         rule = uploaded_form.get_rule()
@@ -315,7 +318,7 @@ class HashcatWorker:
                            rule=rule,
                            hashcat_args=hashcat_args,
                            timeout=effective_timeout,
-                           work_mode=uploaded_form.workload.data)
+                           work_mode=work_mode)
         future = self.executor.submit(_crack_async, attack=attack)
         future.add_done_callback(self.callback_attack)
         with lock:

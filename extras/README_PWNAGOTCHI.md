@@ -1,6 +1,6 @@
 # Pwnagotchi Auto-Upload Plugin Guide
 
-This official plugin automatically uploads your intercepted WPA/WPA2 handshakes (`.pcap` files) securely to your **Hashcat WPA Server** instance so they can be cracked automatically!
+This official plugin automatically uploads your intercepted WPA/WPA2 handshakes (`.pcap` files) securely to your **Hashcat WPA Server** instance so they can be cracked automatically.
 
 Instead of manually hooking your Pwnagotchi to a PC via USB inside a browser and downloading files one by one, your little companion will intelligently use Bluetooth tethering (which shares your phone's internet data connection) to POST the handshakes natively to the server the second they are captured.
 
@@ -42,6 +42,14 @@ main.plugins.hashcatwpaserver.username = "admin"
 main.plugins.hashcatwpaserver.password = "changeme"
 ```
 *(Make sure to change `YOUR_HASHCAT_LINUX_SERVER_IP` and the password accordingly).*
+
+### How task mode is chosen
+
+The plugin only uploads the capture and credentials. The actual cracking mode and target devices are controlled by the server:
+
+- The server's **Admin Settings** page defines the default devices used for `Pwnagotchi/API` uploads.
+- The server's **Default Work Mode (for Pwnagotchi/API)** setting defines whether uploaded captures run in `Low`, `Fast`, or `Normal` mode.
+- In `Normal` mode, the server keeps working the full extended attack chain until the task is completed, cracked, or manually cancelled.
 
 ## Step 4: Run
 

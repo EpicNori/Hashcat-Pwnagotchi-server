@@ -47,6 +47,7 @@ Once installed, managing your server from the terminal is effortless. The instal
 Take absolute control of your silicon. The server **auto-discovers** every GPU and CPU in your machine.
 - **Granular Targeting**: Select specific GPUs/CPUs for every task. Dedicate your powerful card to big lists while your integrated graphics handles the fast ones.
 - **Global Defaults**: Set a "Workhorse" GPU policy in the Admin settings for automated tasks (Pwnagotchi/API).
+- **Automated Task Policy**: Admins can define both the default target devices and the default cracking mode used by API-driven uploads such as Pwnagotchi.
 - **Dynamic Threading**: Set individual % intensity for every device to keep your system responsive.
 
 ### 🌡️ Intelligent Thermal Safety
@@ -60,6 +61,7 @@ Seamlessly connect your AI companion.
 - Automatic handshake uploads via Bluetooth, WiFi, or Ethernet.
 - Config-ready snippets provided directly in the dashboard.
 - **Automated Routing**: Handshakes from Pwnagotchi are automatically routed to your predefined "Workhorse" GPUs.
+- **Admin-Controlled Mode**: Pwnagotchi uploads inherit the admin-selected default work mode for API tasks, so you can centrally choose `Low`, `Fast`, or `Normal` without editing each device.
 
 ### 📊 Advanced Dashboard & Search
 - **Failure Tracking**: New "Failed" box to quickly identify captures with no results.
@@ -93,6 +95,34 @@ Supports every modern Hashcat format:
 - **.cap / .pcap** (airodump-ng)
 - **.hccapx / .2500** (Legacy EAPOL)
 - **.pmkid / .16800** (Legacy PMKID)
+
+---
+
+## ⚙️ Uploads, Modes, and Wordlists
+
+The upload page accepts raw capture files and modern Hashcat formats. Uploaded captures are converted to `.22000` internally when needed, then split by ESSID so each network can be processed as its own task.
+
+### Work Modes
+
+- **Low**: Use the selected cracking chain conservatively for lighter systems.
+- **Fast**: Run the short optimized attack chain first and respect the configured timeout / max job time limits.
+- **Normal**: Continue through the extended attack chain until the task is actually completed, cracked, or manually cancelled. `Normal` mode is intended for deeper runs and is not cut off by the normal runtime timeout logic.
+
+### Upload Notes
+
+- The web uploader accepts `.cap`, `.pcap`, `.pcapng`, `.hccapx`, `.pmkid`, `.2500`, `.2501`, `.16800`, `.16801`, `.22000`, and `.22001`.
+- The upload page also lets you install optional built-in fallback wordlists directly from the UI when they are missing.
+- User-supplied custom wordlists are read from `~/.hashcat/wpa-server/wordlists`.
+- Generator scripts placed in that folder are also supported. Currently supported script types are `.sh`, `.bash`, and `.py`; their stdout is used as the wordlist for that task.
+
+### Admin Defaults for API / Pwnagotchi
+
+The Admin Settings page controls the defaults used by automated uploads:
+
+- **Default Devices (for Pwnagotchi/API)**: Choose which detected CPU/GPU devices automated uploads should target by default.
+- **Default Work Mode (for Pwnagotchi/API)**: Choose the cracking mode applied to uploads coming from the API, including the bundled Pwnagotchi plugin.
+
+These settings let you change the behavior of all connected Pwnagotchis from the server side instead of editing each unit individually.
 
 ---
 
