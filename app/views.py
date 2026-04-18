@@ -11,7 +11,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 from app import app, db
 from app.attack.convert import split_by_essid, convert_to_22000
 from app.attack.worker import HashcatWorker
-from app.domain import TaskInfoStatus, Rule, InvalidFileError
+from app.domain import TaskInfoStatus, Rule, InvalidFileError, Workload
 from app.logger import logger
 from app.login import LoginForm, RegistrationForm, User, RoleEnum, register_user, create_first_users, Role, \
     roles_required, user_has_roles
@@ -244,7 +244,9 @@ def api_upload():
         return flask.abort(HTTPStatus.BAD_REQUEST, description="Missing capture file")
         
     # Disable CSRF for this API endpoint
-    form = UploadForm(meta={'csrf': False})
+    from app.utils.settings import read_settings
+    settings = read_settings()
+    form = UploadForm(meta={'csrf': False}, data={'workload': settings.get("default_api_workload", Workload.Fast.value)})
     if not form.validate():
         return flask.abort(HTTPStatus.BAD_REQUEST, description=str(form.errors))
         
@@ -573,6 +575,7 @@ class SettingsForm(FlaskForm):
     temp_resume_delta = IntegerField('Resume Margin (C)', validators=[DataRequired(), NumberRange(min=1, max=30)], default=5, description="Jobs resume after temperatures cool down by this many degrees below the limit.")
     max_job_time_minutes = IntegerField('Max Job Time (minutes, optional)', validators=[Optional(), NumberRange(min=1)], description="Stop any cracking job that runs longer than this limit.")
     default_devices = MultiCheckboxField('Default Devices (for Pwnagotchi/API)', choices=[])
+    default_api_workload = RadioField('Default Work Mode (for Pwnagotchi/API)', choices=Workload.to_form(), default=Workload.Fast.value)
     submit = SubmitField('Save Performance Settings')
 
 class TailscaleForm(FlaskForm):
@@ -648,7 +651,8 @@ def admin_settings():
             cpu_temp_limit=form.cpu_temp_limit.data,
             temp_resume_delta=form.temp_resume_delta.data,
             max_job_time_minutes=form.max_job_time_minutes.data,
-            default_devices=form.default_devices.data
+            default_devices=form.default_devices.data,
+            default_api_workload=form.default_api_workload.data
         )
         flask.flash('Performance settings updated successfully!')
         return redirect(url_for('admin_settings'))
@@ -660,6 +664,7 @@ def admin_settings():
     form.temp_resume_delta.data = settings.get("temp_resume_delta", 5)
     form.max_job_time_minutes.data = settings.get("max_job_time_minutes")
     form.default_devices.data = settings.get("default_devices", ["1"])
+    form.default_api_workload.data = settings.get("default_api_workload", Workload.Fast.value)
         
     if ts_form.submit_tailscale.data and ts_form.validate():
         import subprocess
