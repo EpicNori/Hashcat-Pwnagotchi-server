@@ -8,6 +8,7 @@ $PreviousRoot = Join-Path $InstallRoot "previous"
 $VenvRoot = Join-Path $InstallRoot "venv"
 $LogsRoot = Join-Path $InstallRoot "logs"
 $ToolsRoot = Join-Path $InstallRoot "tools"
+$BundledToolsRoot = Join-Path $CurrentRoot "windows\tools"
 
 function Test-IsAdministrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -40,15 +41,6 @@ function Ensure-MachinePathEntry([string]$PathEntry) {
     $env:Path = "$env:Path;$PathEntry"
 }
 
-function Get-LatestGitHubRelease {
-    param(
-        [string]$Repository
-    )
-
-    $releaseUrl = "https://api.github.com/repos/$Repository/releases/latest"
-    return Invoke-RestMethod -Uri $releaseUrl -Headers @{ "User-Agent" = "HashcatWPAServerUpdater" }
-}
-
 function Expand-ArchiveCrossFormat {
     param(
         [string]$ArchivePath,
@@ -71,58 +63,36 @@ function Expand-ArchiveCrossFormat {
     Expand-Archive -Path $ArchivePath -DestinationPath $DestinationPath -Force
 }
 
-function Install-HashcatToolchain([string]$ToolsRootPath) {
-    $hashcatBinRoot = Join-Path $ToolsRootPath "hashcat"
-    $hcxBinRoot = Join-Path $ToolsRootPath "hcxtools"
-    New-Item -ItemType Directory -Path $ToolsRootPath, $hashcatBinRoot, $hcxBinRoot -Force | Out-Null
+function Copy-BundledToolDirectory([string]$SourceDir, [string]$DestinationDir) {
+    if (-not (Test-Path $SourceDir)) {
+        return $false
+    }
+    New-Item -ItemType Directory -Path $DestinationDir -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $SourceDir "*") -Destination $DestinationDir -Recurse -Force
+    return $true
+}
 
-    $hashcatRelease = Get-LatestGitHubRelease -Repository "hashcat/hashcat"
-    $hashcatAsset = $hashcatRelease.assets | Where-Object {
-        $_.name -match '\.(zip|7z)$'
-    } | Select-Object -First 1
-
-    if (-not $hashcatAsset) {
-        throw "Could not find a Hashcat release archive to install hashcat.exe."
+function Require-ToolInPath([string]$ToolName, [string]$BundledSubdir, [string]$MissingMessage) {
+    if (Get-Command $ToolName -ErrorAction SilentlyContinue) {
+        return
     }
 
-    $hashcatArchive = Join-Path ([IO.Path]::GetTempPath()) $hashcatAsset.name
-    Write-Step "Downloading Hashcat release asset $($hashcatAsset.name)"
-    Invoke-WebRequest -Uri $hashcatAsset.browser_download_url -OutFile $hashcatArchive -UseBasicParsing
-    Expand-ArchiveCrossFormat -ArchivePath $hashcatArchive -DestinationPath $hashcatBinRoot
-    Remove-Item -LiteralPath $hashcatArchive -Force -ErrorAction SilentlyContinue
-
-    $hashcatExe = Get-ChildItem -Path $hashcatBinRoot -Recurse -Filter "hashcat.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $hashcatExe) {
-        throw "The downloaded Hashcat package did not contain hashcat.exe."
-    }
-    Ensure-MachinePathEntry -PathEntry $hashcatExe.Directory.FullName
-
-    if (-not (Get-Command hashcat.exe -ErrorAction SilentlyContinue)) {
-        throw "hashcat.exe could not be installed automatically during update."
+    $bundledDir = Join-Path $BundledToolsRoot $BundledSubdir
+    $installedDir = Join-Path $ToolsRoot $BundledSubdir
+    $copied = Copy-BundledToolDirectory -SourceDir $bundledDir -DestinationDir $installedDir
+    if ($copied) {
+        Ensure-MachinePathEntry -PathEntry $installedDir
     }
 
-    $hcxtoolsRelease = Get-LatestGitHubRelease -Repository "ZerBea/hcxtools"
-    $hcxtoolsAsset = $hcxtoolsRelease.assets | Where-Object {
-        $_.name -match 'win|windows|mingw' -and $_.name -match '\.(zip|7z)$'
-    } | Select-Object -First 1
-
-    if (-not $hcxtoolsAsset) {
-        throw "Could not find a Windows hcxtools release asset to install hcxpcapngtool.exe and hcxhashtool.exe."
+    if (-not (Get-Command $ToolName -ErrorAction SilentlyContinue)) {
+        throw $MissingMessage
     }
+}
 
-    $tempArchive = Join-Path ([IO.Path]::GetTempPath()) $hcxtoolsAsset.name
-    Write-Step "Downloading hcxtools release asset $($hcxtoolsAsset.name)"
-    Invoke-WebRequest -Uri $hcxtoolsAsset.browser_download_url -OutFile $tempArchive -UseBasicParsing
-    Expand-ArchiveCrossFormat -ArchivePath $tempArchive -DestinationPath $hcxBinRoot
-    Remove-Item -LiteralPath $tempArchive -Force -ErrorAction SilentlyContinue
-
-    foreach ($toolName in @("hcxpcapngtool.exe", "hcxhashtool.exe")) {
-        $toolPath = Get-ChildItem -Path $hcxBinRoot -Recurse -Filter $toolName -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $toolPath) {
-            throw "The downloaded hcxtools package did not contain $toolName."
-        }
-        Ensure-MachinePathEntry -PathEntry $toolPath.Directory.FullName
-    }
+function Install-HashcatToolchain() {
+    Require-ToolInPath -ToolName "hashcat.exe" -BundledSubdir "hashcat" -MissingMessage "hashcat.exe is required. Bundle it under windows\\tools\\hashcat or install it system-wide before running the updater."
+    Require-ToolInPath -ToolName "hcxpcapngtool.exe" -BundledSubdir "hcxtools" -MissingMessage "hcxpcapngtool.exe is required. Bundle it under windows\\tools\\hcxtools or install it system-wide before running the updater."
+    Require-ToolInPath -ToolName "hcxhashtool.exe" -BundledSubdir "hcxtools" -MissingMessage "hcxhashtool.exe is required. Bundle it under windows\\tools\\hcxtools or install it system-wide before running the updater."
 }
 
 function Get-SourceRoot {
@@ -181,7 +151,7 @@ try {
     & $venvPython -m pip install -r (Join-Path $CurrentRoot "requirements.txt")
 
     Write-Step "Refreshing Windows cracking toolchain"
-    Install-HashcatToolchain -ToolsRootPath $ToolsRoot
+    Install-HashcatToolchain
 
     Write-Step "Refreshing autostart task"
     Invoke-CheckedPowerShellFile -ScriptPath (Join-Path $CurrentRoot "windows\autostart_service.ps1") -Arguments @("enable")

@@ -103,13 +103,19 @@ Safe updates replace the application layer only.
 
 ## Important Windows Notes
 
-The Windows installer automates the dashboard, virtual environment, autostart, CLI wrapper, and update path. For actual cracking workloads, you should still make sure the cracking toolchain is available in `PATH`:
+The Windows installer automates the dashboard, virtual environment, autostart, CLI wrapper, and update path. For actual cracking workloads, the installer/updater expects these tools to be available either system-wide in `PATH` or bundled with this repository under `windows/tools/`:
 
 - `hashcat.exe` for cracking and benchmarks
 - `hcxpcapngtool.exe` and `hcxhashtool.exe` for converting and splitting raw capture uploads
 - `hcxmactool.exe` if you want legacy `.hccapx` or `.pmkid` conversion support
 
-If those tools are missing, the dashboard still installs and runs, but cracking features that depend on them will not work until they are installed.
+Recommended bundle layout:
+
+- `windows/tools/hashcat/hashcat.exe`
+- `windows/tools/hcxtools/hcxpcapngtool.exe`
+- `windows/tools/hcxtools/hcxhashtool.exe`
+
+If the required binaries are neither bundled nor already installed system-wide, the Windows installer will now fail early with a clear error instead of leaving the server in a half-working state.
 
 ## Key Features
 
