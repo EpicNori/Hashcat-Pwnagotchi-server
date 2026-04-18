@@ -128,6 +128,14 @@ class WordListInfo:
             shutil.copyfileobj(source, target_file)
 
 
+SCRIPT_SUFFIXES = {".sh", ".bash", ".py", ".ps1", ".cmd", ".bat"}
+
+
+def is_wordlist_script(path: Path) -> bool:
+    path = Path(path)
+    return path.suffix.lower() in SCRIPT_SUFFIXES
+
+
 class WordListDefault:
     TOP109M = WordListInfo(
         path=WORDLISTS_USER_DIR / WordList.TOP109M.value,
@@ -300,15 +308,6 @@ def wordlist_choices():
     choices.extend((str(wlist.path), str(wlist)) for wlist in wlists_info)
 
     return choices
-
-
-SCRIPT_SUFFIXES = {".sh", ".bash", ".py", ".ps1", ".cmd", ".bat"}
-
-
-def is_wordlist_script(path: Path) -> bool:
-    path = Path(path)
-    return path.suffix.lower() in SCRIPT_SUFFIXES
-
 
 def materialize_wordlist_source(wordlist_path: Path) -> Path:
     """
