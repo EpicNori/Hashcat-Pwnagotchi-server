@@ -18,6 +18,13 @@ function Write-Step([string]$Message) {
     Write-Output "[*] $Message"
 }
 
+function Invoke-CheckedPowerShellFile([string]$ScriptPath, [string[]]$Arguments = @()) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "PowerShell helper failed: $ScriptPath"
+    }
+}
+
 function Get-SourceRoot {
     $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("hashcat-wpa-win-update-" + [guid]::NewGuid().ToString("N"))
     $zipPath = Join-Path $tempRoot "repo.zip"
@@ -53,7 +60,7 @@ New-Item -ItemType Directory -Path $LogsRoot -Force | Out-Null
 Write-Step "--- CRACKSERVER SAFE UPDATE INITIATED ---"
 Write-Step "Data preservation: ACTIVE"
 Write-Step "Stopping current Windows service process"
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $CurrentRoot "windows\crackserver.ps1") stop
+Invoke-CheckedPowerShellFile -ScriptPath (Join-Path $CurrentRoot "windows\crackserver.ps1") -Arguments @("stop")
 
 $source = Get-SourceRoot
 try {
@@ -73,10 +80,10 @@ try {
     & $venvPython -m pip install -r (Join-Path $CurrentRoot "requirements.txt")
 
     Write-Step "Refreshing autostart task"
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $CurrentRoot "windows\autostart_service.ps1") enable
+    Invoke-CheckedPowerShellFile -ScriptPath (Join-Path $CurrentRoot "windows\autostart_service.ps1") -Arguments @("enable")
 
     Write-Step "Restarting dashboard service"
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $CurrentRoot "windows\run_server.ps1") -InstallRoot $InstallRoot
+    Invoke-CheckedPowerShellFile -ScriptPath (Join-Path $CurrentRoot "windows\run_server.ps1") -Arguments @("-InstallRoot", $InstallRoot)
 
     if (Test-Path $PreviousRoot) {
         Remove-Item -LiteralPath $PreviousRoot -Recurse -Force
@@ -89,7 +96,7 @@ catch {
     }
     if (Test-Path $PreviousRoot) {
         Move-Item -LiteralPath $PreviousRoot -Destination $CurrentRoot
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $CurrentRoot "windows\run_server.ps1") -InstallRoot $InstallRoot
+        Invoke-CheckedPowerShellFile -ScriptPath (Join-Path $CurrentRoot "windows\run_server.ps1") -Arguments @("-InstallRoot", $InstallRoot)
     }
     throw
 }

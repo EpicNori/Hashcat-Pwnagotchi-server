@@ -121,6 +121,13 @@ function Invoke-PythonCommand([string[]]$PythonCommand, [string[]]$Arguments) {
     }
 }
 
+function Invoke-CheckedPowerShellFile([string]$ScriptPath, [string[]]$Arguments = @()) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "PowerShell helper failed: $ScriptPath"
+    }
+}
+
 if (-not (Test-IsAdministrator)) {
     throw "Please run this installation script from an elevated PowerShell session."
 }
@@ -148,10 +155,10 @@ try {
     Ensure-MachinePathEntry -PathEntry $BinRoot
 
     Write-Step "Configuring Windows autostart task"
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $CurrentRoot "windows\autostart_service.ps1") enable
+    Invoke-CheckedPowerShellFile -ScriptPath (Join-Path $CurrentRoot "windows\autostart_service.ps1") -Arguments @("enable")
 
     Write-Step "Starting the dashboard service"
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $CurrentRoot "windows\run_server.ps1") -InstallRoot $InstallRoot
+    Invoke-CheckedPowerShellFile -ScriptPath (Join-Path $CurrentRoot "windows\run_server.ps1") -Arguments @("-InstallRoot", $InstallRoot)
 
     Write-Step "Opening local firewall port 9111"
     try {

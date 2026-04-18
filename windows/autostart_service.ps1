@@ -19,9 +19,9 @@ switch ($Action) {
         }
         $trigger = New-ScheduledTaskTrigger -AtStartup
         $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $Arguments
+        $taskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $Arguments
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-        Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
+        Register-ScheduledTask -TaskName $TaskName -Action $taskAction -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
         Write-Output "enabled"
     }
     "disable" {

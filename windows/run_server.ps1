@@ -33,6 +33,12 @@ if (Test-Path $PidFile) {
 $env:HASHCAT_WPA_SERVER_HOME = Join-Path $InstallRoot "data"
 $env:HASHCAT_WPA_INSTALL_ROOT = $InstallRoot
 $env:PYTHONUNBUFFERED = "1"
+if (-not $env:HASHCAT_ADMIN_USER) {
+    $env:HASHCAT_ADMIN_USER = "admin"
+}
+if (-not $env:HASHCAT_ADMIN_PASSWORD) {
+    $env:HASHCAT_ADMIN_PASSWORD = "changeme"
+}
 
 $process = Start-Process `
     -FilePath $VenvPython `
