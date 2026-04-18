@@ -1,4 +1,4 @@
-# Hashcat WPA/WPA2 Server 🚀
+# Hashcat WPA/WPA2 Server ðŸš€
 
 [![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/EpicNori/Hashcat-Pwnagotchi-server)
 [![Debian](https://img.shields.io/badge/platform-Debian%20%7C%20Ubuntu-orange.svg)](https://www.debian.org/)
@@ -16,7 +16,7 @@ All changes and adaptations in this repository were done by **EpicNori**, with r
 
 ---
 
-## ⚡ Quick Start (Automated Installer)
+## âš¡ Quick Start (Automated Installer)
 
 The absolute easiest way to deploy the server on **Debian, Ubuntu, or Kali Linux**. This one-liner handles all dependencies, Python environments, and background system services automatically.
 
@@ -25,42 +25,10 @@ curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/ma
 ```
 
 **Your dashboard will be available at:** `http://localhost:9111`
- 
----
-
-## Windows One-Liners
-
-Windows uses a local PowerShell setup flow instead of the Linux `systemd` service installer. The Windows scripts clone the repo, create a virtual environment, install Python dependencies, and refresh them on update.
-
-### Install on Windows
-
-Run this in **PowerShell**:
-
-```powershell
-irm https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/windows/install.ps1 | iex
-```
-
-### Update on Windows
-
-Run this in **PowerShell**:
-
-```powershell
-irm https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/windows/update.ps1 | iex
-```
-
-### Notes for Windows
-
-- The default install path is `%USERPROFILE%\Hashcat-Pwnagotchi-server`.
-- You can override that path by setting `$env:HASHCAT_WPA_SERVER_DIR` before running the one-liner.
-- The Windows setup is intended for local usage and development. Linux remains the full background-service deployment target.
-- The installer now places a `crackserver` command in `%USERPROFILE%\.local\bin` and starts the web server automatically.
-- Use `crackserver start`, `crackserver stop`, `crackserver restart`, `crackserver status`, `crackserver logs`, `crackserver dashboard`, and `crackserver update` on Windows.
-- Cracking jobs still require Windows-accessible `hashcat` binaries in `PATH`.
-- Capture conversion and ESSID splitting require `hcxpcapngtool` and `hcxhashtool` in `PATH`.
 
 ---
 
-## 🛠️ Global CLI: `crackserver`
+## ðŸ› ï¸ Global CLI: `crackserver`
 
 Once installed, managing your server from the terminal is effortless. The installer registers a global command that works from anywhere:
 
@@ -73,44 +41,44 @@ Once installed, managing your server from the terminal is effortless. The instal
 
 ---
 
-## 💎 Key Features
+## ðŸ’Ž Key Features
 
-### 🎮 Precision Hardware Management
+### ðŸŽ® Precision Hardware Management
 Take absolute control of your silicon. The server **auto-discovers** every GPU and CPU in your machine.
 - **Granular Targeting**: Select specific GPUs/CPUs for every task. Dedicate your powerful card to big lists while your integrated graphics handles the fast ones.
 - **Global Defaults**: Set a "Workhorse" GPU policy in the Admin settings for automated tasks (Pwnagotchi/API).
 - **Automated Task Policy**: Admins can define both the default target devices and the default cracking mode used by API-driven uploads such as Pwnagotchi.
 - **Dynamic Threading**: Set individual % intensity for every device to keep your system responsive.
 
-### 🌡️ Intelligent Thermal Safety
+### ðŸŒ¡ï¸ Intelligent Thermal Safety
 Monitor your hardware in real-time. The server includes a built-in **Thermal Watchdog** that protects your hardware:
 - **CPU & GPU Protection**: Automatically pauses or terminates tasks if user-defined temperature thresholds are exceeded.
 - **Hardware Integration**: Directly leverages `--gpu-temp-abort` for hardware-level safety during cracking loops.
 
-### 📟 Pwnagotchi Native Support
-Seamlessly connect your AI companion. 
+### ðŸ“Ÿ Pwnagotchi Native Support
+Seamlessly connect your AI companion.
 - Integrated **Documentation Page** within the web UI.
 - Automatic handshake uploads via Bluetooth, WiFi, or Ethernet.
 - Config-ready snippets provided directly in the dashboard.
 - **Automated Routing**: Handshakes from Pwnagotchi are automatically routed to your predefined "Workhorse" GPUs.
 - **Admin-Controlled Mode**: Pwnagotchi uploads inherit the admin-selected default work mode for API tasks, so you can centrally choose `Low`, `Fast`, or `Normal` without editing each device.
 
-### 📊 Advanced Dashboard & Search
+### ðŸ“Š Advanced Dashboard & Search
 - **Failure Tracking**: New "Failed" box to quickly identify captures with no results.
 - **Bulk Downloads**: Download all processed keys, or just your own, with a single button.
 - **Instant Search**: Find any BSSID, ESSID, or User across thousands of captures.
 
-### 🔒 Enterprise Account Security
+### ðŸ”’ Enterprise Account Security
 - Full **Administrator Console** for managing user operators.
 - Mandatory password confirmation and secure password hashing.
 - Role-based file protection (Admin sees everything, Users see only their tasks).
 
-### 🌐 Secure Remote Access (Tailscale)
+### ðŸŒ Secure Remote Access (Tailscale)
 Integrated support for [Tailscale](https://tailscale.com/). Connect your server to a private VPN mesh with one click, allowing you to monitor and upload handshakes from anywhere in the world without port forwarding.
 
 ---
 
-## 💾 Core Principles: Data Persistence
+## ðŸ’¾ Core Principles: Data Persistence
 
 Your data is sacred. We follow a strict separation of concerns that ensures your cracking results are never lost:
 - **Application Logic**: Lives in `/opt/hashcat-wpa-server` (Replaced during updates).
@@ -119,7 +87,7 @@ Your data is sacred. We follow a strict separation of concerns that ensures your
 
 ---
 
-## 📂 Supported Formats
+## ðŸ“‚ Supported Formats
 
 Supports every modern Hashcat format:
 - **.22000** (Modern EAPOL/PMKID Combo)
@@ -130,7 +98,7 @@ Supports every modern Hashcat format:
 
 ---
 
-## ⚙️ Uploads, Modes, and Wordlists
+## âš™ï¸ Uploads, Modes, and Wordlists
 
 The upload page accepts raw capture files and modern Hashcat formats. Uploaded captures are converted to `.22000` internally when needed, then split by ESSID so each network can be processed as its own task.
 
@@ -158,7 +126,7 @@ These settings let you change the behavior of all connected Pwnagotchis from the
 
 ---
 
-## 👨‍💻 Contributing & Development
+## ðŸ‘¨â€ðŸ’» Contributing & Development
 
 To run the development server locally:
 1. `pip install -r requirements.txt`

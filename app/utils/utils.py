@@ -1,7 +1,5 @@
 import datetime
-import os
 import re
-import shutil
 import subprocess
 from functools import lru_cache
 from typing import List
@@ -10,78 +8,6 @@ from urllib.parse import urlparse, urljoin
 from flask import request, Markup
 
 from app.logger import logger
-
-
-def resolve_command(command_name: str, extra_paths: List[str] = None):
-    resolved = shutil.which(command_name)
-    if resolved:
-        return resolved
-
-    candidate_paths = list(extra_paths or [])
-    if os.name == "nt":
-        program_files = [os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")]
-        local_app_data = os.environ.get("LOCALAPPDATA")
-        user_profile = os.environ.get("USERPROFILE")
-
-        if command_name.lower() in ("nvidia-smi", "nvidia-smi.exe"):
-            for base in filter(None, program_files):
-                candidate_paths.extend([
-                    os.path.join(base, "NVIDIA Corporation", "NVSMI", "nvidia-smi.exe"),
-                    os.path.join(base, "NVIDIA Corporation", "NVSMI", "nvidia-smi"),
-                ])
-
-        if command_name.lower() in ("hashcat", "hashcat.exe"):
-            for base in filter(None, program_files + [local_app_data, user_profile]):
-                candidate_paths.extend([
-                    os.path.join(base, "hashcat", "hashcat.exe"),
-                    os.path.join(base, "Hashcat", "hashcat.exe"),
-                    os.path.join(base, "Programs", "hashcat", "hashcat.exe"),
-                ])
-
-    for candidate in candidate_paths:
-        if candidate and os.path.exists(candidate):
-            return candidate
-    return command_name
-
-
-def get_windows_video_controllers():
-    if os.name != "nt":
-        return []
-
-    try:
-        completed = subprocess.run(
-            ["powershell", "-NoProfile", "-Command",
-             "Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | ConvertTo-Json -Compress"],
-            universal_newlines=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False
-        )
-        if completed.returncode != 0 or not completed.stdout.strip():
-            return []
-
-        import json
-        payload = json.loads(completed.stdout)
-        if isinstance(payload, dict):
-            payload = [payload]
-
-        devices = []
-        for i, gpu in enumerate(payload, start=1):
-            name = str(gpu.get("Name") or f"GPU {i}").strip()
-            adapter_ram = gpu.get("AdapterRAM")
-            memory = "Unknown"
-            if isinstance(adapter_ram, int) and adapter_ram > 0:
-                memory = f"{adapter_ram // (1024 * 1024)} MB"
-            devices.append({
-                "id": str(i),
-                "name": name,
-                "memory": memory,
-                "is_gpu": True
-            })
-        return devices
-    except Exception as error:
-        logger.error(f"Windows GPU detection failed: {error}")
-        return []
 
 
 def parse_hashcat_devices_output(output: str):
@@ -161,12 +87,7 @@ def parse_hashcat_devices_output(output: str):
 
 
 def get_linux_pci_gpus():
-    if os.name == "nt":
-        return []
-
-    lspci_bin = shutil.which("lspci")
-    if not lspci_bin:
-        return []
+    lspci_bin = "lspci"
 
     try:
         completed = subprocess.run(
@@ -228,18 +149,11 @@ def date_formatted() -> str:
 
 @lru_cache()
 def hashcat_devices_info():
-    hashcat_bin = resolve_command("hashcat")
     try:
-        hashcat_devices, _ = subprocess_call([hashcat_bin, '-I', '--force'])
-        hashcat_devices = f"<code>$ {hashcat_bin} -I --force</code>\n<samp>{hashcat_devices}</samp>"
+        hashcat_devices, _ = subprocess_call(['hashcat', '-I', '--force'])
+        hashcat_devices = f"<code>$ hashcat -I --force</code>\n<samp>{hashcat_devices}</samp>"
         return Markup(hashcat_devices.replace('\n', '<br>'))
     except Exception:
-        fallback_devices = get_windows_video_controllers()
-        if fallback_devices:
-            lines = ["Hashcat was not found in PATH. Windows fallback GPU detection found:"]
-            for device in fallback_devices:
-                lines.append(f"- {device['name']} ({device['memory']})")
-            return Markup("<br>".join(lines))
         return Markup("Hashcat device information is unavailable. Install hashcat or add it to PATH.")
 
 def get_live_usage():
@@ -275,8 +189,7 @@ def get_live_usage():
     
     # Try to get NVIDIA GPU stats
     try:
-        nvidia_smi = resolve_command("nvidia-smi")
-        out = subprocess.check_output([nvidia_smi, '--query-gpu=utilization.gpu,temperature.gpu', '--format=csv,noheader,nounits'], 
+        out = subprocess.check_output(['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu', '--format=csv,noheader,nounits'], 
                                       universal_newlines=True)
         for i, line in enumerate(out.strip().split('\n')):
             util, temp = line.split(',')
@@ -297,8 +210,7 @@ def get_hashcat_devices():
     # 1. Primary Method: Hashcat identification
     try:
         # Try -I (info)
-        hashcat_bin = resolve_command("hashcat")
-        out, _ = subprocess_call([hashcat_bin, '-I', '--force'])
+        out, _ = subprocess_call(['hashcat', '-I', '--force'])
         devices = parse_hashcat_devices_output(out)
     except Exception as e:
         logger.error(f"Hashcat device detection failed: {e}")
@@ -306,8 +218,7 @@ def get_hashcat_devices():
     # 2. Augmentation: If no devices found, try to at least get NVIDIA GPUs via nvidia-smi
     if not devices:
         try:
-            nvidia_smi = resolve_command("nvidia-smi")
-            out = subprocess.check_output([nvidia_smi, '--query-gpu=gpu_name,memory.total', '--format=csv,noheader'], 
+            out = subprocess.check_output(['nvidia-smi', '--query-gpu=gpu_name,memory.total', '--format=csv,noheader'], 
                                           universal_newlines=True)
             for i, line in enumerate(out.strip().split('\n')):
                 name, mem = line.split(',')
@@ -320,15 +231,11 @@ def get_hashcat_devices():
         except Exception:
             pass
 
-    # 3. Windows fallback: enumerate GPUs even if hashcat / nvidia-smi are not on PATH
-    if not devices:
-        devices = get_windows_video_controllers()
-
-    # 4. Linux fallback: enumerate PCI display adapters even if hashcat parsing fails
+    # 3. Linux fallback: enumerate PCI display adapters even if hashcat parsing fails
     if not devices:
         devices = get_linux_pci_gpus()
 
-    # 5. Last Resort: CPU
+    # 4. Last Resort: CPU
     if not devices:
         import psutil
         devices.append({

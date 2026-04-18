@@ -3,12 +3,10 @@ __pycache__/
 wordlists/*
 logs/
 env/
-.venv/
 ignored/
 database/
 captures/
 OMEN/
-.windows-runtime/
 
 !wordlists/names_ua-ru.txt
 !wordlists/names_ru-cyrrilic.txt
