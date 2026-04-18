@@ -136,6 +136,29 @@ def is_wordlist_script(path: Path) -> bool:
     return path.suffix.lower() in SCRIPT_SUFFIXES
 
 
+@lru_cache()
+def count_wordlist(wordlist_path):
+    st_size_mb = Path(wordlist_path).stat().st_size / (2 ** 20)
+    if st_size_mb < 150:
+        wordlist_path = Path(wordlist_path)
+        try:
+            if os.name != "nt":
+                out, err = subprocess_call(['wc', '-l', str(wordlist_path)])
+                out = out.rstrip('\n')
+                counter = 0
+                if re.fullmatch(r"\d+\s+.*", out):
+                    counter = out.split()[0]
+                return int(counter)
+        except Exception:
+            logger.warning(f"wc line count failed for {wordlist_path}, falling back to Python counting")
+
+        with wordlist_path.open('r', errors='ignore') as handle:
+            return sum(1 for _ in handle)
+    count_per_mb = 100510.62068189554  # from top109M
+    count_approx = int(st_size_mb * count_per_mb)
+    return count_approx
+
+
 class WordListDefault:
     TOP109M = WordListInfo(
         path=WORDLISTS_USER_DIR / WordList.TOP109M.value,
@@ -194,29 +217,6 @@ def count_rules(rule: Rule):
         return 1
     rules = read_mask(rule.path)
     return len(rules)
-
-
-@lru_cache()
-def count_wordlist(wordlist_path):
-    st_size_mb = Path(wordlist_path).stat().st_size / (2 ** 20)
-    if st_size_mb < 150:
-        wordlist_path = Path(wordlist_path)
-        try:
-            if os.name != "nt":
-                out, err = subprocess_call(['wc', '-l', str(wordlist_path)])
-                out = out.rstrip('\n')
-                counter = 0
-                if re.fullmatch(r"\d+\s+.*", out):
-                    counter = out.split()[0]
-                return int(counter)
-        except Exception:
-            logger.warning(f"wc line count failed for {wordlist_path}, falling back to Python counting")
-
-        with wordlist_path.open('r', errors='ignore') as handle:
-            return sum(1 for _ in handle)
-    count_per_mb = 100510.62068189554  # from top109M
-    count_approx = int(st_size_mb * count_per_mb)
-    return count_approx
 
 
 def estimate_runtime_fmt(wordlist_path: Path, rule: Rule) -> str:

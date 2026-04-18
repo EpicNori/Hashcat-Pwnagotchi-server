@@ -1,6 +1,29 @@
 #!/bin/bash
 set -e
 
+ensure_service_running() {
+    local service_name="$1"
+
+    if ! command -v systemctl >/dev/null 2>&1 || ! pidof systemd >/dev/null; then
+        return 0
+    fi
+
+    systemctl daemon-reload
+    systemctl enable "$service_name"
+    systemctl restart "$service_name"
+
+    for _ in $(seq 1 15); do
+        if systemctl is-active --quiet "$service_name"; then
+            return 0
+        fi
+        sleep 1
+    done
+
+    echo "[!] ${service_name} did not become active after installation."
+    systemctl --no-pager --full status "$service_name" || true
+    exit 1
+}
+
 # Ensure script is being run as root
 if [ "$EUID" -ne 0 ]; then
   echo "[!] Please run this installation script as root (sudo bash install.sh)"
@@ -47,9 +70,7 @@ dpkg -i hashcat-wpa-server_*.deb || apt-get install -f -y
 
 # Explicitly ensure service is up after dpkg finish
 echo "[*] Finalizing service state..."
-systemctl daemon-reload
-systemctl enable hashcat-wpa-server.service
-systemctl restart hashcat-wpa-server.service
+ensure_service_running "hashcat-wpa-server.service"
 
 echo "[*] Cleaning up build files..."
 cd /tmp

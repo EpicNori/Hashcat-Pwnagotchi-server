@@ -3,6 +3,31 @@ set -e
 
 case "$1" in
     configure)
+        ensure_service_running() {
+            service_name="$1"
+
+            if ! command -v systemctl >/dev/null 2>&1 || ! pidof systemd >/dev/null; then
+                return 0
+            fi
+
+            systemctl daemon-reload
+            systemctl enable "$service_name"
+            systemctl restart "$service_name"
+
+            i=0
+            while [ "$i" -lt 15 ]; do
+                if systemctl is-active --quiet "$service_name"; then
+                    return 0
+                fi
+                i=$((i + 1))
+                sleep 1
+            done
+
+            echo "[!] ${service_name} failed to stay active after package configuration." >&2
+            systemctl --no-pager --full status "$service_name" || true
+            exit 1
+        }
+
         # Create hashcat user if not exists
         if ! id "hashcat" >/dev/null 2>&1; then
             useradd --system --home-dir /var/lib/hashcat-wpa-server --no-create-home --shell /usr/sbin/nologin hashcat
@@ -61,10 +86,8 @@ case "$1" in
             chmod 440 /etc/sudoers.d/hashcat-tailscale
         fi
 
-        # Ensure gunicorn knows about the service and starts it
-        systemctl daemon-reload
-        systemctl enable hashcat-wpa-server.service
-        systemctl start hashcat-wpa-server.service
+        # Ensure gunicorn is running immediately after install/upgrade.
+        ensure_service_running "hashcat-wpa-server.service"
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)
