@@ -198,10 +198,13 @@ Write-Host "[+]"
 Write-Host "[+] Web Interface URL:   http://127.0.0.1:9111"
 Write-Host "[+] Network Access:      http://$networkIp`:9111"
 Write-Host "[+] Global CLI:          crackserver"
+Write-Host "[+] Direct CLI Path:     C:\ProgramData\HashcatWPAServer\bin\crackserver.cmd"
 Write-Host "[+]"
 Write-Host "[+] Default Login User:  admin"
 Write-Host "[+] Default Password:    changeme"
 foreach ($warning in $toolWarnings) {
     Write-Host "[!] $warning"
 }
+Write-Host "[!] If 'crackserver' is not recognized immediately, open a NEW PowerShell window or run:"
+Write-Host "[!] C:\ProgramData\HashcatWPAServer\bin\crackserver.cmd status"
 Write-Host "=========================================================================="

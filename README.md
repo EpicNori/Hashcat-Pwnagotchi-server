@@ -22,10 +22,10 @@ curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/ma
 
 ### Windows one-liner
 
-Run this from an Administrator PowerShell window (`Run as administrator`):
+Open an Administrator PowerShell window (`Run as administrator`), then run this directly in that same window:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/install.ps1 | iex"
+irm https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/install.ps1 | iex
 ```
 
 After installation, the dashboard is available at `http://127.0.0.1:9111`.
