@@ -25,6 +25,36 @@ curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/ma
 ```
 
 **Your dashboard will be available at:** `http://localhost:9111`
+ 
+---
+
+## Windows One-Liners
+
+Windows uses a local PowerShell setup flow instead of the Linux `systemd` service installer. The Windows scripts clone the repo, create a virtual environment, install Python dependencies, and refresh them on update.
+
+### Install on Windows
+
+Run this in **PowerShell**:
+
+```powershell
+irm https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/windows/install.ps1 | iex
+```
+
+### Update on Windows
+
+Run this in **PowerShell**:
+
+```powershell
+irm https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/windows/update.ps1 | iex
+```
+
+### Notes for Windows
+
+- The default install path is `%USERPROFILE%\Hashcat-Pwnagotchi-server`.
+- You can override that path by setting `$env:HASHCAT_WPA_SERVER_DIR` before running the one-liner.
+- The Windows setup is intended for local usage and development. Linux remains the full background-service deployment target.
+- Cracking jobs still require Windows-accessible `hashcat` binaries in `PATH`.
+- Capture conversion and ESSID splitting require `hcxpcapngtool` and `hcxhashtool` in `PATH`.
 
 ---
 
