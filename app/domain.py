@@ -139,6 +139,7 @@ class Workload(Enum):
 class TaskInfoStatus:
     SCHEDULED = "Scheduled"  # added to the tasks queue
     RUNNING = "Running"  # started execution
+    CRACKED = "Cracked"  # password was found
     COMPLETED = "Completed"  # all attacks run
     CANCELLED = "Cancelled"  # user cancelled
     ABORTED = "Aborted"  # task was interrupted due to server issues

@@ -47,7 +47,7 @@ def index():
     
     stats = {
         'total_handshakes': UploadedTask.query.count(),
-        'total_cracked': UploadedTask.query.filter_by(status='cracked').count(),
+        'total_cracked': UploadedTask.query.filter(UploadedTask.found_key.is_not(None)).count(),
         'total_failed': UploadedTask.query.filter(UploadedTask.completed == True, UploadedTask.found_key.is_(None)).count(),
         'total_active': UploadedTask.query.filter(UploadedTask.status.in_(['Running', 'Scheduled'])).count(),
         'total_users': User.query.count(),

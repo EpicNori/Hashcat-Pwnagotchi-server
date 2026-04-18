@@ -50,7 +50,10 @@ class CapAttack(BaseAttack):
 
     def is_attack_needed(self) -> bool:
         self.cancel_if_needed()
-        return not self.key_file.exists()
+        if self.key_file.exists():
+            self.read_key()
+            return False
+        return True
 
     def read_key(self):
         # Use a clean hashcat call for --show to avoid conflicting flags
@@ -61,6 +64,8 @@ class CapAttack(BaseAttack):
         key_password = read_plain_key(self.key_file)
         with self.lock:
             self.lock.found_key = key_password
+            if key_password:
+                self.lock.set_status(TaskInfoStatus.CRACKED)
 
     def check_not_empty(self):
         """
@@ -275,6 +280,8 @@ class HashcatWorker:
         with lock:
             if future.cancelled():
                 lock.set_status(TaskInfoStatus.CANCELLED)
+            elif lock.found_key:
+                lock.set_status(TaskInfoStatus.CRACKED)
             else:
                 lock.set_status(TaskInfoStatus.COMPLETED)
             if exception is not None:
