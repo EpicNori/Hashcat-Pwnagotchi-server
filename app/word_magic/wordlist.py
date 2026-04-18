@@ -1,9 +1,11 @@
 import datetime
+import gzip
 import os
 import re
 import shutil
 import subprocess
 import tempfile
+import urllib.request
 from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
@@ -70,15 +72,50 @@ class WordListInfo:
             return
         gzip_file = self.url.split('/')[-1]
         gzip_file = self.path.with_name(gzip_file)
-        logger.debug(f"Downloading {gzip_file}")
-        if calculate_md5(gzip_file) != self.checksum:
-            subprocess_call(['wget', '-q', self.url, '-O', gzip_file])
-        with lock_app:
-            subprocess_call(['gzip', '-d', gzip_file])
-        # the format of a gzip file is name.txt.gz
         txt_path = gzip_file.parent / gzip_file.stem
-        shutil.move(txt_path, self.path)
-        logger.debug(f"Downloaded and extracted {self.path}")
+        logger.debug(f"Downloading {gzip_file}")
+        try:
+            if calculate_md5(gzip_file) != self.checksum:
+                self._download_archive(gzip_file)
+            with lock_app:
+                self._extract_archive(gzip_file, txt_path)
+            shutil.move(txt_path, self.path)
+            logger.debug(f"Downloaded and extracted {self.path}")
+        except Exception:
+            for partial_path in (gzip_file, txt_path, self.path):
+                try:
+                    if Path(partial_path).exists():
+                        Path(partial_path).unlink()
+                except OSError:
+                    logger.warning(f"Could not clean up partial wordlist file: {partial_path}")
+            raise
+
+    def _download_archive(self, gzip_file: Path):
+        try:
+            subprocess_call(['wget', '-q', self.url, '-O', gzip_file])
+        except FileNotFoundError:
+            logger.warning("wget is not available; falling back to urllib download")
+
+        if calculate_md5(gzip_file) == self.checksum:
+            return
+
+        logger.warning(f"wget download for {self.url} was incomplete or invalid; retrying with urllib")
+        if gzip_file.exists():
+            gzip_file.unlink()
+
+        with urllib.request.urlopen(self.url, timeout=120) as response, gzip_file.open('wb') as target_file:
+            shutil.copyfileobj(response, target_file)
+
+        downloaded_checksum = calculate_md5(gzip_file)
+        if downloaded_checksum != self.checksum:
+            raise RuntimeError(f"Checksum mismatch for {gzip_file.name}")
+
+    @staticmethod
+    def _extract_archive(gzip_file: Path, txt_path: Path):
+        if txt_path.exists():
+            txt_path.unlink()
+        with gzip.open(gzip_file, 'rb') as source, txt_path.open('wb') as target_file:
+            shutil.copyfileobj(source, target_file)
 
 
 class WordListDefault:

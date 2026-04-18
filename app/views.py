@@ -1,4 +1,3 @@
-import shlex
 import subprocess
 from http import HTTPStatus
 from pathlib import Path
@@ -175,7 +174,6 @@ def upload():
         # flask-uploads already uses werkzeug.secure_filename()
         filename = cap_uploads.save(request.files['capture'], folder=current_user.username)
         cap_path = Path(app.config['CAPTURES_DIR']) / filename
-        cap_path = Path(shlex.quote(str(cap_path)))
         try:
             file_22000 = convert_to_22000(cap_path)
         except (FileNotFoundError, InvalidFileError) as error:
@@ -252,7 +250,6 @@ def api_upload():
         
     filename = cap_uploads.save(request.files['capture'], folder=user.username)
     cap_path = Path(app.config['CAPTURES_DIR']) / filename
-    cap_path = Path(shlex.quote(str(cap_path)))
     try:
         file_22000 = convert_to_22000(cap_path)
     except (FileNotFoundError, InvalidFileError) as error:

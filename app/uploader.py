@@ -59,8 +59,12 @@ class UploadForm(FlaskForm):
     brain_client_feature = RadioField("Brain client features", choices=BrainClientFeature.to_form(),
                                       default=BrainClientFeature.POSITIONS.value)
     devices = MultiCheckboxField("Target Devices", choices=[])
-    capture = FileField('Capture', validators=[FileRequired(), FileAllowed(HashcatMode.valid_suffixes(),
-                                                                            message='Airodump & Hashcat capture files only')])
+    capture = FileField(
+        'Capture',
+        validators=[FileRequired(), FileAllowed(HashcatMode.valid_suffixes(),
+                                                message='Airodump & Hashcat capture files only')],
+        render_kw={"accept": ".cap,.pcap,.pcapng,.hccapx,.pmkid,.2500,.2501,.16800,.16801,.22000,.22001"}
+    )
     submit = SubmitField('Submit')
 
     def __init__(self, *args, **kwargs):
