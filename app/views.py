@@ -239,11 +239,11 @@ def upload():
         cap_path = Path(app.config['CAPTURES_DIR']) / filename
         try:
             file_22000 = convert_to_22000(cap_path)
+            folder_split_by_essid = split_by_essid(file_22000)
         except (FileNotFoundError, InvalidFileError) as error:
             logger.exception(error)
             return flask.abort(HTTPStatus.BAD_REQUEST, description=str(error))
         Thread(target=download_wordlist, args=(form.get_wordlist_path(),)).start()
-        folder_split_by_essid = split_by_essid(file_22000)
         tasks = {}
         hashcat_args = ' '.join(form.hashcat_args())
         for file_essid in folder_split_by_essid.iterdir():
@@ -317,12 +317,12 @@ def api_upload():
     cap_path = Path(app.config['CAPTURES_DIR']) / filename
     try:
         file_22000 = convert_to_22000(cap_path)
+        folder_split_by_essid = split_by_essid(file_22000)
     except (FileNotFoundError, InvalidFileError) as error:
         logger.exception(error)
         return flask.abort(HTTPStatus.BAD_REQUEST, description=str(error))
         
     Thread(target=download_wordlist, args=(form.get_wordlist_path(),)).start()
-    folder_split_by_essid = split_by_essid(file_22000)
     tasks = {}
     hashcat_args = ' '.join(form.hashcat_args())
     for file_essid in folder_split_by_essid.iterdir():
