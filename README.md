@@ -22,7 +22,7 @@ curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/ma
 
 ### Windows one-liner
 
-Run this from an elevated PowerShell window:
+Run this from an Administrator PowerShell window (`Run as administrator`):
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/install.ps1 | iex"
