@@ -71,6 +71,7 @@ class WordListInfo:
             return
         if self.url is None:
             return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         gzip_file = self.url.split('/')[-1]
         gzip_file = self.path.with_name(gzip_file)
         txt_path = gzip_file.parent / gzip_file.stem
@@ -92,19 +93,27 @@ class WordListInfo:
             raise
 
     def _download_archive(self, gzip_file: Path):
-        try:
-            subprocess_call(['wget', '-q', self.url, '-O', gzip_file])
-        except FileNotFoundError:
-            logger.warning("wget is not available; falling back to urllib download")
+        if os.name != "nt":
+            try:
+                subprocess_call(['wget', '-q', self.url, '-O', gzip_file])
+            except FileNotFoundError:
+                logger.warning("wget is not available; falling back to urllib download")
 
         if calculate_md5(gzip_file) == self.checksum:
             return
 
-        logger.warning(f"wget download for {self.url} was incomplete or invalid; retrying with urllib")
+        logger.warning(f"Primary download for {self.url} was unavailable or invalid; retrying with urllib")
         if gzip_file.exists():
             gzip_file.unlink()
 
-        with urllib.request.urlopen(self.url, timeout=120) as response, gzip_file.open('wb') as target_file:
+        request = urllib.request.Request(
+            self.url,
+            headers={
+                "User-Agent": "HashcatWPAServer/1.0 (+https://github.com/EpicNori/Hashcat-Pwnagotchi-server)",
+                "Accept": "*/*",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=120) as response, gzip_file.open('wb') as target_file:
             shutil.copyfileobj(response, target_file)
 
         downloaded_checksum = calculate_md5(gzip_file)
@@ -121,28 +130,28 @@ class WordListInfo:
 
 class WordListDefault:
     TOP109M = WordListInfo(
-        path=WordList.TOP109M.path,
+        path=WORDLISTS_USER_DIR / WordList.TOP109M.value,
         rate=39,
         count=109_438_614,
         url="https://download.weakpass.com/wordlists/1852/Top109Million-probable-v2.txt.gz",
         checksum="c0a26fd763d56a753a5f62c517796d09"
     )
     TOP29M = WordListInfo(
-        path=WordList.TOP29M.path,
+        path=WORDLISTS_USER_DIR / WordList.TOP29M.value,
         rate=30,
         count=29_040_646,
         url="https://download.weakpass.com/wordlists/1857/Top29Million-probable-v2.txt.gz",
         checksum="807ee2cf835660b474b6fd15bca962cf"
     )
     TOP1M = WordListInfo(
-        path=WordList.TOP1M.path,
+        path=WORDLISTS_USER_DIR / WordList.TOP1M.value,
         rate=19,
         count=1_667_462,
         url="https://download.weakpass.com/wordlists/1855/Top1pt6Million-probable-v2.txt.gz",
         checksum="2d45c4aa9f4a87ece9ebcbd542613f50"
     )
     TOP304K = WordListInfo(
-        path=WordList.TOP304K.path,
+        path=WORDLISTS_USER_DIR / WordList.TOP304K.value,
         rate=12,
         count=303_872,
         url="https://download.weakpass.com/wordlists/1859/Top304Thousand-probable-v2.txt.gz",
