@@ -1,7 +1,10 @@
 import secrets
+import os
 from pathlib import Path
 
-HASHCAT_WPA_CACHE_DIR = Path.home() / ".hashcat" / "wpa-server"
+HASHCAT_WPA_CACHE_DIR = Path(
+    os.environ.get("HASHCAT_WPA_SERVER_HOME", Path.home() / ".hashcat" / "wpa-server")
+)
 ROOT_PRIVATE_DIR = Path(__file__).parent.parent
 
 WORDLISTS_DIR = ROOT_PRIVATE_DIR / "wordlists"

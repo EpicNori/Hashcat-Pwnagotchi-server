@@ -12,6 +12,7 @@ Werkzeug==2.3.6
 WTForms==3.0.1
 python-dateutil
 gunicorn>=21.2.0
+waitress>=3.0.2
 wordninja==2.0.0
 tqdm
 psutil==5.9.5

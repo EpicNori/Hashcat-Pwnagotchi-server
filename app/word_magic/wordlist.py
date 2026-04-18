@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import urllib.request
 from copy import deepcopy
@@ -182,13 +183,20 @@ def count_rules(rule: Rule):
 def count_wordlist(wordlist_path):
     st_size_mb = Path(wordlist_path).stat().st_size / (2 ** 20)
     if st_size_mb < 150:
-        wordlist_path = str(wordlist_path)
-        out, err = subprocess_call(['wc', '-l', wordlist_path])
-        out = out.rstrip('\n')
-        counter = 0
-        if re.fullmatch(f"\d+ {wordlist_path}", out):
-            counter, path = out.split(' ')
-        return int(counter)
+        wordlist_path = Path(wordlist_path)
+        try:
+            if os.name != "nt":
+                out, err = subprocess_call(['wc', '-l', str(wordlist_path)])
+                out = out.rstrip('\n')
+                counter = 0
+                if re.fullmatch(r"\d+\s+.*", out):
+                    counter = out.split()[0]
+                return int(counter)
+        except Exception:
+            logger.warning(f"wc line count failed for {wordlist_path}, falling back to Python counting")
+
+        with wordlist_path.open('r', errors='ignore') as handle:
+            return sum(1 for _ in handle)
     count_per_mb = 100510.62068189554  # from top109M
     count_approx = int(st_size_mb * count_per_mb)
     return count_approx
@@ -285,7 +293,7 @@ def wordlist_choices():
     return choices
 
 
-SCRIPT_SUFFIXES = {".sh", ".bash", ".py"}
+SCRIPT_SUFFIXES = {".sh", ".bash", ".py", ".ps1", ".cmd", ".bat"}
 
 
 def is_wordlist_script(path: Path) -> bool:
@@ -309,9 +317,21 @@ def materialize_wordlist_source(wordlist_path: Path) -> Path:
 
     suffix = wordlist_path.suffix.lower()
     if suffix == ".py":
-        command = ["python3", str(wordlist_path)]
+        command = [sys.executable, str(wordlist_path)]
+    elif suffix == ".ps1":
+        command = [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(wordlist_path)
+        ]
+    elif suffix in {".cmd", ".bat"}:
+        command = ["cmd.exe", "/c", str(wordlist_path)]
     else:
-        command = ["/bin/bash", str(wordlist_path)]
+        shell = "bash" if os.name == "nt" else "/bin/bash"
+        command = [shell, str(wordlist_path)]
 
     completed = subprocess.run(
         command,

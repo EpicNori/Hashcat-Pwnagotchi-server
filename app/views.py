@@ -1,3 +1,5 @@
+import os
+import shlex
 import subprocess
 from http import HTTPStatus
 from pathlib import Path
@@ -16,8 +18,8 @@ from app.logger import logger
 from app.login import LoginForm, RegistrationForm, User, RoleEnum, register_user, create_first_users, Role, \
     roles_required, user_has_roles
 from app.uploader import cap_uploads, UploadForm, UploadedTask, check_incomplete_tasks, backward_db_compatibility
-from app.utils.file_io import read_last_benchmark, bssid_essid_from_22000, build_rainbow_wordlist
-from app.utils.utils import is_safe_url, hashcat_devices_info
+from app.utils.file_io import read_last_benchmark, bssid_essid_from_22000, build_rainbow_wordlist, read_hashcat_brain_password
+from app.utils.utils import is_safe_url, hashcat_devices_info, date_formatted
 from app.word_magic import create_digits_wordlist, estimate_runtime_fmt, create_fast_wordlists
 from app.word_magic.wordlist import download_wordlist, find_wordlist_by_name, WordListDefault
 
@@ -69,6 +71,14 @@ def get_version():
 
 
 def get_management_script_path(script_name: str) -> str:
+    if os.name == "nt":
+        windows_name = f"{Path(script_name).stem}.ps1"
+        install_root = Path(os.environ.get("HASHCAT_WPA_INSTALL_ROOT", Path(app.root_path).parent))
+        installed_path = install_root / "current" / "windows" / windows_name
+        if installed_path.exists():
+            return str(installed_path)
+        return str(Path(app.root_path).parent / "windows" / windows_name)
+
     installed_path = Path("/opt/hashcat-wpa-server/bash") / script_name
     if installed_path.exists():
         return str(installed_path)
@@ -77,13 +87,30 @@ def get_management_script_path(script_name: str) -> str:
 
 def get_autostart_status():
     try:
-        result = subprocess.run(
-            ["sudo", get_management_script_path("autostart_service.sh"), "status"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False
-        )
+        if os.name == "nt":
+            result = subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    get_management_script_path("autostart_service.sh"),
+                    "status"
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False
+            )
+        else:
+            result = subprocess.run(
+                ["sudo", get_management_script_path("autostart_service.sh"), "status"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False
+            )
         status = (result.stdout or result.stderr or "").strip()
         return status or "unknown"
     except Exception:
@@ -91,24 +118,48 @@ def get_autostart_status():
 
 
 def get_update_status():
-    update_log = Path("/var/log/hashcat-wpa-server/updater.log")
+    if os.name == "nt":
+        install_root = Path(os.environ.get("HASHCAT_WPA_INSTALL_ROOT", Path(app.root_path).parent))
+        update_log = install_root / "logs" / "updater.log"
+    else:
+        update_log = Path("/var/log/hashcat-wpa-server/updater.log")
     status = "idle"
     summary = "No update log available yet."
 
     try:
-        result = subprocess.run(
-            ["systemctl", "is-active", "hashcat-server-updater.service"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False
-        )
-        service_state = (result.stdout or "").strip()
-        if service_state == "active":
-            status = "running"
-            summary = "Update is currently running in the background."
+        if os.name == "nt":
+            result = subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    get_management_script_path("update_app.sh"),
+                    "status"
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False
+            )
+            if (result.stdout or "").strip().lower() == "running":
+                status = "running"
+                summary = "Update is currently running in the background."
+        else:
+            result = subprocess.run(
+                ["systemctl", "is-active", "hashcat-server-updater.service"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False
+            )
+            service_state = (result.stdout or "").strip()
+            if service_state == "active":
+                status = "running"
+                summary = "Update is currently running in the background."
     except Exception:
-        service_state = "unknown"
+        pass
 
     if update_log.exists():
         try:
@@ -147,6 +198,18 @@ def split_hashcat_args(hashcat_args_text: str):
     if not hashcat_args_text:
         return []
     return shlex.split(hashcat_args_text)
+
+
+def windows_management_command(script_name: str, *args: str):
+    return [
+        "powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        get_management_script_path(script_name),
+        *args,
+    ]
 
 
 def decode_task_essid(file_22000: Path):
@@ -556,7 +619,7 @@ def hashcat_potfile():
     return jsonify("Empty hashcat.potfile")
 
 from flask_wtf import FlaskForm
-from wtforms import IntegerField, SubmitField, PasswordField, StringField
+from wtforms import IntegerField, SubmitField, PasswordField, StringField, RadioField
 from wtforms.validators import DataRequired, NumberRange, EqualTo, Optional
 from app.utils.settings import read_settings, write_settings
 
@@ -667,27 +730,33 @@ def admin_settings():
     form.default_api_workload.data = settings.get("default_api_workload", Workload.Fast.value)
         
     if ts_form.submit_tailscale.data and ts_form.validate():
-        import subprocess
-        try:
-            subprocess.Popen(["sudo", "/opt/hashcat-wpa-server/bash/install_tailscale.sh", ts_form.auth_key.data])
-            flask.flash('Tailscale connection initiated in the background! Check your Tailscale admin console.', category='success')
-        except Exception as e:
-            flask.flash(f'Failed to run Tailscale securely: {e}', category='error')
+        if os.name == "nt":
+            flask.flash('Tailscale one-click installation is currently only automated for Linux deployments.', category='info')
+        else:
+            try:
+                subprocess.Popen(["sudo", get_management_script_path("install_tailscale.sh"), ts_form.auth_key.data])
+                flask.flash('Tailscale connection initiated in the background! Check your Tailscale admin console.', category='success')
+            except Exception as e:
+                flask.flash(f'Failed to run Tailscale securely: {e}', category='error')
         return redirect(url_for('admin_settings'))
 
     if update_form.submit_update.data and update_form.validate():
-        import subprocess
         try:
-            subprocess.Popen(["sudo", "/opt/hashcat-wpa-server/bash/update_app.sh"])
+            if os.name == "nt":
+                subprocess.Popen(windows_management_command("update_app.sh"))
+            else:
+                subprocess.Popen(["sudo", get_management_script_path("update_app.sh")])
             flask.flash('🚀 Update initiated! The system is now downloading the latest version and rebuilding the package in the background. The server will automatically restart and be back online in roughly 60 seconds.', category='success')
         except Exception as e:
             flask.flash(f'Failed to start update script: {e}', category='error')
         return redirect(url_for('admin_settings'))
 
     if uninstall_form.submit_uninstall.data and uninstall_form.validate():
-        import subprocess
         try:
-            subprocess.Popen(["sudo", "/opt/hashcat-wpa-server/bash/uninstall_app.sh"])
+            if os.name == "nt":
+                subprocess.Popen(windows_management_command("uninstall_app.sh"))
+            else:
+                subprocess.Popen(["sudo", get_management_script_path("uninstall_app.sh")])
             flask.flash('App uninstallation process started! The web server will be permanently deleted and go offline in 5 seconds.', category='danger')
         except Exception as e:
             flask.flash(f'Failed to start uninstall script: {e}', category='error')
@@ -695,13 +764,11 @@ def admin_settings():
 
     if autostart_form.submit_enable_autostart.data and autostart_form.validate():
         try:
-            subprocess.run(
-                ["sudo", get_management_script_path("autostart_service.sh"), "enable"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-                check=True
-            )
+            if os.name == "nt":
+                command = windows_management_command("autostart_service.sh", "enable")
+            else:
+                command = ["sudo", get_management_script_path("autostart_service.sh"), "enable"]
+            subprocess.run(command, capture_output=True, text=True, timeout=15, check=True)
             flask.flash('Autostart enabled. The server will now start automatically on boot.', category='success')
         except subprocess.CalledProcessError as e:
             message = (e.stderr or e.stdout or str(e)).strip()
@@ -712,13 +779,11 @@ def admin_settings():
 
     if autostart_form.submit_disable_autostart.data and autostart_form.validate():
         try:
-            subprocess.run(
-                ["sudo", get_management_script_path("autostart_service.sh"), "disable"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-                check=True
-            )
+            if os.name == "nt":
+                command = windows_management_command("autostart_service.sh", "disable")
+            else:
+                command = ["sudo", get_management_script_path("autostart_service.sh"), "disable"]
+            subprocess.run(command, capture_output=True, text=True, timeout=15, check=True)
             flask.flash('Autostart disabled. The server will no longer start automatically on boot.', category='success')
         except subprocess.CalledProcessError as e:
             message = (e.stderr or e.stdout or str(e)).strip()

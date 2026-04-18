@@ -1,4 +1,5 @@
 import concurrent.futures
+import os
 import re
 import time
 from asyncio import CancelledError
@@ -342,7 +343,10 @@ class HashcatWorker:
         for lock in tuple(self.locks.values()):
             with lock:
                 lock.cancel()
-        subprocess_call(["pkill", "hashcat"])
+        if os.name == "nt":
+            subprocess_call(["taskkill", "/IM", "hashcat.exe", "/F"])
+        else:
+            subprocess_call(["pkill", "hashcat"])
         self.locks.clear()
 
     def cancel(self, task_id: int):

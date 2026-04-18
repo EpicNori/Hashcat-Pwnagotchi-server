@@ -1,8 +1,8 @@
 import os
-import select
-import shlex
+import queue
 import signal
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import List, Union
@@ -69,17 +69,16 @@ class HashcatCmd:
         command = ["hashcat", f"-m{self.mode}", *self.hashcat_args]
         for rule in self.rules:
             if rule is not None:
-                rule_path = str(rule.path)
-                command.append("--rules={}".format(shlex.quote(rule_path)))
-        command.append("--outfile={}".format(shlex.quote(self.outfile)))
+                command.append(f"--rules={rule.path}")
+        command.append(f"--outfile={self.outfile}")
         if self.session is not None:
-            command.append("--session={}".format(shlex.quote(self.session)))
+            command.append(f"--session={self.session}")
         self._populate_class_specific(command)
         if self.mask is not None:
             command.extend(['-a3', self.mask])
         else:
             for word_list in self.wordlists:
-                command.append(shlex.quote(word_list))
+                command.append(word_list)
         command.append("--force")
         return command
 
@@ -121,6 +120,18 @@ class HashcatCmdStdout(HashcatCmd):
         command.append('--stdout')
 
 
+def _stream_reader(pipe, output_queue: queue.Queue, stream_name: str):
+    try:
+        for line in iter(pipe.readline, ''):
+            output_queue.put((stream_name, line))
+    finally:
+        try:
+            pipe.close()
+        except Exception:
+            pass
+        output_queue.put((stream_name, None))
+
+
 def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_minutes=None):
     if timeout_minutes is None:
         timeout_minutes = float('inf')
@@ -133,12 +144,31 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
         hashcat_cmd_list,
         universal_newlines=True,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stderr=subprocess.PIPE,
+        bufsize=1
     )
+    output_queue = queue.Queue()
+    stdout_done = False
+    stderr_done = False
+    stderr_lines = []
+    stdout_thread = threading.Thread(
+        target=_stream_reader,
+        args=(process.stdout, output_queue, "stdout"),
+        daemon=True
+    )
+    stderr_thread = threading.Thread(
+        target=_stream_reader,
+        args=(process.stderr, output_queue, "stderr"),
+        daemon=True
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+
     last_temp_check = 0
     is_paused_for_temp = False
     paused_status_context = None
     base_status_context = TaskInfoStatus.RUNNING
+    supports_suspend = os.name != "nt" and hasattr(signal, "SIGSTOP") and hasattr(signal, "SIGCONT")
 
     while True:
         current_time = time.time()
@@ -181,6 +211,11 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
             cpu_usage_safe = usage.get('cpu_usage', 0) <= cpu_usage_resume_limit
 
             if pause_message is not None:
+                if not supports_suspend:
+                    process.terminate()
+                    raise RuntimeError(
+                        f"{pause_message}. Automatic pause/resume is unavailable on Windows, so the job was stopped to protect hardware."
+                    )
                 if not is_paused_for_temp:
                     paused_status_context = base_status_context
                     process.send_signal(signal.SIGSTOP)
@@ -212,46 +247,60 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
             time.sleep(0.25)
             continue
 
-        ready, _, _ = select.select([process.stdout], [], [], CONTROL_LOOP_INTERVAL)
-        if not ready:
-            if process.poll() is not None:
+        try:
+            stream_name, line = output_queue.get(timeout=CONTROL_LOOP_INTERVAL)
+        except queue.Empty:
+            if process.poll() is not None and stdout_done and stderr_done:
                 break
             continue
 
-        line = process.stdout.readline()
-        if line == '':
-            if process.poll() is not None:
+        if line is None:
+            if stream_name == "stdout":
+                stdout_done = True
+            else:
+                stderr_done = True
+            if process.poll() is not None and stdout_done and stderr_done:
                 break
-            break
-        if line.startswith("STATUS"):
-            parts = line.split()
-            try:
-                progress_index = parts.index("PROGRESS")
-                tried_keys = int(parts[progress_index + 1])
-                total_keys = int(parts[progress_index + 2])
-                if total_keys > 0:
-                    progress = 100. * tried_keys / total_keys
+            continue
+
+        if stream_name == "stderr":
+            stderr_lines.append(line)
+            continue
+
+        if not line.startswith("STATUS"):
+            continue
+
+        parts = line.split()
+        try:
+            progress_index = parts.index("PROGRESS")
+            tried_keys = int(parts[progress_index + 1])
+            total_keys = int(parts[progress_index + 2])
+            if total_keys > 0:
+                progress = 100. * tried_keys / total_keys
+            else:
+                progress = 0.0
+
+            speed_str = "0 H/s"
+            if "SPEED" in parts:
+                speed_index = parts.index("SPEED")
+                speed_val = int(parts[speed_index + 1])
+                if speed_val >= 1000000:
+                    speed_str = f"{speed_val / 1000000:.1f} MH/s"
+                elif speed_val >= 1000:
+                    speed_str = f"{speed_val / 1000:.1f} kH/s"
                 else:
-                    progress = 0.0
+                    speed_str = f"{speed_val} H/s"
 
-                speed_str = "0 H/s"
-                if "SPEED" in parts:
-                    speed_index = parts.index("SPEED")
-                    speed_val = int(parts[speed_index + 1])
-                    if speed_val >= 1000000:
-                        speed_str = f"{speed_val / 1000000:.1f} MH/s"
-                    elif speed_val >= 1000:
-                        speed_str = f"{speed_val / 1000:.1f} kH/s"
-                    else:
-                        speed_str = f"{speed_val} H/s"
+            with lock:
+                lock.progress = progress
+                lock.speed = speed_str
+        except (ValueError, IndexError, ZeroDivisionError):
+            pass
 
-                with lock:
-                    lock.progress = progress
-                    lock.speed = speed_str
-            except (ValueError, IndexError, ZeroDivisionError):
-                pass
-
-    _, stderr = process.communicate()
+    process.wait()
+    stdout_thread.join(timeout=1)
+    stderr_thread.join(timeout=1)
+    stderr = ''.join(stderr_lines)
     if stderr:
         warn, err = split_warnings_errors(stderr)
         if err.strip():
