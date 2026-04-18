@@ -46,8 +46,26 @@ function Resolve-Python {
     throw "Python 3 was not found after installation."
 }
 
+function Ensure-PathContains {
+    param([string]$DirectoryPath)
+
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $pathParts = @()
+    if ($userPath) {
+        $pathParts = $userPath.Split(';') | Where-Object { $_ }
+    }
+    if ($pathParts -contains $DirectoryPath) {
+        return
+    }
+
+    $newPath = if ($userPath) { "$userPath;$DirectoryPath" } else { $DirectoryPath }
+    [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
+    $env:Path = "$env:Path;$DirectoryPath"
+}
+
 $defaultInstallRoot = Join-Path $env:USERPROFILE "Hashcat-Pwnagotchi-server"
 $installRoot = if ($env:HASHCAT_WPA_SERVER_DIR) { $env:HASHCAT_WPA_SERVER_DIR } else { $defaultInstallRoot }
+$userBinDir = Join-Path $env:USERPROFILE ".local\bin"
 
 Write-Step "Preparing Windows local install..."
 Ensure-Command -CommandName "git" -WingetId "Git.Git"
@@ -80,6 +98,15 @@ Write-Step "Upgrading pip and installing Python dependencies..."
 & $venvPython -m pip install --upgrade pip
 & $venvPython -m pip install -r requirements.txt
 
+Write-Step "Installing crackserver command..."
+New-Item -ItemType Directory -Path $userBinDir -Force | Out-Null
+Copy-Item (Join-Path $installRoot "windows\crackserver.ps1") (Join-Path $userBinDir "crackserver.ps1") -Force
+Copy-Item (Join-Path $installRoot "windows\crackserver.cmd") (Join-Path $userBinDir "crackserver.cmd") -Force
+Ensure-PathContains -DirectoryPath $userBinDir
+
+Write-Step "Starting web server..."
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $installRoot "windows\crackserver.ps1") start
+
 $hashcatDetected = [bool](Get-Command hashcat -ErrorAction SilentlyContinue)
 $hcxpcapngtoolDetected = [bool](Get-Command hcxpcapngtool -ErrorAction SilentlyContinue)
 $hcxhashtoolDetected = [bool](Get-Command hcxhashtool -ErrorAction SilentlyContinue)
@@ -89,7 +116,8 @@ Write-Host "====================================================================
 Write-Host "[+] Windows local install complete."
 Write-Host "[+] Repository:        $installRoot"
 Write-Host "[+] Virtual env:       $installRoot\.venv"
-Write-Host "[+] Start command:     .\.venv\Scripts\python.exe app\run.py"
+Write-Host "[+] crackserver cmd:   $userBinDir\crackserver.cmd"
+Write-Host "[+] Start command:     crackserver start"
 Write-Host "[+] Dashboard URL:     http://127.0.0.1:9111"
 Write-Host "[+] Default login:     admin / changeme"
 Write-Host "[+]"
@@ -100,4 +128,5 @@ if (-not $hcxpcapngtoolDetected -or -not $hcxhashtoolDetected) {
     Write-Host "[!] hcx tools were not detected in PATH. Raw capture conversion and ESSID splitting require hcxpcapngtool and hcxhashtool."
 }
 Write-Host "[+] To update later:   irm https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/windows/update.ps1 | iex"
+Write-Host "[+] Server status:     crackserver status"
 Write-Host "=========================================================================="

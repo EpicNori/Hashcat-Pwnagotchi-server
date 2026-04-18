@@ -53,6 +53,8 @@ irm https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/wi
 - The default install path is `%USERPROFILE%\Hashcat-Pwnagotchi-server`.
 - You can override that path by setting `$env:HASHCAT_WPA_SERVER_DIR` before running the one-liner.
 - The Windows setup is intended for local usage and development. Linux remains the full background-service deployment target.
+- The installer now places a `crackserver` command in `%USERPROFILE%\.local\bin` and starts the web server automatically.
+- Use `crackserver start`, `crackserver stop`, `crackserver restart`, `crackserver status`, `crackserver logs`, `crackserver dashboard`, and `crackserver update` on Windows.
 - Cracking jobs still require Windows-accessible `hashcat` binaries in `PATH`.
 - Capture conversion and ESSID splitting require `hcxpcapngtool` and `hcxhashtool` in `PATH`.
 

@@ -51,10 +51,15 @@ Write-Step "Refreshing Python dependencies..."
 & $venvPython -m pip install --upgrade pip
 & $venvPython -m pip install -r requirements.txt
 
+$userBinDir = Join-Path $env:USERPROFILE ".local\bin"
+New-Item -ItemType Directory -Path $userBinDir -Force | Out-Null
+Copy-Item (Join-Path $installRoot "windows\crackserver.ps1") (Join-Path $userBinDir "crackserver.ps1") -Force
+Copy-Item (Join-Path $installRoot "windows\crackserver.cmd") (Join-Path $userBinDir "crackserver.cmd") -Force
+
 Write-Host ""
 Write-Host "=========================================================================="
 Write-Host "[+] Windows update complete."
 Write-Host "[+] Repository:    $installRoot"
-Write-Host "[+] Start command: .\.venv\Scripts\python.exe app\run.py"
+Write-Host "[+] Start command: crackserver start"
 Write-Host "[+] Dashboard URL: http://127.0.0.1:9111"
 Write-Host "=========================================================================="
