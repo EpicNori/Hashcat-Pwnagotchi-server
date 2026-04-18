@@ -115,5 +115,9 @@ class UploadForm(FlaskForm):
         return hashcat_args
 
 
-cap_uploads = UploadSet(name='files', extensions=HashcatMode.valid_suffixes(), default_dest=lambda app: app.config['CAPTURES_DIR'])
+cap_uploads = UploadSet(
+    name='files',
+    extensions=HashcatMode.valid_suffixes(),
+    default_dest=lambda app: str(app.config['CAPTURES_DIR'])
+)
 configure_uploads(app, cap_uploads)

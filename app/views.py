@@ -218,6 +218,10 @@ def decode_task_essid(file_22000: Path):
     essid = bytes.fromhex(essid_hex).decode('utf-8')
     return bssid, essid
 
+
+def normalize_task_filename(saved_filename: str) -> str:
+    return Path(saved_filename).as_posix()
+
 @app.route('/pwnagotchi')
 def pwnagotchi():
     return render_template('pwnagotchi.html', title='Pwnagotchi Integration')
@@ -235,7 +239,7 @@ def upload():
         if not user_has_roles(current_user, RoleEnum.USER):
             return flask.abort(HTTPStatus.FORBIDDEN, description="You do not have the permission to start jobs.")
         # flask-uploads already uses werkzeug.secure_filename()
-        filename = cap_uploads.save(request.files['capture'], folder=current_user.username)
+        filename = normalize_task_filename(cap_uploads.save(request.files['capture'], folder=current_user.username))
         cap_path = Path(app.config['CAPTURES_DIR']) / filename
         try:
             file_22000 = convert_to_22000(cap_path)
@@ -250,7 +254,7 @@ def upload():
             bssid_essid = next(bssid_essid_from_22000(file_essid))
             bssid, essid = bssid_essid.split(':')
             essid = bytes.fromhex(essid).decode('utf-8')
-            new_task = UploadedTask(user_id=current_user.id, filename=cap_path.name, wordlist=form.get_wordlist_name(),
+            new_task = UploadedTask(user_id=current_user.id, filename=filename, wordlist=form.get_wordlist_name(),
                                     rule=form.rule.data, bssid=bssid, essid=essid, hashcat_args=hashcat_args)
             tasks[file_essid] = new_task
         db.session.add_all(tasks.values())
@@ -313,7 +317,7 @@ def api_upload():
     if not form.validate():
         return flask.abort(HTTPStatus.BAD_REQUEST, description=str(form.errors))
         
-    filename = cap_uploads.save(request.files['capture'], folder=user.username)
+    filename = normalize_task_filename(cap_uploads.save(request.files['capture'], folder=user.username))
     cap_path = Path(app.config['CAPTURES_DIR']) / filename
     try:
         file_22000 = convert_to_22000(cap_path)
@@ -329,7 +333,7 @@ def api_upload():
         bssid_essid = next(bssid_essid_from_22000(file_essid))
         bssid, essid = bssid_essid.split(':')
         essid = bytes.fromhex(essid).decode('utf-8')
-        new_task = UploadedTask(user_id=user.id, filename=cap_path.name, wordlist=form.get_wordlist_name(),
+        new_task = UploadedTask(user_id=user.id, filename=filename, wordlist=form.get_wordlist_name(),
                                 rule=form.rule.data, bssid=bssid, essid=essid, hashcat_args=hashcat_args)
         tasks[file_essid] = new_task
     db.session.add_all(tasks.values())
