@@ -8,6 +8,7 @@ $VenvRoot = Join-Path $InstallRoot "venv"
 $DataRoot = Join-Path $InstallRoot "data"
 $LogsRoot = Join-Path $InstallRoot "logs"
 $BinRoot = Join-Path $InstallRoot "bin"
+$ToolsRoot = Join-Path $InstallRoot "tools"
 $TaskName = "HashcatWPAServer"
 
 function Test-IsAdministrator {
@@ -112,6 +113,92 @@ function Ensure-MachinePathEntry([string]$PathEntry) {
     $env:Path = "$env:Path;$PathEntry"
 }
 
+function Get-LatestGitHubRelease {
+    param(
+        [string]$Repository
+    )
+
+    $releaseUrl = "https://api.github.com/repos/$Repository/releases/latest"
+    return Invoke-RestMethod -Uri $releaseUrl -Headers @{ "User-Agent" = "HashcatWPAServerInstaller" }
+}
+
+function Expand-ArchiveCrossFormat {
+    param(
+        [string]$ArchivePath,
+        [string]$DestinationPath
+    )
+
+    if (Test-Path $DestinationPath) {
+        Remove-Item -LiteralPath $DestinationPath -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $DestinationPath -Force | Out-Null
+
+    try {
+        & tar.exe -xf $ArchivePath -C $DestinationPath
+        if ($LASTEXITCODE -eq 0) {
+            return
+        }
+    } catch {
+    }
+
+    Expand-Archive -Path $ArchivePath -DestinationPath $DestinationPath -Force
+}
+
+function Install-HashcatToolchain([string]$ToolsRootPath) {
+    $hashcatBinRoot = Join-Path $ToolsRootPath "hashcat"
+    $hcxBinRoot = Join-Path $ToolsRootPath "hcxtools"
+    New-Item -ItemType Directory -Path $hashcatBinRoot, $hcxBinRoot -Force | Out-Null
+
+    $hashcatRelease = Get-LatestGitHubRelease -Repository "hashcat/hashcat"
+    $hashcatAsset = $hashcatRelease.assets | Where-Object {
+        $_.name -match '\.(zip|7z)$'
+    } | Select-Object -First 1
+
+    if (-not $hashcatAsset) {
+        throw "Could not find a Hashcat release archive to install hashcat.exe."
+    }
+
+    $hashcatArchive = Join-Path ([IO.Path]::GetTempPath()) $hashcatAsset.name
+    Write-Step "Downloading Hashcat release asset $($hashcatAsset.name)"
+    Invoke-WebRequest -Uri $hashcatAsset.browser_download_url -OutFile $hashcatArchive -UseBasicParsing
+    Expand-ArchiveCrossFormat -ArchivePath $hashcatArchive -DestinationPath $hashcatBinRoot
+    Remove-Item -LiteralPath $hashcatArchive -Force -ErrorAction SilentlyContinue
+
+    $hashcatExe = Get-ChildItem -Path $hashcatBinRoot -Recurse -Filter "hashcat.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $hashcatExe) {
+        throw "The downloaded Hashcat package did not contain hashcat.exe."
+    }
+    Ensure-MachinePathEntry -PathEntry $hashcatExe.Directory.FullName
+
+    if (-not (Get-Command hashcat.exe -ErrorAction SilentlyContinue)) {
+        throw "hashcat.exe could not be installed automatically. Install Hashcat and rerun the installer."
+    }
+
+    $hcxtoolsRelease = Get-LatestGitHubRelease -Repository "ZerBea/hcxtools"
+    $hcxtoolsAsset = $hcxtoolsRelease.assets | Where-Object {
+        $_.name -match 'win|windows|mingw' -and $_.name -match '\.(zip|7z)$'
+    } | Select-Object -First 1
+
+    if (-not $hcxtoolsAsset) {
+        throw "Could not find a Windows hcxtools release asset to install hcxpcapngtool.exe and hcxhashtool.exe."
+    }
+
+    $tempArchive = Join-Path ([IO.Path]::GetTempPath()) $hcxtoolsAsset.name
+    Write-Step "Downloading hcxtools release asset $($hcxtoolsAsset.name)"
+    Invoke-WebRequest -Uri $hcxtoolsAsset.browser_download_url -OutFile $tempArchive -UseBasicParsing
+    Expand-ArchiveCrossFormat -ArchivePath $tempArchive -DestinationPath $hcxBinRoot
+    Remove-Item -LiteralPath $tempArchive -Force -ErrorAction SilentlyContinue
+
+    $requiredTools = @("hcxpcapngtool.exe", "hcxhashtool.exe")
+    foreach ($toolName in $requiredTools) {
+        $toolPath = Get-ChildItem -Path $hcxBinRoot -Recurse -Filter $toolName -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $toolPath) {
+            throw "The downloaded hcxtools package did not contain $toolName."
+        }
+        Ensure-MachinePathEntry -PathEntry $toolPath.Directory.FullName
+    }
+}
+
 function Invoke-PythonCommand([string[]]$PythonCommand, [string[]]$Arguments) {
     if ($PythonCommand.Length -gt 1) {
         & $PythonCommand[0] $PythonCommand[1..($PythonCommand.Length - 1)] @Arguments
@@ -133,7 +220,7 @@ if (-not (Test-IsAdministrator)) {
 }
 
 Write-Step "Preparing Windows installation directories"
-New-Item -ItemType Directory -Path $InstallRoot, $DataRoot, $LogsRoot, $BinRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $InstallRoot, $DataRoot, $LogsRoot, $BinRoot, $ToolsRoot -Force | Out-Null
 
 $source = Get-SourceRoot
 try {
@@ -153,6 +240,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $CurrentRoot "windows\crackserver.ps1") -Destination (Join-Path $BinRoot "crackserver.ps1") -Force
     Copy-Item -LiteralPath (Join-Path $CurrentRoot "windows\crackserver.cmd") -Destination (Join-Path $BinRoot "crackserver.cmd") -Force
     Ensure-MachinePathEntry -PathEntry $BinRoot
+    Install-HashcatToolchain -ToolsRootPath $ToolsRoot
 
     Write-Step "Configuring Windows autostart task"
     Invoke-CheckedPowerShellFile -ScriptPath (Join-Path $CurrentRoot "windows\autostart_service.ps1") -Arguments @("enable")
@@ -181,13 +269,13 @@ $ipAddresses = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinu
 $networkIp = if ($ipAddresses) { $ipAddresses[0] } else { "YOUR_SERVER_IP" }
 $toolWarnings = @()
 if (-not (Get-Command hashcat.exe -ErrorAction SilentlyContinue)) {
-    $toolWarnings += "hashcat.exe was not found in PATH. Install Hashcat to run cracking jobs."
+    $toolWarnings += "hashcat.exe was not found in PATH even after installation."
 }
 if (-not (Get-Command hcxpcapngtool.exe -ErrorAction SilentlyContinue)) {
-    $toolWarnings += "hcxpcapngtool.exe was not found in PATH. Upload .22000 files directly or install hcxtools for raw capture conversion."
+    $toolWarnings += "hcxpcapngtool.exe was not found in PATH even after installation."
 }
 if (-not (Get-Command hcxhashtool.exe -ErrorAction SilentlyContinue)) {
-    $toolWarnings += "hcxhashtool.exe was not found in PATH. ESSID splitting from .22000 files requires hcxtools."
+    $toolWarnings += "hcxhashtool.exe was not found in PATH even after installation."
 }
 
 Write-Host ""

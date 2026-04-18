@@ -19,7 +19,7 @@ def convert_to_22000(capture_path):
             error_msg = err.strip().splitlines()[0] if err.strip() else "No valid handshakes found in capture"
             raise InvalidFileError(f"Conversion failed: {error_msg}")
 
-    if re.fullmatch("\.(p?cap|pcapng)", capture_path.suffix, flags=re.IGNORECASE):
+    if re.fullmatch(r"\.(p?cap|pcapng)", capture_path.suffix, flags=re.IGNORECASE):
         convert_and_verify(['hcxpcapngtool', '-o', str(file_22000), str(capture_path)])
         capture_path = file_22000
 
@@ -44,7 +44,6 @@ def split_by_essid(file_22000, to_folder=None):
             # should never happen
             logger.warning(f"{to_folder} already exists")
     to_folder.mkdir(exist_ok=True)
-
     curdir = os.getcwd()
     os.chdir(to_folder)
     subprocess_call(['hcxhashtool', '-i', file_22000, '--essid-group'])
