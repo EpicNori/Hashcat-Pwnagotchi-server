@@ -103,19 +103,20 @@ Safe updates replace the application layer only.
 
 ## Important Windows Notes
 
-The Windows installer automates the dashboard, virtual environment, autostart, CLI wrapper, and update path. For actual cracking workloads, the installer/updater expects these tools to be available either system-wide in `PATH` or bundled with this repository under `windows/tools/`:
+The Windows installer automates the dashboard, virtual environment, autostart, CLI wrapper, and update path. For cracking workloads:
 
-- `hashcat.exe` for cracking and benchmarks
-- `hcxpcapngtool.exe` and `hcxhashtool.exe` for converting and splitting raw capture uploads
-- `hcxmactool.exe` if you want legacy `.hccapx` or `.pmkid` conversion support
+- `hashcat.exe` is still required and should be available system-wide or bundled under `windows/tools/hashcat/`
+- direct `.22000` uploads work on Windows even if `hcxhashtool.exe` is missing, because the server can fall back to built-in ESSID splitting
+- raw `.cap`, `.pcap`, and `.pcapng` conversion still prefers `hcxpcapngtool.exe`, either bundled under `windows/tools/hcxtools/`, installed system-wide, or available through WSL
+- `hcxmactool.exe` is still needed for legacy `.hccapx` or `.pmkid` conversion support unless you provide an equivalent Linux-side path
 
-Recommended bundle layout:
+Recommended optional bundle layout:
 
 - `windows/tools/hashcat/hashcat.exe`
 - `windows/tools/hcxtools/hcxpcapngtool.exe`
 - `windows/tools/hcxtools/hcxhashtool.exe`
 
-If the required binaries are neither bundled nor already installed system-wide, the Windows installer will now fail early with a clear error instead of leaving the server in a half-working state.
+If native hcxtools are not available, the app will still accept direct `.22000` uploads on Windows. If WSL is installed, the server can also try Linux-side hcxtools for raw capture conversion.
 
 ## Key Features
 

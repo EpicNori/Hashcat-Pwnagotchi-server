@@ -162,10 +162,35 @@ function Require-ToolInPath([string]$ToolName, [string]$BundledSubdir, [string]$
     }
 }
 
+function Try-InstallWSL {
+    if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
+        return $false
+    }
+
+    try {
+        & wsl.exe -l -v | Out-Null
+        return $true
+    } catch {
+    }
+
+    try {
+        Write-Step "Attempting to install WSL Ubuntu for Linux hcxtools support"
+        & wsl.exe --install -d Ubuntu --no-launch
+        return $true
+    } catch {
+        return $false
+    }
+}
+
 function Install-HashcatToolchain() {
     Require-ToolInPath -ToolName "hashcat.exe" -BundledSubdir "hashcat" -MissingMessage "hashcat.exe is required. Bundle it under windows\\tools\\hashcat or install it system-wide before running the installer."
-    Require-ToolInPath -ToolName "hcxpcapngtool.exe" -BundledSubdir "hcxtools" -MissingMessage "hcxpcapngtool.exe is required. Bundle it under windows\\tools\\hcxtools or install it system-wide before running the installer."
-    Require-ToolInPath -ToolName "hcxhashtool.exe" -BundledSubdir "hcxtools" -MissingMessage "hcxhashtool.exe is required. Bundle it under windows\\tools\\hcxtools or install it system-wide before running the installer."
+    $hcxBundled = Copy-BundledToolDirectory -SourceDir (Join-Path $BundledToolsRoot "hcxtools") -DestinationDir (Join-Path $ToolsRoot "hcxtools")
+    if ($hcxBundled) {
+        Ensure-MachinePathEntry -PathEntry (Join-Path $ToolsRoot "hcxtools")
+    }
+    if (-not (Get-Command hcxpcapngtool.exe -ErrorAction SilentlyContinue)) {
+        Try-InstallWSL | Out-Null
+    }
 }
 
 function Invoke-PythonCommand([string[]]$PythonCommand, [string[]]$Arguments) {
@@ -241,10 +266,14 @@ if (-not (Get-Command hashcat.exe -ErrorAction SilentlyContinue)) {
     $toolWarnings += "hashcat.exe was not found in PATH even after installation."
 }
 if (-not (Get-Command hcxpcapngtool.exe -ErrorAction SilentlyContinue)) {
-    $toolWarnings += "hcxpcapngtool.exe was not found in PATH even after installation."
+    if (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
+        $toolWarnings += "hcxpcapngtool.exe was not found natively. Raw .cap/.pcap/.pcapng uploads can use WSL hcxtools if Ubuntu and hcxtools are installed there."
+    } else {
+        $toolWarnings += "hcxpcapngtool.exe was not found natively. Direct .22000 uploads work, but raw .cap/.pcap/.pcapng conversion still needs bundled hcxtools or WSL."
+    }
 }
 if (-not (Get-Command hcxhashtool.exe -ErrorAction SilentlyContinue)) {
-    $toolWarnings += "hcxhashtool.exe was not found in PATH even after installation."
+    $toolWarnings += "hcxhashtool.exe was not found natively. Direct .22000 uploads still work because Windows can fall back to built-in splitting."
 }
 
 Write-Host ""
