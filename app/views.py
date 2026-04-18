@@ -2,13 +2,14 @@ import os
 import shlex
 import subprocess
 from http import HTTPStatus
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from threading import Thread
 
 import flask
 from flask import request, render_template, redirect, url_for
 from flask.json import jsonify
 from flask_login import login_user, logout_user, login_required, current_user
+from werkzeug.datastructures import CombinedMultiDict
 
 from app import app, db
 from app.attack.convert import split_by_essid, convert_to_22000
@@ -220,7 +221,18 @@ def decode_task_essid(file_22000: Path):
 
 
 def normalize_task_filename(saved_filename: str) -> str:
-    return Path(saved_filename).as_posix()
+    return PurePosixPath(str(saved_filename).replace('\\', '/')).as_posix()
+
+
+def resolve_capture_path(saved_filename: str) -> Path:
+    relative_filename = PurePosixPath(normalize_task_filename(saved_filename))
+    return Path(app.config['CAPTURES_DIR'], *relative_filename.parts)
+
+
+def save_capture_for_user(file_storage, username: str) -> tuple[str, Path]:
+    saved_filename = cap_uploads.save(file_storage, folder=username)
+    filename = normalize_task_filename(saved_filename)
+    return filename, resolve_capture_path(filename)
 
 @app.route('/pwnagotchi')
 def pwnagotchi():
@@ -239,8 +251,7 @@ def upload():
         if not user_has_roles(current_user, RoleEnum.USER):
             return flask.abort(HTTPStatus.FORBIDDEN, description="You do not have the permission to start jobs.")
         # flask-uploads already uses werkzeug.secure_filename()
-        filename = normalize_task_filename(cap_uploads.save(request.files['capture'], folder=current_user.username))
-        cap_path = Path(app.config['CAPTURES_DIR']) / filename
+        filename, cap_path = save_capture_for_user(request.files['capture'], current_user.username)
         try:
             file_22000 = convert_to_22000(cap_path)
             folder_split_by_essid = split_by_essid(file_22000)
@@ -313,12 +324,15 @@ def api_upload():
     # Disable CSRF for this API endpoint
     from app.utils.settings import read_settings
     settings = read_settings()
-    form = UploadForm(meta={'csrf': False}, data={'workload': settings.get("default_api_workload", Workload.Fast.value)})
+    form = UploadForm(
+        formdata=CombinedMultiDict((request.files, request.form)),
+        meta={'csrf': False},
+        data={'workload': settings.get("default_api_workload", Workload.Fast.value)}
+    )
     if not form.validate():
         return flask.abort(HTTPStatus.BAD_REQUEST, description=str(form.errors))
-        
-    filename = normalize_task_filename(cap_uploads.save(request.files['capture'], folder=user.username))
-    cap_path = Path(app.config['CAPTURES_DIR']) / filename
+
+    filename, cap_path = save_capture_for_user(request.files['capture'], user.username)
     try:
         file_22000 = convert_to_22000(cap_path)
         folder_split_by_essid = split_by_essid(file_22000)
@@ -401,7 +415,7 @@ def download(task_id, file_type):
     
     # Base path logic
     # Note: task.filename usually includes user folder, e.g. "admin/Handshake.pcap"
-    base_file = Path(app.config['CAPTURES_DIR']) / task.filename
+    base_file = resolve_capture_path(task.filename)
     
     if file_type == 'capture':
         p = base_file
@@ -536,7 +550,7 @@ def requeue(task_id):
         flask.flash("This task is still running. Cancel it first if you want to restart it.", category="info")
         return redirect(url_for('user_profile'))
 
-    capture_path = Path(app.config['CAPTURES_DIR']) / task.filename
+    capture_path = resolve_capture_path(task.filename)
     if not capture_path.exists():
         flask.flash("The original capture file could not be found, so this task cannot be re-queued.", category="error")
         return redirect(url_for('user_profile'))
