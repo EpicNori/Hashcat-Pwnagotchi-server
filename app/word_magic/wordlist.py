@@ -35,6 +35,10 @@ class WordListInfo:
 
     def update_count(self):
         if self.custom:
+            if not self.path.exists():
+                # Keep the declared/default count for installable built-in lists
+                # until the file is actually present on disk.
+                return
             if self.script:
                 self.count = None
                 return
