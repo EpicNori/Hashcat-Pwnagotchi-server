@@ -29,9 +29,14 @@ if (-not (Test-Path ".git")) {
     throw "$installRoot exists but is not a git checkout."
 }
 
-$gitStatus = (& git status --porcelain).Trim()
-if ($gitStatus) {
-    throw "Update aborted because the repo has uncommitted changes. Commit or stash them first."
+$trackedDiff = (& git diff --name-only).Trim()
+if ($trackedDiff) {
+    throw "Update aborted because tracked repository files have local changes. Commit or stash them first."
+}
+
+$stagedDiff = (& git diff --cached --name-only).Trim()
+if ($stagedDiff) {
+    throw "Update aborted because there are staged changes in the repository. Commit or unstage them first."
 }
 
 Write-Step "Fetching latest changes..."
