@@ -42,6 +42,8 @@ def download_wordlists():
 
 class BaseAttack:
     timers = defaultdict(lambda: dict(count=0, elapsed=1e-6))
+    WPA_PRINTABLE_ASCII = ''.join(chr(codepoint) for codepoint in range(32, 127))
+    WPA_EXHAUSTIVE_MASK = "?1" * 63
 
     def __init__(self, file_22000: Union[str, Path], hashcat_args=(), fast=False, verbose=True):
         """
@@ -152,6 +154,25 @@ class BaseAttack:
                 wordlist_order = wordlist_order[::-1]
         hashcat_cmd = self.new_cmd()
         hashcat_cmd.add_wordlists(WordList.NAMES_UA_RU_WITH_DIGITS)
+        self.runner(hashcat_cmd)
+
+    @monitor_timer
+    def run_exhaustive_bruteforce(self):
+        hashcat_args = list(self.hashcat_args)
+        hashcat_args.extend([
+            "-a3",
+            "--increment",
+            "--increment-min=8",
+            "--increment-max=63",
+            f"--custom-charset1={self.WPA_PRINTABLE_ASCII}",
+        ])
+        hashcat_cmd = HashcatCmdCapture(
+            hcap_file=self.file_22000,
+            outfile=self.key_file,
+            hashcat_args=tuple(hashcat_args),
+            session=self.session,
+        )
+        hashcat_cmd.mask = self.WPA_EXHAUSTIVE_MASK
         self.runner(hashcat_cmd)
 
     def run_all(self):

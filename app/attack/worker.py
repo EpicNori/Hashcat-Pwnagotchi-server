@@ -220,6 +220,11 @@ class CapAttack(BaseAttack):
                     self.lock.set_status("Running user wordlist scripts...")
                 self.run_user_script_wordlist_chain()
 
+            if self.is_attack_needed():
+                with self.lock:
+                    self.lock.set_status("Running exhaustive WPA brute force...")
+                self.run_exhaustive_bruteforce()
+
 
 def _crack_async(attack: CapAttack):
     """

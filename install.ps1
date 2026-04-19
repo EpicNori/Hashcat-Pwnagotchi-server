@@ -11,6 +11,7 @@ $BinRoot = Join-Path $InstallRoot "bin"
 $ToolsRoot = Join-Path $InstallRoot "tools"
 $BundledToolsRoot = Join-Path $CurrentRoot "windows\tools"
 $TaskName = "HashcatWPAServer"
+$script:NvidiaDriverStatus = "not-needed"
 
 function Test-IsAdministrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -20,6 +21,77 @@ function Test-IsAdministrator {
 
 function Write-Step([string]$Message) {
     Write-Host "[*] $Message"
+}
+
+function Test-NvidiaGpuPresent {
+    try {
+        $controllers = Get-CimInstance Win32_VideoController -ErrorAction Stop
+        return @($controllers | Where-Object {
+            ($_.Name -match "NVIDIA") -or ($_.AdapterCompatibility -match "NVIDIA")
+        }).Count -gt 0
+    } catch {
+        return $false
+    }
+}
+
+function Test-NvidiaDriverReady {
+    if (Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue) {
+        return $true
+    }
+
+    $defaultNvsmPath = "C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"
+    return Test-Path $defaultNvsmPath
+}
+
+function Get-WingetCommand {
+    $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
+    if ($winget) {
+        return $winget.Source
+    }
+
+    try {
+        Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction Stop
+    } catch {
+    }
+
+    $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
+    if ($winget) {
+        return $winget.Source
+    }
+
+    return $null
+}
+
+function Ensure-NvidiaDriverSupport {
+    if (-not (Test-NvidiaGpuPresent)) {
+        return
+    }
+
+    if (Test-NvidiaDriverReady) {
+        $script:NvidiaDriverStatus = "already-installed"
+        Write-Step "NVIDIA GPU runtime already appears to be available."
+        return
+    }
+
+    $wingetCmd = Get-WingetCommand
+    if (-not $wingetCmd) {
+        $script:NvidiaDriverStatus = "manual-required"
+        Write-Step "NVIDIA GPU detected, but winget is unavailable for automatic driver helper installation."
+        return
+    }
+
+    Write-Step "NVIDIA GPU detected. Attempting to install NVIDIA GeForce Experience so drivers can be installed automatically"
+    try {
+        & $wingetCmd install -e --id Nvidia.GeForceExperience --scope machine --accept-package-agreements --accept-source-agreements --silent --disable-interactivity
+        if ($LASTEXITCODE -eq 0) {
+            $script:NvidiaDriverStatus = "installed"
+            return
+        }
+    } catch {
+    }
+
+    $script:NvidiaDriverStatus = "manual-required"
+    Write-Step "Automatic NVIDIA helper installation did not complete successfully."
 }
 
 function Get-LocalSourceRoot {
@@ -183,6 +255,7 @@ function Try-InstallWSL {
 }
 
 function Install-HashcatToolchain() {
+    Ensure-NvidiaDriverSupport
     Require-ToolInPath -ToolName "hashcat.exe" -BundledSubdir "hashcat" -MissingMessage "hashcat.exe is required. Bundle it under windows\\tools\\hashcat or install it system-wide before running the installer."
     $hcxBundled = Copy-BundledToolDirectory -SourceDir (Join-Path $BundledToolsRoot "hcxtools") -DestinationDir (Join-Path $ToolsRoot "hcxtools")
     if ($hcxBundled) {
@@ -274,6 +347,14 @@ if (-not (Get-Command hcxpcapngtool.exe -ErrorAction SilentlyContinue)) {
 }
 if (-not (Get-Command hcxhashtool.exe -ErrorAction SilentlyContinue)) {
     $toolWarnings += "hcxhashtool.exe was not found natively. Direct .22000 uploads still work because Windows can fall back to built-in splitting."
+}
+switch ($script:NvidiaDriverStatus) {
+    "installed" {
+        $toolWarnings += "NVIDIA GPU detected. GeForce Experience was installed automatically so NVIDIA drivers can be provisioned. A reboot or first-time NVIDIA setup may still be required before Hashcat can use the GPU."
+    }
+    "manual-required" {
+        $toolWarnings += "NVIDIA GPU detected, but automatic NVIDIA driver/helper installation did not complete. Install the NVIDIA driver manually before expecting GPU cracking to work."
+    }
 }
 
 Write-Host ""
