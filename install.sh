@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+NVIDIA_DRIVER_STATUS="not-needed"
+
 ensure_service_running() {
     local service_name="$1"
 
@@ -24,6 +26,72 @@ ensure_service_running() {
     exit 1
 }
 
+os_id_like_contains() {
+    local needle="$1"
+    [[ " ${ID_LIKE:-} " == *" ${needle} "* ]]
+}
+
+has_nvidia_gpu() {
+    if ! command -v lspci >/dev/null 2>&1; then
+        return 1
+    fi
+
+    lspci -nn | grep -Eqi '((VGA|3D|Display).*(NVIDIA|GeForce|Quadro|Tesla))|((NVIDIA|GeForce|Quadro|Tesla).*(VGA|3D|Display))'
+}
+
+install_nvidia_drivers_if_needed() {
+    if command -v nvidia-smi >/dev/null 2>&1 && lsmod | grep -q '^nvidia'; then
+        NVIDIA_DRIVER_STATUS="already-installed"
+        echo "[*] NVIDIA GPU runtime already appears to be installed."
+        return 0
+    fi
+
+    if ! has_nvidia_gpu; then
+        return 0
+    fi
+
+    echo "[*] NVIDIA GPU detected. Attempting automatic driver installation..."
+
+    if [ -r /etc/os-release ]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+    fi
+
+    if [ "${ID:-}" = "ubuntu" ] || os_id_like_contains "ubuntu"; then
+        apt-get install -y ubuntu-drivers-common
+        if ubuntu-drivers autoinstall; then
+            NVIDIA_DRIVER_STATUS="installed"
+            return 0
+        fi
+
+        echo "[!] ubuntu-drivers autoinstall failed, falling back to apt package installation..."
+        if apt-get install -y nvidia-driver; then
+            NVIDIA_DRIVER_STATUS="installed"
+            return 0
+        fi
+    elif [ "${ID:-}" = "debian" ] || [ "${ID:-}" = "kali" ] || os_id_like_contains "debian"; then
+        apt-get install -y "linux-headers-$(uname -r)" || true
+        if apt-get install -y nvidia-driver firmware-misc-nonfree; then
+            NVIDIA_DRIVER_STATUS="installed"
+            return 0
+        fi
+
+        echo "[!] Full Debian-family NVIDIA package set failed, retrying with the base driver package..."
+        if apt-get install -y nvidia-driver; then
+            NVIDIA_DRIVER_STATUS="installed"
+            return 0
+        fi
+    else
+        echo "[!] NVIDIA GPU detected, but this installer only knows how to auto-install drivers on Debian-family Linux."
+        NVIDIA_DRIVER_STATUS="manual-required"
+        return 0
+    fi
+
+    echo "[!] NVIDIA GPU detected, but the driver installation step did not complete successfully."
+    echo "[!] The server was installed, but you may need to install the NVIDIA driver manually before GPU cracking works."
+    NVIDIA_DRIVER_STATUS="manual-required"
+}
+
 # Ensure script is being run as root
 if [ "$EUID" -ne 0 ]; then
   echo "[!] Please run this installation script as root (sudo bash install.sh)"
@@ -42,7 +110,8 @@ apt-get install -f -y || true
 
 echo "[*] Updating package list and installing build dependencies..."
 apt-get update
-apt-get install -y git dpkg-dev debhelper python3 python3-venv systemd hashcat hcxtools
+apt-get install -y curl git dpkg-dev debhelper pciutils python3 python3-venv systemd hashcat hcxtools
+install_nvidia_drivers_if_needed
 
 echo "[*] Cloning the extremely fast hashcat-wpa-server..."
 cd /tmp
@@ -93,6 +162,15 @@ if ! pidof systemd >/dev/null; then
 else
     echo "[+] SUCCESS! hashcat-wpa-server has been installed and is now fully running!"
     echo "[+] No further configuration is needed. It automatically runs in the background."
+fi
+
+if [ "$NVIDIA_DRIVER_STATUS" = "installed" ]; then
+    echo "[+] NVIDIA drivers were installed automatically for detected GPU hardware."
+    echo "[+] A reboot may still be required before Hashcat can use the GPU."
+elif [ "$NVIDIA_DRIVER_STATUS" = "already-installed" ]; then
+    echo "[+] NVIDIA GPU runtime was already available on this machine."
+elif [ "$NVIDIA_DRIVER_STATUS" = "manual-required" ]; then
+    echo "[!] NVIDIA GPU detected, but driver setup still needs manual attention before GPU cracking will work."
 fi
 
 echo "[+] "

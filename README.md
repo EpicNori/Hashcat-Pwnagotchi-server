@@ -20,6 +20,8 @@ For Debian, Ubuntu, and Kali:
 curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/install.sh | sudo bash
 ```
 
+On Linux, the installer now also attempts to auto-install NVIDIA drivers when compatible NVIDIA GPU hardware is detected on supported Debian-family systems.
+
 ### Windows one-liner
 
 Open an Administrator PowerShell window (`Run as administrator`), then run this directly in that same window:
