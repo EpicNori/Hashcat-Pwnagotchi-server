@@ -493,17 +493,6 @@ def download_test_capture():
     )
 
 
-@app.route('/download_test_wordlist')
-@login_required
-def download_test_wordlist():
-    sample_wordlist = Path(app.root_path).parent / "extras" / "test_capture_hashcat_essid_wordlist.txt"
-    return flask.send_file(
-        str(sample_wordlist),
-        as_attachment=True,
-        download_name=sample_wordlist.name
-    )
-
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
