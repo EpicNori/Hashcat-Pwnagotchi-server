@@ -131,6 +131,14 @@
                 <div class="panel-body">
                     <p>Download a known-good sample <code>.22000</code> capture to verify that the server can process and crack a test file.</p>
                     <p><a href="{{ url_for('static', filename='test_capture_hashcat_essid.22000') }}" download="test_capture_hashcat_essid.22000">Direct download link for the test file</a></p>
+                    {% if not gpu_visible %}
+                    <hr>
+                    <p>No GPU is currently visible in the settings view. You can ask the server to check whether NVIDIA drivers are missing and install them if needed.</p>
+                    <form method="POST">
+                        {{ nvidia_form.hidden_tag() }}
+                        {{ nvidia_form.submit_check_nvidia(class_="btn btn-warning") }}
+                    </form>
+                    {% endif %}
                 </div>
             </div>
         </div>

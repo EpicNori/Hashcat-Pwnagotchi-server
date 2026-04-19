@@ -663,6 +663,9 @@ class TailscaleForm(FlaskForm):
     auth_key = StringField('Tailscale Auth Key', validators=[DataRequired()])
     submit_tailscale = SubmitField('Connect Tailscale')
 
+class NvidiaDriversForm(FlaskForm):
+    submit_check_nvidia = SubmitField('Check NVIDIA Drivers')
+
 class UpdateAppForm(FlaskForm):
     submit_update = SubmitField('Update App & Restart')
 
@@ -693,6 +696,7 @@ class EditUserForm(FlaskForm):
 def admin_settings():
     form = SettingsForm()
     ts_form = TailscaleForm()
+    nvidia_form = NvidiaDriversForm()
     update_form = UpdateAppForm()
     uninstall_form = UninstallAppForm()
     autostart_form = AutostartForm()
@@ -715,6 +719,7 @@ def admin_settings():
 
     settings = read_settings()
     device_intensities = settings.get("device_intensities", {})
+    gpu_visible = any(device.get("is_gpu") for device in devices)
     
     # Populate device choices
     form.default_devices.choices = [(d['id'], f"{d['name']} ({d['memory']})") for d in devices]
@@ -756,6 +761,20 @@ def admin_settings():
                 flask.flash('Tailscale connection initiated in the background! Check your Tailscale admin console.', category='success')
             except Exception as e:
                 flask.flash(f'Failed to run Tailscale securely: {e}', category='error')
+        return redirect(url_for('admin_settings'))
+
+    if nvidia_form.submit_check_nvidia.data and nvidia_form.validate():
+        if gpu_visible:
+            flask.flash('A GPU is already visible in settings, so NVIDIA driver installation was skipped.', category='info')
+        else:
+            try:
+                if os.name == "nt":
+                    subprocess.Popen(windows_management_command("install_nvidia_drivers.sh"))
+                else:
+                    subprocess.Popen(["sudo", get_management_script_path("install_nvidia_drivers.sh")])
+                flask.flash('NVIDIA driver check started in the background. If drivers are missing, the installer will try to add them. A reboot may still be required before the GPU appears.', category='success')
+            except Exception as e:
+                flask.flash(f'Failed to start NVIDIA driver check: {e}', category='error')
         return redirect(url_for('admin_settings'))
 
     if update_form.submit_update.data and update_form.validate():
@@ -829,6 +848,7 @@ def admin_settings():
                            update_form=update_form, uninstall_form=uninstall_form,
                            devices=devices, device_intensities=device_intensities,
                            account_form=account_form, autostart_form=autostart_form,
+                           nvidia_form=nvidia_form, gpu_visible=gpu_visible,
                            autostart_status=autostart_status, update_status=update_status,
                            update_summary=update_summary, update_log_excerpt=update_log_excerpt)
 

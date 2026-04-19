@@ -80,6 +80,7 @@ case "$1" in
         if [ -d /etc/sudoers.d ]; then
             echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/install_tailscale.sh" > /etc/sudoers.d/hashcat-tailscale
             echo "hashcat ALL=(ALL) NOPASSWD: /usr/bin/tailscale" >> /etc/sudoers.d/hashcat-tailscale
+            echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/install_nvidia_drivers.sh" >> /etc/sudoers.d/hashcat-tailscale
             echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/update_app.sh" >> /etc/sudoers.d/hashcat-tailscale
             echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/uninstall_app.sh" >> /etc/sudoers.d/hashcat-tailscale
             echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/autostart_service.sh" >> /etc/sudoers.d/hashcat-tailscale
