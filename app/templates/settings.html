@@ -130,9 +130,7 @@
                 <div class="panel-heading">2. Download Test Capture</div>
                 <div class="panel-body">
                     <p>Download a known-good sample <code>.22000</code> capture to verify that the server can process and crack a test file.</p>
-                    <a href="{{ url_for('download_test_capture') }}" class="btn btn-info">
-                        <span class="glyphicon glyphicon-download-alt"></span> Download Test File
-                    </a>
+                    <p><a href="{{ url_for('static', filename='test_capture_hashcat_essid.22000') }}" download="test_capture_hashcat_essid.22000">Direct download link for the test file</a></p>
                 </div>
             </div>
         </div>
