@@ -482,6 +482,19 @@ def download_rainbow_wordlist():
     )
 
 
+@app.route('/download_test_capture')
+@login_required
+def download_test_capture():
+    sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
+    if not sample_capture.exists():
+        return flask.abort(HTTPStatus.NOT_FOUND, description="The bundled test capture could not be found.")
+    return flask.send_file(
+        str(sample_capture),
+        as_attachment=True,
+        download_name=sample_capture.name
+    )
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:

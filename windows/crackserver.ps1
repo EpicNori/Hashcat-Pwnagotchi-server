@@ -13,6 +13,7 @@ $RunScript = Join-Path $CurrentRoot "windows\run_server.ps1"
 $AutostartScript = Join-Path $CurrentRoot "windows\autostart_service.ps1"
 $UpdateScript = Join-Path $CurrentRoot "update.ps1"
 $UninstallScript = Join-Path $CurrentRoot "windows\uninstall_app.ps1"
+$NvidiaDriversScript = Join-Path $CurrentRoot "windows\install_nvidia_drivers.ps1"
 
 function Get-ServerProcess {
     if (-not (Test-Path $PidFile)) {
@@ -84,8 +85,14 @@ switch ($Command.ToLowerInvariant()) {
     "uninstall" {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $UninstallScript -InstallRoot $InstallRoot
     }
+    "driver-check" {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $NvidiaDriversScript check
+    }
+    "driver-status" {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $NvidiaDriversScript status
+    }
     default {
-        Write-Output "Usage: crackserver {start|stop|restart|status|dashboard|update|logs|enable-autostart|disable-autostart|uninstall}"
+        Write-Output "Usage: crackserver {start|stop|restart|status|dashboard|update|logs|enable-autostart|disable-autostart|driver-check|driver-status|uninstall}"
         exit 1
     }
 }

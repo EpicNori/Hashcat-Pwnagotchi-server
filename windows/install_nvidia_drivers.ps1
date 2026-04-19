@@ -1,3 +1,9 @@
+[CmdletBinding()]
+param(
+    [ValidateSet("check", "status")]
+    [string]$Action = "check"
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -39,24 +45,37 @@ function Get-WingetCommand {
     return $null
 }
 
-if (-not (Test-NvidiaGpuPresent)) {
-    Write-Output "No NVIDIA GPU was detected on this system."
-    exit 0
-}
+switch ($Action) {
+    "status" {
+        if (-not (Test-NvidiaGpuPresent)) {
+            Write-Output "visible:no-nvidia-gpu driver:not-applicable"
+        } elseif (Test-NvidiaDriverReady) {
+            Write-Output "visible:nvidia-gpu driver:installed"
+        } else {
+            Write-Output "visible:nvidia-gpu driver:missing"
+        }
+    }
+    "check" {
+        if (-not (Test-NvidiaGpuPresent)) {
+            Write-Output "No NVIDIA GPU was detected on this system."
+            exit 0
+        }
 
-if (Test-NvidiaDriverReady) {
-    Write-Output "NVIDIA drivers already appear to be installed."
-    exit 0
-}
+        if (Test-NvidiaDriverReady) {
+            Write-Output "NVIDIA drivers already appear to be installed."
+            exit 0
+        }
 
-$wingetCmd = Get-WingetCommand
-if (-not $wingetCmd) {
-    throw "winget is unavailable, so automatic NVIDIA helper installation cannot continue."
-}
+        $wingetCmd = Get-WingetCommand
+        if (-not $wingetCmd) {
+            throw "winget is unavailable, so automatic NVIDIA helper installation cannot continue."
+        }
 
-& $wingetCmd install -e --id Nvidia.GeForceExperience --scope machine --accept-package-agreements --accept-source-agreements --silent --disable-interactivity
-if ($LASTEXITCODE -ne 0) {
-    throw "Automatic NVIDIA helper installation failed."
-}
+        & $wingetCmd install -e --id Nvidia.GeForceExperience --scope machine --accept-package-agreements --accept-source-agreements --silent --disable-interactivity
+        if ($LASTEXITCODE -ne 0) {
+            throw "Automatic NVIDIA helper installation failed."
+        }
 
-Write-Output "NVIDIA helper installation completed. A reboot or first-time NVIDIA setup may still be required before Hashcat can use the GPU."
+        Write-Output "NVIDIA helper installation completed. A reboot or first-time NVIDIA setup may still be required before Hashcat can use the GPU."
+    }
+}
