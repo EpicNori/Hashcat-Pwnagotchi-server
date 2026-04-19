@@ -71,6 +71,16 @@
         {% endfor %}
     </div>
     {% endif %}
+    <div class="field-boxed" style="margin-top: 20px;">
+        <h4>Quick Self-Test</h4>
+        <p class="text-muted small">Use this known-good sample to verify that uploads, scheduling, and cracking are working. The sample ESSID is <code>hashcat-essid</code> and the matching password is contained in the test wordlist.</p>
+        <a href="{{ url_for('download_test_capture') }}" class="btn btn-default" style="margin-right: 10px;">
+            <span class="glyphicon glyphicon-download-alt"></span> Download Test Capture (.22000)
+        </a>
+        <a href="{{ url_for('download_test_wordlist') }}" class="btn btn-info">
+            <span class="glyphicon glyphicon-download-alt"></span> Download Matching Test Wordlist
+        </a>
+    </div>
     <p class="text-muted small" style="margin-top: 20px;">Normal mode now finishes with an exhaustive WPA brute-force pass across printable ASCII passwords from 8 to 63 characters, so it will keep trying combinations until a key is found or you cancel the task.</p>
 </div>
 {% endblock %}
