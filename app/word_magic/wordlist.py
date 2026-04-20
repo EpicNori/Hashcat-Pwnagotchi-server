@@ -345,14 +345,18 @@ def materialize_wordlist_source(wordlist_path: Path) -> Path:
         shell = "bash" if os.name == "nt" else "/bin/bash"
         command = [shell, str(wordlist_path)]
 
-    completed = subprocess.run(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        universal_newlines=True,
-        check=False,
-        cwd=str(WORDLISTS_USER_DIR)
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            check=False,
+            cwd=str(WORDLISTS_USER_DIR)
+        )
+    except FileNotFoundError as e:
+        executable = command[0] if command else "unknown"
+        raise FileNotFoundError(f"Script interpreter not found: '{executable}'. Please ensure it is installed and in your PATH.") from e
     if completed.returncode != 0:
         error_output = (completed.stderr or completed.stdout or "").strip()
         raise RuntimeError(f"Wordlist script failed: {error_output or wordlist_path.name}")

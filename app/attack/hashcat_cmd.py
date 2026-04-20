@@ -140,13 +140,17 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
     from app.utils.settings import read_settings
     from app.utils.utils import get_live_usage
     hashcat_cmd_list = hashcat_cmd.build()
-    process = subprocess.Popen(
-        hashcat_cmd_list,
-        universal_newlines=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        bufsize=1
-    )
+    try:
+        process = subprocess.Popen(
+            hashcat_cmd_list,
+            universal_newlines=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=1
+        )
+    except FileNotFoundError as e:
+        executable = hashcat_cmd_list[0] if hashcat_cmd_list else "unknown"
+        raise FileNotFoundError(f"Tool not found: '{executable}'. Please ensure it is installed and in your PATH.") from e
     output_queue = queue.Queue()
     stdout_done = False
     stderr_done = False
