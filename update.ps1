@@ -23,11 +23,28 @@ function Write-Step([string]$Message) {
 
 function Test-NvidiaGpuPresent {
     try {
-        $controllers = Get-CimInstance Win32_VideoController -ErrorAction Stop
-        return @($controllers | Where-Object {
-            ($_.Name -match "NVIDIA") -or ($_.AdapterCompatibility -match "NVIDIA")
-        }).Count -gt 0
+        $controllers = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue
+        if (-not $controllers) {
+            Write-Step "No video controllers detected via WMI."
+            return $false
+        }
+        $nvidiaGpus = @($controllers | Where-Object {
+            ($_.Name -match "NVIDIA|GeForce") -or ($_.AdapterCompatibility -match "NVIDIA")
+        })
+        $nvidiaCount = $nvidiaGpus.Count
+        if ($nvidiaCount -gt 0) {
+            Write-Step "Detected $nvidiaCount NVIDIA GPU(s): $($nvidiaGpus.Name -join ', ')"
+            return $true
+        }
+        Write-Step "No NVIDIA GPU detected."
+        $otherGpus = @($controllers | Where-Object { $_.Name -notmatch "NVIDIA|GeForce" })
+        if ($otherGpus.Count -gt 0) {
+            Write-Step "Other GPU(s) found: $($otherGpus.Name -join ', ')"
+            Write-Step "Note: Hashcat on Windows requires NVIDIA GPU with CUDA support for optimal performance."
+        }
+        return $false
     } catch {
+        Write-Step "Warning: Could not query video controllers - $_"
         return $false
     }
 }
@@ -62,6 +79,7 @@ function Get-WingetCommand {
 
 function Ensure-NvidiaDriverSupport {
     if (-not (Test-NvidiaGpuPresent)) {
+        Write-Step "Skipping NVIDIA driver installation (no NVIDIA GPU detected)."
         return
     }
 
@@ -283,7 +301,13 @@ switch ($script:NvidiaDriverStatus) {
     "installed" {
         Write-Step "NVIDIA GPU detected. GeForce Experience was installed automatically so NVIDIA drivers can be provisioned. A reboot or first-time NVIDIA setup may still be required before Hashcat can use the GPU."
     }
+    "already-installed" {
+        Write-Step "NVIDIA GPU and drivers detected. Hashcat should be able to use GPU acceleration."
+    }
     "manual-required" {
         Write-Step "NVIDIA GPU detected, but automatic NVIDIA driver/helper installation did not complete. Install the NVIDIA driver manually before expecting GPU cracking to work."
+    }
+    "not-needed" {
+        Write-Step "No NVIDIA GPU detected. Hashcat will run in CPU-only mode. For GPU acceleration, install an NVIDIA GPU with CUDA-capable drivers."
     }
 }
