@@ -226,10 +226,10 @@ function Get-SourceRoot {
 
 function Copy-RepoTree([string]$SourceRoot, [string]$DestinationRoot) {
     if (Test-Path $DestinationRoot) {
-        Remove-Item -LiteralPath $DestinationRoot -Recurse -Force
+        Write-Step "Preserving existing runtime logs while refreshing application files"
     }
     New-Item -ItemType Directory -Path $DestinationRoot -Force | Out-Null
-    & robocopy $SourceRoot $DestinationRoot /MIR /XD .git .github __pycache__ .venv venv | Out-Null
+    & robocopy $SourceRoot $DestinationRoot /MIR /XD .git .github __pycache__ .venv venv logs | Out-Null
     if ($LASTEXITCODE -gt 7) {
         throw "robocopy failed with exit code $LASTEXITCODE"
     }
