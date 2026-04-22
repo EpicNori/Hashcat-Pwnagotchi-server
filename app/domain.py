@@ -130,6 +130,7 @@ class Workload(Enum):
     Low = "1"
     Fast = "2"
     Normal = "3"
+    Rainbow = "4"
 
     @staticmethod
     def to_form():
@@ -137,6 +138,7 @@ class Workload(Enum):
         return (
             (Workload.Low.value, "Low"),
             (Workload.Fast.value, "Fast"),
+            (Workload.Rainbow.value, "Rainbow"),
             (Workload.Normal.value, "Normal"),
         )
 

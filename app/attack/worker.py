@@ -181,6 +181,9 @@ class CapAttack(BaseAttack):
         with self.lock:
             self.lock.set_status("Running rainbow reuse list...")
         self.run_rainbow_attack()
+
+        if self.work_mode == Workload.Rainbow.value:
+            return
         
         with self.lock:
             self.lock.set_status("Running top1k with rules...")
