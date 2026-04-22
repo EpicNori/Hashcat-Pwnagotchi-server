@@ -5,6 +5,28 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function Ensure-Administrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        return
+    }
+
+    $launchArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $PSCommandPath,
+        "-InstallRoot", $InstallRoot
+    )
+    $process = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $launchArgs -Wait -PassThru
+    if ($process.ExitCode -ne 0 -and (-not (Test-Path $InstallRoot))) {
+        exit 0
+    }
+    exit $process.ExitCode
+}
+
+Ensure-Administrator
+
 $UninstallScript = Join-Path $PSScriptRoot "windows\uninstall_app.ps1"
 
 if (-not (Test-Path $UninstallScript)) {

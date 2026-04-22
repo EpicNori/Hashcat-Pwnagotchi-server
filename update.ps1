@@ -1,6 +1,33 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function Ensure-Administrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        return
+    }
+
+    $launchArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $PSCommandPath
+    )
+    $process = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $launchArgs -Wait -PassThru
+    if ($process.ExitCode -ne 0) {
+        try {
+            $probe = Invoke-WebRequest -Uri "http://127.0.0.1:9111" -UseBasicParsing -TimeoutSec 5
+            if ($probe.StatusCode -eq 200) {
+                exit 0
+            }
+        } catch {
+        }
+    }
+    exit $process.ExitCode
+}
+
+Ensure-Administrator
+
 $RepoZipUrl = "https://github.com/EpicNori/Hashcat-Pwnagotchi-server/archive/refs/heads/main.zip"
 $InstallRoot = "C:\ProgramData\HashcatWPAServer"
 $CurrentRoot = Join-Path $InstallRoot "current"
@@ -164,7 +191,7 @@ function Copy-BundledToolDirectory([string]$SourceDir, [string]$DestinationDir) 
 
 function Require-ToolInPath([string]$ToolName, [string]$BundledSubdir, [string]$MissingMessage) {
     if (Get-Command $ToolName -ErrorAction SilentlyContinue) {
-        return
+        return $true
     }
 
     $bundledDir = Join-Path $BundledToolsRoot $BundledSubdir
@@ -175,8 +202,11 @@ function Require-ToolInPath([string]$ToolName, [string]$BundledSubdir, [string]$
     }
 
     if (-not (Get-Command $ToolName -ErrorAction SilentlyContinue)) {
-        throw $MissingMessage
+        Write-Step "Warning: $MissingMessage"
+        return $false
     }
+
+    return $true
 }
 
 function Try-InstallWSL {
@@ -201,7 +231,7 @@ function Try-InstallWSL {
 
 function Install-HashcatToolchain() {
     Ensure-NvidiaDriverSupport
-    Require-ToolInPath -ToolName "hashcat.exe" -BundledSubdir "hashcat" -MissingMessage "hashcat.exe is required. Bundle it under windows\\tools\\hashcat or install it system-wide before running the updater."
+    $null = Require-ToolInPath -ToolName "hashcat.exe" -BundledSubdir "hashcat" -MissingMessage "hashcat.exe was not found. Bundle it under windows\\tools\\hashcat or install it system-wide before expecting cracking jobs to run."
     $hcxBundled = Copy-BundledToolDirectory -SourceDir (Join-Path $BundledToolsRoot "hcxtools") -DestinationDir (Join-Path $ToolsRoot "hcxtools")
     if ($hcxBundled) {
         Ensure-MachinePathEntry -PathEntry (Join-Path $ToolsRoot "hcxtools")

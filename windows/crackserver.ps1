@@ -6,6 +6,28 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function Is-Administrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Invoke-RunAsSelf([string[]]$Arguments) {
+    $process = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $Arguments -Wait -PassThru
+    exit $process.ExitCode
+}
+
+if (-not (Is-Administrator) -and $Command.ToLowerInvariant() -in @("stop", "restart", "enable-autostart", "disable-autostart", "uninstall")) {
+    $launchArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $PSCommandPath,
+        "-Command", $Command,
+        "-InstallRoot", $InstallRoot
+    )
+    Invoke-RunAsSelf -Arguments $launchArgs
+}
+
 $CurrentRoot = Join-Path $InstallRoot "current"
 $PidFile = Join-Path $InstallRoot "server.pid"
 $LogsRoot = Join-Path $InstallRoot "logs"
@@ -37,6 +59,28 @@ function Get-ServerProcess {
     return $process
 }
 
+function Test-ServerHttpAlive {
+    try {
+        $response = Invoke-WebRequest -Uri "http://127.0.0.1:9111" -UseBasicParsing -TimeoutSec 3
+        return $response.StatusCode -eq 200
+    } catch {
+        return $false
+    }
+}
+
+function Stop-ServerProcessesByRoot([string]$RootPath) {
+    $escapedRoot = [Regex]::Escape($RootPath)
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        ($_.ExecutablePath -and $_.ExecutablePath -match "^$escapedRoot") -or
+        ($_.CommandLine -and $_.CommandLine -match $escapedRoot)
+    } | ForEach-Object {
+        try {
+            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        } catch {
+        }
+    }
+}
+
 switch ($Command.ToLowerInvariant()) {
     "start" {
         Invoke-CheckedPowerShellFile -ScriptPath $RunScript -Arguments @("-InstallRoot", $InstallRoot)
@@ -50,6 +94,10 @@ switch ($Command.ToLowerInvariant()) {
                 Start-Sleep -Milliseconds 200
             }
         }
+        if (Test-ServerHttpAlive) {
+            Stop-ServerProcessesByRoot -RootPath $CurrentRoot
+            Start-Sleep -Seconds 2
+        }
         Get-Process -Name hashcat -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue
         Write-Output "stopped"
@@ -62,6 +110,8 @@ switch ($Command.ToLowerInvariant()) {
         $process = Get-ServerProcess
         if ($process) {
             Write-Output "running (PID $($process.Id))"
+        } elseif (Test-ServerHttpAlive) {
+            Write-Output "running (HTTP 9111)"
         } else {
             Write-Output "stopped"
         }

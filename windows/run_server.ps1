@@ -5,6 +5,23 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function Ensure-Administrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        return
+    }
+
+    $launchArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $PSCommandPath,
+        "-InstallRoot", $InstallRoot
+    )
+    $process = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $launchArgs -Wait -PassThru
+    exit $process.ExitCode
+}
+
 $CurrentRoot = Join-Path $InstallRoot "current"
 $VenvPython = Join-Path $InstallRoot "venv\Scripts\python.exe"
 $LogsRoot = Join-Path $InstallRoot "logs"
@@ -40,6 +57,8 @@ if (-not $env:HASHCAT_ADMIN_PASSWORD) {
     $env:HASHCAT_ADMIN_PASSWORD = "changeme"
 }
 
+Ensure-Administrator
+
 function Start-ServerLauncher {
     $launcher = @'
 import os
@@ -58,7 +77,7 @@ def _clean_path():
     return os.pathsep.join(parts)
 
 env = {}
-for key in ("SystemRoot", "WINDIR", "COMSPEC", "TEMP", "TMP"):
+for key in ("SystemRoot", "WINDIR", "COMSPEC", "TEMP", "TMP", "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA"):
     value = os.environ.get(key)
     if value:
         env[key] = value

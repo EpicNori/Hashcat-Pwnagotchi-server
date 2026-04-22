@@ -46,7 +46,7 @@ def _clean_path():
     return os.pathsep.join(parts)
 
 env = {}
-for key in ("SystemRoot", "WINDIR", "COMSPEC", "TEMP", "TMP"):
+for key in ("SystemRoot", "WINDIR", "COMSPEC", "TEMP", "TMP", "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA"):
     value = os.environ.get(key)
     if value:
         env[key] = value
