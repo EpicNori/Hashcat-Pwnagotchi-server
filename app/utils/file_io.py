@@ -4,10 +4,23 @@ from pathlib import Path
 
 from app import lock_app
 from app.config import BENCHMARK_FILE, HASHCAT_BRAIN_PASSWORD_PATH, HASHCAT_WPA_CACHE_DIR, WORDLISTS_USER_DIR
-from app.domain import Benchmark, InvalidFileError
+from app.domain import Benchmark, InvalidFileError, HashcatMode
 from app.logger import logger
 
 CAPTURES_DIR = HASHCAT_WPA_CACHE_DIR / "captures"
+SUPPORTED_HASH_SUFFIXES = set(HashcatMode.valid_modes())
+
+
+def parse_wpa_hash_line(line: str):
+    parts = line.strip().split('*')
+    if not parts or "WPA" not in parts:
+        raise InvalidFileError("Not a supported WPA hash line")
+
+    wpa_index = parts.index("WPA")
+    if len(parts) <= wpa_index + 5:
+        raise InvalidFileError("Not a supported WPA hash line")
+
+    return parts[wpa_index + 3], parts[wpa_index + 5]
 
 
 def read_plain_key(key_path):
@@ -50,19 +63,19 @@ def bssid_essid_from_22000(file_22000):
         lines = f.read().splitlines()
     bssid_essids = set()
     for line in lines:
-        info_split = line.split('*')
-        if len(info_split) == 0:
-            raise InvalidFileError("Not a 22000 file")
-        bssid = info_split[3]
-        essid = info_split[5]  # in hex format
+        if not line.strip():
+            continue
+        bssid, essid = parse_wpa_hash_line(line)
         bssid_essids.add(f"{bssid}:{essid}")
     return iter(bssid_essids)
 
 
 def check_file_22000(file_22000):
     file_22000 = Path(file_22000)
-    if file_22000.suffix != ".22000":
-        raise InvalidFileError(f"Invalid capture file format: '{file_22000.suffix}'. Expected 22000.")
+    suffix = file_22000.suffix.lstrip(".")
+    if suffix not in SUPPORTED_HASH_SUFFIXES:
+        expected = ", ".join(f".{item}" for item in sorted(SUPPORTED_HASH_SUFFIXES))
+        raise InvalidFileError(f"Invalid capture file format: '{file_22000.suffix}'. Expected one of: {expected}.")
 
 
 def calculate_md5(fpath, chunk_size=1024 * 1024):

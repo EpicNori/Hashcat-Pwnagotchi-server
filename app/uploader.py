@@ -63,7 +63,7 @@ class UploadForm(FlaskForm):
         'Capture',
         validators=[FileRequired(), FileAllowed(HashcatMode.valid_upload_suffixes(),
                                                 message='Airodump & Hashcat capture files only')],
-        render_kw={"accept": ".cap,.pcap,.pcapng,.hccapx,.pmkid,.2500,.16800,.22000"}
+        render_kw={"accept": ".cap,.pcap,.pcapng,.hccapx,.pmkid,.2500,.2501,.16800,.16801,.22000,.22001"}
     )
     submit = SubmitField('Submit')
 
