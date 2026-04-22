@@ -235,6 +235,64 @@ function Copy-RepoTree([string]$SourceRoot, [string]$DestinationRoot) {
     }
 }
 
+function Test-PathUnlocked([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $true
+    }
+
+    try {
+        $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+        $stream.Close()
+        return $true
+    } catch [System.IO.IOException] {
+        return $false
+    }
+}
+
+function Wait-DirectoryUnlocked([string]$Path, [int]$TimeoutSeconds = 20) {
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        $blocked = $false
+        if (Test-Path -LiteralPath $Path) {
+            foreach ($file in Get-ChildItem -LiteralPath $Path -Recurse -File -Force -ErrorAction SilentlyContinue) {
+                if (-not (Test-PathUnlocked -Path $file.FullName)) {
+                    $blocked = $true
+                    break
+                }
+            }
+        }
+
+        if (-not $blocked) {
+            return $true
+        }
+
+        Start-Sleep -Milliseconds 250
+    } while ((Get-Date) -lt $deadline)
+
+    return $false
+}
+
+function Invoke-WithRetry([scriptblock]$Action, [string]$Description, [int]$Attempts = 12, [int]$DelayMilliseconds = 500) {
+    $lastError = $null
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        try {
+            & $Action
+            return
+        } catch [System.IO.IOException] {
+            $lastError = $_
+            if ($attempt -lt $Attempts) {
+                Start-Sleep -Milliseconds $DelayMilliseconds
+                continue
+            }
+            break
+        }
+    }
+
+    if ($lastError) {
+        throw "Timed out while trying to $Description : $($lastError.Exception.Message)"
+    }
+}
+
 if (-not (Test-Path $CurrentRoot)) {
     throw "Windows installation not found at $CurrentRoot. Run install.ps1 first."
 }
@@ -251,11 +309,24 @@ Invoke-CheckedPowerShellFile -ScriptPath (Join-Path $CurrentRoot "windows\cracks
 
 $source = Get-SourceRoot
 try {
+    if (Test-Path $CurrentRoot) {
+        $currentLogs = Join-Path $CurrentRoot "logs"
+        if (Test-Path $currentLogs) {
+            if (-not (Wait-DirectoryUnlocked -Path $currentLogs -TimeoutSeconds 20)) {
+                Write-Step "Warning: log files still appeared busy after waiting; continuing with retries."
+            }
+        }
+    }
+
     if (Test-Path $PreviousRoot) {
-        Remove-Item -LiteralPath $PreviousRoot -Recurse -Force
+        Invoke-WithRetry -Description "remove the previous installation snapshot" -Action {
+            Remove-Item -LiteralPath $PreviousRoot -Recurse -Force
+        }
     }
     if (Test-Path $CurrentRoot) {
-        Move-Item -LiteralPath $CurrentRoot -Destination $PreviousRoot
+        Invoke-WithRetry -Description "move the current installation aside" -Action {
+            Move-Item -LiteralPath $CurrentRoot -Destination $PreviousRoot
+        }
     }
 
     Write-Step "Installing latest application files"
@@ -276,16 +347,26 @@ try {
     Invoke-CheckedPowerShellFile -ScriptPath (Join-Path $CurrentRoot "windows\run_server.ps1") -Arguments @("-InstallRoot", $InstallRoot)
 
     if (Test-Path $PreviousRoot) {
-        Remove-Item -LiteralPath $PreviousRoot -Recurse -Force
+        Invoke-WithRetry -Description "remove the previous installation snapshot" -Action {
+            Remove-Item -LiteralPath $PreviousRoot -Recurse -Force
+        }
     }
 }
 catch {
     Write-Output "[!] Update failed: $($_.Exception.Message)"
     if (Test-Path $CurrentRoot) {
-        Remove-Item -LiteralPath $CurrentRoot -Recurse -Force
+        try {
+            Invoke-WithRetry -Description "remove the failed current installation" -Action {
+                Remove-Item -LiteralPath $CurrentRoot -Recurse -Force
+            }
+        } catch {
+            Write-Step "Warning: could not fully remove the failed current installation."
+        }
     }
     if (Test-Path $PreviousRoot) {
-        Move-Item -LiteralPath $PreviousRoot -Destination $CurrentRoot
+        Invoke-WithRetry -Description "restore the previous installation" -Action {
+            Move-Item -LiteralPath $PreviousRoot -Destination $CurrentRoot
+        }
         Invoke-CheckedPowerShellFile -ScriptPath (Join-Path $CurrentRoot "windows\run_server.ps1") -Arguments @("-InstallRoot", $InstallRoot)
     }
     throw

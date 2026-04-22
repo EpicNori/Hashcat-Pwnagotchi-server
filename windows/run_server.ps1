@@ -63,11 +63,16 @@ for key in ("SystemRoot", "WINDIR", "COMSPEC", "TEMP", "TMP"):
     if value:
         env[key] = value
 env["PATH"] = _clean_path()
+existing_pythonpath = os.environ.get("PYTHONPATH")
+env["PYTHONPATH"] = __CURRENT_ROOT__ if not existing_pythonpath else os.pathsep.join([__CURRENT_ROOT__, existing_pythonpath])
 env["HASHCAT_WPA_SERVER_HOME"] = __DATA_ROOT__
 env["HASHCAT_WPA_INSTALL_ROOT"] = __INSTALL_ROOT__
 env["PYTHONUNBUFFERED"] = "1"
 env["HASHCAT_ADMIN_USER"] = os.environ.get("HASHCAT_ADMIN_USER", "admin")
 env["HASHCAT_ADMIN_PASSWORD"] = os.environ.get("HASHCAT_ADMIN_PASSWORD", "changeme")
+
+if __CURRENT_ROOT__ not in sys.path:
+    sys.path.insert(0, __CURRENT_ROOT__)
 
 stdout_log = open(__STDOUT_LOG__, "ab", buffering=0)
 stderr_log = open(__STDERR_LOG__, "ab", buffering=0)

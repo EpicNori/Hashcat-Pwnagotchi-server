@@ -56,8 +56,9 @@ def run_hcx_command(args, working_directory: Path | None = None):
     except FileNotFoundError as e:
         if os.name != "nt" or not shutil.which("wsl.exe"):
             executable = args[0] if args else "unknown"
-            raise FileNotFoundError(f"Missing dependency: '{executable}'. Please install 'hcxtools' and 'hashcat'.") from e
-        raise
+            raise FileNotFoundError(
+                f"Missing dependency: '{executable}'. Please install 'hcxtools' and 'hashcat'."
+            ) from e
 
         distro = os.environ.get("HASHCAT_WPA_WSL_DISTRO", "Ubuntu")
         translated_args = []
