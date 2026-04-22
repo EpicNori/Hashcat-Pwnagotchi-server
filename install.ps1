@@ -140,8 +140,72 @@ function Get-SourceRoot {
 }
 
 function Copy-RepoTree([string]$SourceRoot, [string]$DestinationRoot) {
+    function Test-PathUnlocked([string]$Path) {
+        if (-not (Test-Path -LiteralPath $Path)) {
+            return $true
+        }
+
+        try {
+            $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+            $stream.Close()
+            return $true
+        } catch [System.IO.IOException] {
+            return $false
+        }
+    }
+
+    function Wait-DirectoryUnlocked([string]$Path, [int]$TimeoutSeconds = 20) {
+        $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+        do {
+            $blocked = $false
+            if (Test-Path -LiteralPath $Path) {
+                foreach ($file in Get-ChildItem -LiteralPath $Path -Recurse -File -Force -ErrorAction SilentlyContinue) {
+                    if (-not (Test-PathUnlocked -Path $file.FullName)) {
+                        $blocked = $true
+                        break
+                    }
+                }
+            }
+
+            if (-not $blocked) {
+                return $true
+            }
+
+            Start-Sleep -Milliseconds 250
+        } while ((Get-Date) -lt $deadline)
+
+        return $false
+    }
+
+    function Invoke-WithRetry([scriptblock]$Action, [string]$Description, [int]$Attempts = 12, [int]$DelayMilliseconds = 500) {
+        $lastError = $null
+        for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+            try {
+                & $Action
+                return
+            } catch [System.IO.IOException] {
+                $lastError = $_
+                if ($attempt -lt $Attempts) {
+                    Start-Sleep -Milliseconds $DelayMilliseconds
+                    continue
+                }
+                break
+            }
+        }
+
+        if ($lastError) {
+            throw "Timed out while trying to $Description : $($lastError.Exception.Message)"
+        }
+    }
+
     if (Test-Path $DestinationRoot) {
-        Remove-Item -LiteralPath $DestinationRoot -Recurse -Force
+        $currentLogs = Join-Path $DestinationRoot "logs"
+        if (Test-Path $currentLogs) {
+            Wait-DirectoryUnlocked -Path $currentLogs -TimeoutSeconds 20 | Out-Null
+        }
+        Invoke-WithRetry -Description "remove the existing installation directory" -Action {
+            Remove-Item -LiteralPath $DestinationRoot -Recurse -Force
+        }
     }
     New-Item -ItemType Directory -Path $DestinationRoot -Force | Out-Null
     $robocopyArgs = @(
@@ -306,6 +370,24 @@ if (-not (Test-IsAdministrator)) {
 
 Write-Step "Preparing Windows installation directories"
 New-Item -ItemType Directory -Path $InstallRoot, $DataRoot, $LogsRoot, $BinRoot, $ToolsRoot -Force | Out-Null
+
+if (Test-Path $CurrentRoot) {
+    $existingTask = Join-Path $CurrentRoot "windows\autostart_service.ps1"
+    $existingCli = Join-Path $CurrentRoot "windows\crackserver.ps1"
+    if (Test-Path $existingTask) {
+        try {
+            Invoke-CheckedPowerShellFile -ScriptPath $existingTask -Arguments @("disable", "-InstallRoot", $InstallRoot)
+        } catch {
+        }
+    }
+    if (Test-Path $existingCli) {
+        try {
+            Invoke-CheckedPowerShellFile -ScriptPath $existingCli -Arguments @("stop", "-InstallRoot", $InstallRoot)
+        } catch {
+        }
+    }
+    Get-Process -Name hashcat -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+}
 
 $source = Get-SourceRoot
 try {
