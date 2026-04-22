@@ -14,7 +14,10 @@ function Is-Administrator {
 
 function Invoke-RunAsSelf([string[]]$Arguments) {
     $process = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $Arguments -Wait -PassThru
-    exit $process.ExitCode
+    if ($process.ExitCode -ne 0) {
+        throw "Elevated crackserver command failed with exit code $($process.ExitCode)."
+    }
+    return $true
 }
 
 if (-not (Is-Administrator) -and $Command.ToLowerInvariant() -in @("stop", "restart", "enable-autostart", "disable-autostart", "uninstall")) {
@@ -25,7 +28,9 @@ if (-not (Is-Administrator) -and $Command.ToLowerInvariant() -in @("stop", "rest
         "-Command", $Command,
         "-InstallRoot", $InstallRoot
     )
-    Invoke-RunAsSelf -Arguments $launchArgs
+    if (-not (Invoke-RunAsSelf -Arguments $launchArgs)) {
+        return
+    }
 }
 
 $CurrentRoot = Join-Path $InstallRoot "current"
@@ -163,6 +168,6 @@ switch ($Command.ToLowerInvariant()) {
     }
     default {
         Write-Output "Usage: crackserver {start|stop|restart|status|dashboard|update|logs|enable-autostart|disable-autostart|driver-check|driver-status|uninstall}"
-        exit 1
+        throw "Unsupported command: $Command"
     }
 }

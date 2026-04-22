@@ -9,7 +9,7 @@ function Ensure-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        return
+        return $true
     }
 
     $launchArgs = @(
@@ -19,7 +19,10 @@ function Ensure-Administrator {
         "-InstallRoot", $InstallRoot
     )
     $process = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $launchArgs -Wait -PassThru
-    exit $process.ExitCode
+    if ($process.ExitCode -ne 0) {
+        throw "Elevated server launcher failed with exit code $($process.ExitCode)."
+    }
+    return $false
 }
 
 $CurrentRoot = Join-Path $InstallRoot "current"
@@ -42,7 +45,7 @@ if (Test-Path $PidFile) {
     $existingPid = Get-Content -LiteralPath $PidFile -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not [string]::IsNullOrWhiteSpace($existingPid) -and (Get-Process -Id $existingPid.Trim() -ErrorAction SilentlyContinue)) {
         Write-Output "already-running"
-        exit 0
+        return
     }
     Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue
 }
@@ -57,7 +60,9 @@ if (-not $env:HASHCAT_ADMIN_PASSWORD) {
     $env:HASHCAT_ADMIN_PASSWORD = "changeme"
 }
 
-Ensure-Administrator
+if (-not (Ensure-Administrator)) {
+    return
+}
 
 function Start-ServerLauncher {
     $launcher = @'

@@ -10,6 +10,7 @@ from typing import List, Union
 from app.config import HASHCAT_STATUS_TIMER
 from app.domain import HashcatMode, Mask, ProgressLock, Rule, TaskInfoStatus, WordList
 from app.logger import logger
+from app.utils.utils import resolve_hashcat_executable
 
 HASHCAT_WARNINGS = (
     "nvmlDeviceGetCurrPcieLinkWidth",
@@ -66,7 +67,8 @@ class HashcatCmd:
         self.hashcat_args = hashcat_args
 
     def build(self) -> List[str]:
-        command = ["hashcat", f"-m{self.mode}", *self.hashcat_args]
+        hashcat_executable = resolve_hashcat_executable() or "hashcat"
+        command = [hashcat_executable, f"-m{self.mode}", *self.hashcat_args]
         for rule in self.rules:
             if rule is not None:
                 command.append(f"--rules={rule.path}")
@@ -140,13 +142,18 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
     from app.utils.settings import read_settings
     from app.utils.utils import get_live_usage
     hashcat_cmd_list = hashcat_cmd.build()
+    hashcat_cwd = None
+    hashcat_executable = resolve_hashcat_executable()
+    if hashcat_executable:
+        hashcat_cwd = str(Path(hashcat_executable).parent)
     try:
         process = subprocess.Popen(
             hashcat_cmd_list,
             universal_newlines=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            bufsize=1
+            bufsize=1,
+            cwd=hashcat_cwd
         )
     except FileNotFoundError as e:
         executable = hashcat_cmd_list[0] if hashcat_cmd_list else "unknown"
