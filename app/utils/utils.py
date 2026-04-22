@@ -129,8 +129,13 @@ def subprocess_call(args: List[str]):
     logger.debug(">>> {}".format(' '.join(args)))
     if not all(args):
         raise ValueError(f"Empty arg in {args}")
-    completed = subprocess.run(args, universal_newlines=True,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        completed = subprocess.run(args, universal_newlines=True,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except FileNotFoundError as e:
+        executable = args[0] if args else "unknown"
+        raise FileNotFoundError(f"Tool not found: '{executable}'. Please ensure it is installed and in your PATH.") from e
+        
     if completed.stderr or completed.returncode != 0:
         logger.debug(completed.stdout)
         logger.error(completed.stderr)

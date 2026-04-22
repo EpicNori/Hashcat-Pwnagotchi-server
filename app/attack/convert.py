@@ -53,9 +53,11 @@ def _quote_bash(arg: str) -> str:
 def run_hcx_command(args, working_directory: Path | None = None):
     try:
         return subprocess_call(args)
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         if os.name != "nt" or not shutil.which("wsl.exe"):
-            raise
+            executable = args[0] if args else "unknown"
+            raise FileNotFoundError(f"Missing dependency: '{executable}'. Please install 'hcxtools' and 'hashcat'.") from e
+        raise
 
         distro = os.environ.get("HASHCAT_WPA_WSL_DISTRO", "Ubuntu")
         translated_args = []
