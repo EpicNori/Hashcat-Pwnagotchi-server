@@ -245,7 +245,7 @@ def _hashcat_benchmark_async():
     Called in background process.
     """
     out, err = subprocess_call(['hashcat', '-m2500', "-b", "--machine-readable", "--quiet", "--force"])
-    pattern = re.compile("\d+:2500:.*:.*:\d+\.\d+:\d+")
+    pattern = re.compile(r"\d+:2500:.*:.*:\d+\.\d+:\d+")
     total_speed = 0
     for line in filter(pattern.fullmatch, out.splitlines()):
         device_speed = int(line.split(':')[-1])

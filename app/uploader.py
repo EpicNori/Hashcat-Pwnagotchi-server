@@ -61,9 +61,9 @@ class UploadForm(FlaskForm):
     devices = MultiCheckboxField("Target Devices", choices=[])
     capture = FileField(
         'Capture',
-        validators=[FileRequired(), FileAllowed(HashcatMode.valid_suffixes(),
+        validators=[FileRequired(), FileAllowed(HashcatMode.valid_upload_suffixes(),
                                                 message='Airodump & Hashcat capture files only')],
-        render_kw={"accept": ".cap,.pcap,.pcapng,.hccapx,.pmkid,.2500,.2501,.16800,.16801,.22000,.22001"}
+        render_kw={"accept": ".cap,.pcap,.pcapng,.hccapx,.pmkid,.2500,.16800,.22000"}
     )
     submit = SubmitField('Submit')
 
@@ -117,7 +117,7 @@ class UploadForm(FlaskForm):
 
 cap_uploads = UploadSet(
     name='files',
-    extensions=HashcatMode.valid_suffixes(),
+    extensions=HashcatMode.valid_upload_suffixes(),
     default_dest=lambda app: str(app.config['CAPTURES_DIR'])
 )
 configure_uploads(app, cap_uploads)

@@ -73,7 +73,8 @@ def get_version():
 
 def get_management_script_path(script_name: str) -> str:
     if os.name == "nt":
-        windows_name = f"{Path(script_name).stem}.ps1"
+        requested = Path(script_name)
+        windows_name = requested.name if requested.suffix.lower() == ".ps1" else f"{requested.stem}.ps1"
         install_root = Path(os.environ.get("HASHCAT_WPA_INSTALL_ROOT", Path(app.root_path).parent))
         installed_path = install_root / "current" / "windows" / windows_name
         if installed_path.exists():

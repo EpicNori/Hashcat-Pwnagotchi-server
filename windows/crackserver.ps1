@@ -15,6 +15,13 @@ $UpdateScript = Join-Path $CurrentRoot "update.ps1"
 $UninstallScript = Join-Path $CurrentRoot "windows\uninstall_app.ps1"
 $NvidiaDriversScript = Join-Path $CurrentRoot "windows\install_nvidia_drivers.ps1"
 
+function Invoke-CheckedPowerShellFile([string]$ScriptPath, [string[]]$Arguments = @()) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "PowerShell helper failed: $ScriptPath"
+    }
+}
+
 function Get-ServerProcess {
     if (-not (Test-Path $PidFile)) {
         return $null
@@ -32,20 +39,24 @@ function Get-ServerProcess {
 
 switch ($Command.ToLowerInvariant()) {
     "start" {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $RunScript -InstallRoot $InstallRoot
+        Invoke-CheckedPowerShellFile -ScriptPath $RunScript -Arguments @("-InstallRoot", $InstallRoot)
     }
     "stop" {
         $process = Get-ServerProcess
         if ($process) {
-            Stop-Process -Id $process.Id -Force
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            $deadline = (Get-Date).AddSeconds(15)
+            while ((Get-Process -Id $process.Id -ErrorAction SilentlyContinue) -and ((Get-Date) -lt $deadline)) {
+                Start-Sleep -Milliseconds 200
+            }
         }
         Get-Process -Name hashcat -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue
         Write-Output "stopped"
     }
     "restart" {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath stop -InstallRoot $InstallRoot
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath start -InstallRoot $InstallRoot
+        Invoke-CheckedPowerShellFile -ScriptPath $PSCommandPath -Arguments @("stop", "-InstallRoot", $InstallRoot)
+        Invoke-CheckedPowerShellFile -ScriptPath $PSCommandPath -Arguments @("start", "-InstallRoot", $InstallRoot)
     }
     "status" {
         $process = Get-ServerProcess
@@ -69,11 +80,20 @@ switch ($Command.ToLowerInvariant()) {
     "logs" {
         $stdoutLog = Join-Path $LogsRoot "server_stdout.log"
         $stderrLog = Join-Path $LogsRoot "server_stderr.log"
+        $anyLog = $false
         if (Test-Path $stdoutLog) {
-            Get-Content -LiteralPath $stdoutLog -Wait
+            $anyLog = $true
+            Write-Output "=== server_stdout.log ==="
+            Get-Content -LiteralPath $stdoutLog -Tail 200
+            Write-Output ""
         }
         if (Test-Path $stderrLog) {
-            Get-Content -LiteralPath $stderrLog -Wait
+            $anyLog = $true
+            Write-Output "=== server_stderr.log ==="
+            Get-Content -LiteralPath $stderrLog -Tail 200
+        }
+        if (-not $anyLog) {
+            Write-Output "No logs available."
         }
     }
     "enable-autostart" {

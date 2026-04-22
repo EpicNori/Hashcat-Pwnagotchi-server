@@ -96,8 +96,13 @@ class HashcatMode:
         return ("2500", "2501", "16800", "16801", "22000", "22001")
 
     @staticmethod
+    def valid_upload_suffixes():
+        # Suffixes the server can ingest directly or convert reliably on upload.
+        return ("cap", "pcap", "pcapng", "hccapx", "pmkid", "2500", "16800", "22000")
+
+    @staticmethod
     def valid_suffixes():
-        # valid file suffixes
+        # Full set of suffixes used internally for hashcat mode detection.
         valid = ["cap", "pcap", "pcapng", "hccapx", "pmkid"]
         valid.extend(HashcatMode.valid_modes())
         return valid
