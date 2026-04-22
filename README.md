@@ -80,10 +80,10 @@ The Windows installer also drops a machine-wide `crackserver` wrapper into PATH.
 - `crackserver disable-autostart`
 - `crackserver uninstall`
 
-If the installed `crackserver` command is broken, you can run the repo-local recovery wrapper instead from the project root:
+If the installed `crackserver` command is broken, you can run the repo-local uninstall wrapper instead from the project root:
 
-- `.\crackserver.ps1 uninstall`
-- `.\crackserver.cmd uninstall`
+- `.\uninstall.ps1`
+- `.\uninstall.cmd`
 
 ## Windows Layout
 
