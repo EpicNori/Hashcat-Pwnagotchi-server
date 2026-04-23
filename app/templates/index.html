@@ -132,7 +132,7 @@
                     if (row) {
                         // Update Intensity Target
                         const intensityCell = document.getElementById('td-intensity-' + device.id);
-                        const intensity = data.device_intensities[device.id] || 100;
+                        const intensity = device.is_gpu ? (data.device_intensities[device.id] || 100) : data.cpu_limit;
                         const intensityBar = intensityCell.querySelector('.progress-bar');
                         intensityBar.style.width = intensity + '%';
                         intensityBar.innerText = intensity + '%';
@@ -144,6 +144,15 @@
                             row.querySelector('.actual-temp').innerText = gpuLive.temp + '°C';
                         }
                     }
+                });
+
+                data.devices.filter(device => !device.is_gpu).forEach(device => {
+                    const row = document.getElementById('row-device-' + device.id);
+                    if (!row) {
+                        return;
+                    }
+                    row.querySelector('.actual-load').innerText = Math.round(data.live_usage.cpu_usage) + '%';
+                    row.querySelector('.actual-temp').innerText = data.live_usage.cpu_temp ? data.live_usage.cpu_temp + 'Â°C' : '(System)';
                 });
 
                 // Update Global CPU

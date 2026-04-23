@@ -313,6 +313,9 @@ class HashcatWorker:
         :param uploaded_task: uploaded .cap file task
         :param timeout: brute force timeout in minutes
         """
+        file_22000 = Path(file_22000)
+        if not file_22000.exists():
+            raise FileNotFoundError(f"Capture file not found: {file_22000}")
         lock = ProgressLock(task_id=task.id)
         from app.utils.settings import apply_hashcat_limits, read_settings
         hashcat_args = uploaded_form.hashcat_args(secret=True)

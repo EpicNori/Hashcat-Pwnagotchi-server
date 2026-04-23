@@ -23,6 +23,15 @@ def parse_wpa_hash_line(line: str):
     return parts[wpa_index + 3], parts[wpa_index + 5]
 
 
+def decode_essid_hex(essid_hex: str) -> str:
+    """Decode an ESSID stored as hex without crashing on non-UTF-8 bytes."""
+    raw_essid = bytes.fromhex(essid_hex)
+    try:
+        return raw_essid.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw_essid.decode("utf-8", errors="replace")
+
+
 def read_plain_key(key_path):
     key_path = Path(key_path)
     if not key_path.exists():

@@ -19,7 +19,7 @@ from app.logger import logger
 from app.login import LoginForm, RegistrationForm, User, RoleEnum, register_user, create_first_users, Role, \
     roles_required, user_has_roles
 from app.uploader import cap_uploads, UploadForm, UploadedTask, check_incomplete_tasks, backward_db_compatibility
-from app.utils.file_io import read_last_benchmark, bssid_essid_from_22000, build_rainbow_wordlist, read_hashcat_brain_password
+from app.utils.file_io import read_last_benchmark, bssid_essid_from_22000, build_rainbow_wordlist, read_hashcat_brain_password, decode_essid_hex
 from app.utils.utils import is_safe_url, hashcat_devices_info, date_formatted
 from app.word_magic import create_digits_wordlist, estimate_runtime_fmt, create_fast_wordlists
 from app.word_magic.wordlist import download_wordlist, find_wordlist_by_name, WordListDefault
@@ -265,7 +265,7 @@ def upload():
         for file_essid in folder_split_by_essid.iterdir():
             bssid_essid = next(bssid_essid_from_22000(file_essid))
             bssid, essid = bssid_essid.split(':')
-            essid = bytes.fromhex(essid).decode('utf-8')
+            essid = decode_essid_hex(essid)
             new_task = UploadedTask(user_id=current_user.id, filename=filename, wordlist=form.get_wordlist_name(),
                                     rule=form.rule.data, bssid=bssid, essid=essid, hashcat_args=hashcat_args)
             tasks[file_essid] = new_task
@@ -347,7 +347,7 @@ def api_upload():
     for file_essid in folder_split_by_essid.iterdir():
         bssid_essid = next(bssid_essid_from_22000(file_essid))
         bssid, essid = bssid_essid.split(':')
-        essid = bytes.fromhex(essid).decode('utf-8')
+        essid = decode_essid_hex(essid)
         new_task = UploadedTask(user_id=user.id, filename=filename, wordlist=form.get_wordlist_name(),
                                 rule=form.rule.data, bssid=bssid, essid=essid, hashcat_args=hashcat_args)
         tasks[file_essid] = new_task

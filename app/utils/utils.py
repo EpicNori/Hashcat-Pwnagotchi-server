@@ -157,9 +157,15 @@ def resolve_hashcat_executable():
     install_root = os.environ.get("HASHCAT_WPA_INSTALL_ROOT")
     if install_root:
         install_root_path = Path(install_root)
+        current_root = Path(__file__).resolve().parents[2]
         candidates = [
             install_root_path / "tools" / "hashcat" / "hashcat.exe",
+            install_root_path / "tools" / "hashcat.exe",
             install_root_path / "tools" / "hashcat" / "hashcat",
+            install_root_path / "current" / "windows" / "tools" / "hashcat" / "hashcat.exe",
+            install_root_path / "current" / "windows" / "tools" / "hashcat.exe",
+            current_root / "windows" / "tools" / "hashcat" / "hashcat.exe",
+            current_root / "windows" / "tools" / "hashcat.exe",
         ]
         for candidate in candidates:
             if candidate.exists():
@@ -281,8 +287,16 @@ def get_hashcat_devices():
     if not devices:
         import psutil
         devices.append({
-            "id": "1",
+            "id": "cpu",
             "name": "Host CPU (Fallback)",
+            "memory": f"{psutil.virtual_memory().total // (1024*1024)} MB",
+            "is_gpu": False
+        })
+    elif not any(not device.get("is_gpu") for device in devices):
+        import psutil
+        devices.append({
+            "id": "cpu",
+            "name": "Host CPU",
             "memory": f"{psutil.virtual_memory().total // (1024*1024)} MB",
             "is_gpu": False
         })

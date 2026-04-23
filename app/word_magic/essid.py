@@ -169,7 +169,7 @@ def run_essid_attack(essid, hashcat_cmd=None, fast=True, runner=None):
             hashcat_cmd.add_wordlists(f.name)
             runner(hashcat_cmd)
 
-    shutil.rmtree(essid_as_wordlist_dir)
+    shutil.rmtree(essid_as_wordlist_dir, ignore_errors=True)
     return password_candidates
 
 
