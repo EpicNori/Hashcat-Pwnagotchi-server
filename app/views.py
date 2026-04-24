@@ -2,7 +2,7 @@ import os
 import shlex
 import subprocess
 from http import HTTPStatus
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from threading import Thread
 
 import flask
@@ -19,7 +19,7 @@ from app.logger import logger
 from app.login import LoginForm, RegistrationForm, User, RoleEnum, register_user, create_first_users, Role, \
     roles_required, user_has_roles
 from app.uploader import cap_uploads, UploadForm, UploadedTask, check_incomplete_tasks, backward_db_compatibility
-from app.utils.file_io import read_last_benchmark, bssid_essid_from_22000, build_rainbow_wordlist, read_hashcat_brain_password, decode_essid_hex
+from app.utils.file_io import read_last_benchmark, bssid_essid_from_22000, build_rainbow_wordlist, read_hashcat_brain_password, decode_essid_hex, normalize_stored_capture_filename, resolve_existing_capture_path
 from app.utils.utils import is_safe_url, hashcat_devices_info, date_formatted
 from app.word_magic import create_digits_wordlist, estimate_runtime_fmt, create_fast_wordlists
 from app.word_magic.wordlist import download_wordlist, find_wordlist_by_name, WordListDefault
@@ -222,42 +222,11 @@ def decode_task_essid(file_22000: Path):
 
 
 def normalize_task_filename(saved_filename: str) -> str:
-    raw_filename = str(saved_filename).strip()
-    normalized = raw_filename.replace('\\', '/')
-    capture_root = Path(app.config['CAPTURES_DIR']).resolve()
-
-    try:
-        absolute_path = Path(raw_filename).expanduser().resolve(strict=False)
-        if absolute_path.is_absolute():
-            try:
-                relative_path = absolute_path.relative_to(capture_root)
-                return PurePosixPath(*relative_path.parts).as_posix()
-            except ValueError:
-                pass
-    except OSError:
-        pass
-
-    return PurePosixPath(normalized).as_posix()
+    return normalize_stored_capture_filename(saved_filename)
 
 
 def resolve_capture_path(saved_filename: str) -> Path:
-    capture_root = Path(app.config['CAPTURES_DIR'])
-    normalized_filename = normalize_task_filename(saved_filename)
-    relative_filename = PurePosixPath(normalized_filename)
-    primary_path = capture_root.joinpath(*relative_filename.parts)
-
-    candidates = [primary_path]
-    raw_path = Path(str(saved_filename)).expanduser()
-    if raw_path.is_absolute():
-        candidates.insert(0, raw_path)
-    if relative_filename.name and primary_path != capture_root / relative_filename.name:
-        candidates.append(capture_root / relative_filename.name)
-
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-
-    return primary_path
+    return resolve_existing_capture_path(saved_filename)
 
 
 def save_capture_for_user(file_storage, username: str) -> tuple[str, Path]:

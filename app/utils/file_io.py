@@ -1,6 +1,7 @@
 import hashlib
+import os
 import secrets
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from app import lock_app
 from app.config import BENCHMARK_FILE, HASHCAT_BRAIN_PASSWORD_PATH, HASHCAT_WPA_CACHE_DIR, WORDLISTS_USER_DIR
@@ -9,6 +10,89 @@ from app.logger import logger
 
 CAPTURES_DIR = HASHCAT_WPA_CACHE_DIR / "captures"
 SUPPORTED_HASH_SUFFIXES = set(HashcatMode.valid_modes())
+
+
+def iter_capture_roots():
+    roots = []
+
+    def add_root(path_candidate):
+        if not path_candidate:
+            return
+        path_obj = Path(path_candidate).expanduser()
+        if path_obj not in roots:
+            roots.append(path_obj)
+
+    add_root(CAPTURES_DIR)
+    add_root(Path.home() / ".hashcat" / "wpa-server" / "captures")
+
+    install_root = os.environ.get("HASHCAT_WPA_INSTALL_ROOT")
+    if install_root:
+        install_root_path = Path(install_root)
+        add_root(install_root_path / "data" / "captures")
+        add_root(install_root_path / "captures")
+        add_root(install_root_path / "current" / "captures")
+
+    if os.name != "nt":
+        add_root("/var/lib/hashcat-wpa-server/captures")
+    else:
+        add_root(r"C:\ProgramData\HashcatWPAServer\data\captures")
+
+    return tuple(roots)
+
+
+def normalize_stored_capture_filename(saved_filename: str) -> str:
+    raw_filename = str(saved_filename).strip()
+    normalized = raw_filename.replace('\\', '/')
+
+    try:
+        absolute_path = Path(raw_filename).expanduser().resolve(strict=False)
+    except OSError:
+        absolute_path = None
+
+    if absolute_path and absolute_path.is_absolute():
+        for capture_root in iter_capture_roots():
+            try:
+                relative_path = absolute_path.relative_to(capture_root.resolve(strict=False))
+                return PurePosixPath(*relative_path.parts).as_posix()
+            except ValueError:
+                continue
+
+    return PurePosixPath(normalized).as_posix()
+
+
+def resolve_existing_capture_path(saved_filename: str) -> Path:
+    normalized_filename = normalize_stored_capture_filename(saved_filename)
+    relative_filename = PurePosixPath(normalized_filename)
+    candidate_paths = []
+
+    raw_path = Path(str(saved_filename)).expanduser()
+    if raw_path.is_absolute():
+        candidate_paths.append(raw_path)
+
+    for capture_root in iter_capture_roots():
+        primary_path = capture_root.joinpath(*relative_filename.parts)
+        candidate_paths.append(primary_path)
+        if relative_filename.name and primary_path != capture_root / relative_filename.name:
+            candidate_paths.append(capture_root / relative_filename.name)
+
+    seen = set()
+    for candidate in candidate_paths:
+        candidate_key = str(candidate)
+        if candidate_key in seen:
+            continue
+        seen.add(candidate_key)
+        if candidate.exists():
+            return candidate
+
+    if relative_filename.name:
+        for capture_root in iter_capture_roots():
+            if not capture_root.exists():
+                continue
+            matches = sorted(capture_root.rglob(relative_filename.name), key=lambda path: len(path.parts))
+            if matches:
+                return matches[0]
+
+    return CAPTURES_DIR.joinpath(*relative_filename.parts)
 
 
 def parse_wpa_hash_line(line: str):
