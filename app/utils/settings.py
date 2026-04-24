@@ -1,6 +1,7 @@
 import json
 from app.config import ADMIN_SETTINGS_PATH
 from app.domain import Workload
+from app.utils.utils import get_hashcat_devices
 
 
 def hashcat_tuning_for_intensity(intensity: int):
@@ -88,9 +89,18 @@ def apply_hashcat_limits(hashcat_args: list):
     """ Modifies the hashcat args based on configured settings. """
     settings = read_settings()
     device_intensities = {str(k): int(v) for k, v in settings.get("device_intensities", {"1": 100}).items()}
+    available_device_ids = {
+        str(device.get("id"))
+        for device in get_hashcat_devices()
+        if str(device.get("id", "")).isdigit()
+    }
     
     # identify enabled devices
-    active_devices = [str(id) for id, val in device_intensities.items() if int(val) > 0]
+    active_devices = [
+        str(device_id)
+        for device_id, val in device_intensities.items()
+        if int(val) > 0 and (not available_device_ids or str(device_id) in available_device_ids)
+    ]
     
     if active_devices:
         hashcat_args.append("-d")

@@ -124,6 +124,24 @@ class HashcatCmdStdout(HashcatCmd):
     def __init__(self, outfile: Union[str, Path], hashcat_args=(), session=None):
         super().__init__(outfile=outfile, mode=None, hashcat_args=hashcat_args, session=session)
 
+    def build(self) -> List[str]:
+        hashcat_executable = resolve_hashcat_executable() or "hashcat"
+        command = [hashcat_executable]
+        command.extend(self.hashcat_args)
+        for rule in self.rules:
+            if rule is not None:
+                command.append(f"--rules={rule.path}")
+        if self.session is not None:
+            command.append(f"--session={self.session}")
+        self._populate_class_specific(command)
+        if self.mask is not None:
+            command.extend(['-a3', self.mask])
+        else:
+            for word_list in self.wordlists:
+                command.append(word_list)
+        command.append("--force")
+        return command
+
     def _populate_class_specific(self, command: List[str]):
         command.append('--stdout')
 
@@ -327,4 +345,9 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
 
     if process.returncode != 0:
         if process.returncode not in (0, 1):
-            raise RuntimeError(f"Hashcat exited with code {process.returncode}")
+            stderr_summary = ""
+            if stderr:
+                stderr_summary = err.strip() or warn.strip() or stderr.strip()
+                stderr_summary = stderr_summary.splitlines()[0]
+                stderr_summary = f": {stderr_summary}"
+            raise RuntimeError(f"Hashcat exited with code {process.returncode}{stderr_summary}")

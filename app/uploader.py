@@ -83,10 +83,13 @@ class UploadForm(FlaskForm):
         try:
             detected = get_hashcat_devices()
             self.devices.choices = [(d['id'], f"{d['name']} ({d['memory']})") for d in detected]
+            detected_ids = [str(d["id"]) for d in detected if str(d.get("id", "")).isdigit()]
             # Default to settings-defined devices
             if not self.devices.data:
                 from app.utils.settings import read_settings
-                self.devices.data = read_settings().get("default_devices", [d['id'] for d in detected])
+                configured_defaults = [str(device_id) for device_id in read_settings().get("default_devices", [])]
+                selected_defaults = [device_id for device_id in configured_defaults if device_id in detected_ids]
+                self.devices.data = selected_defaults or detected_ids
         except Exception:
             self.devices.choices = []
 
