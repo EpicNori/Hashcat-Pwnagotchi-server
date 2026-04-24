@@ -68,7 +68,10 @@ class HashcatCmd:
 
     def build(self) -> List[str]:
         hashcat_executable = resolve_hashcat_executable() or "hashcat"
-        command = [hashcat_executable, f"-m{self.mode}", *self.hashcat_args]
+        command = [hashcat_executable]
+        if self.mode is not None:
+            command.append(f"-m{self.mode}")
+        command.extend(self.hashcat_args)
         for rule in self.rules:
             if rule is not None:
                 command.append(f"--rules={rule.path}")
@@ -118,6 +121,9 @@ class HashcatCmdCapture(HashcatCmd):
 
 
 class HashcatCmdStdout(HashcatCmd):
+    def __init__(self, outfile: Union[str, Path], hashcat_args=(), session=None):
+        super().__init__(outfile=outfile, mode=None, hashcat_args=hashcat_args, session=session)
+
     def _populate_class_specific(self, command: List[str]):
         command.append('--stdout')
 
