@@ -14,7 +14,7 @@ from werkzeug.datastructures import CombinedMultiDict
 from app import app, db
 from app.attack.convert import split_by_essid, convert_to_22000
 from app.attack.worker import HashcatWorker
-from app.domain import TaskInfoStatus, Rule, InvalidFileError, Workload
+from app.domain import TaskInfoStatus, Rule, InvalidFileError, Workload, HashcatMode
 from app.logger import logger
 from app.login import LoginForm, RegistrationForm, User, RoleEnum, register_user, create_first_users, Role, \
     roles_required, user_has_roles
@@ -229,6 +229,13 @@ def resolve_capture_path(saved_filename: str) -> Path:
     return resolve_existing_capture_path(saved_filename)
 
 
+def iter_split_capture_files(split_folder: Path):
+    valid_suffixes = set(HashcatMode.valid_modes())
+    for candidate in sorted(split_folder.iterdir()):
+        if candidate.is_file() and candidate.suffix.lstrip(".") in valid_suffixes:
+            yield candidate
+
+
 def save_capture_for_user(file_storage, username: str) -> tuple[str, Path]:
     saved_filename = cap_uploads.save(file_storage, folder=username)
     filename = normalize_task_filename(saved_filename)
@@ -261,7 +268,7 @@ def upload():
         Thread(target=download_wordlist, args=(form.get_wordlist_path(),)).start()
         tasks = {}
         hashcat_args = ' '.join(form.hashcat_args())
-        for file_essid in folder_split_by_essid.iterdir():
+        for file_essid in iter_split_capture_files(folder_split_by_essid):
             bssid_essid = next(bssid_essid_from_22000(file_essid))
             bssid, essid = bssid_essid.split(':')
             essid = decode_essid_hex(essid)
@@ -343,7 +350,7 @@ def api_upload():
     Thread(target=download_wordlist, args=(form.get_wordlist_path(),)).start()
     tasks = {}
     hashcat_args = ' '.join(form.hashcat_args())
-    for file_essid in folder_split_by_essid.iterdir():
+    for file_essid in iter_split_capture_files(folder_split_by_essid):
         bssid_essid = next(bssid_essid_from_22000(file_essid))
         bssid, essid = bssid_essid.split(':')
         essid = decode_essid_hex(essid)
@@ -573,7 +580,7 @@ def requeue(task_id):
         folder_split_by_essid = split_by_essid(file_22000)
 
         matched_file = None
-        for file_essid in folder_split_by_essid.iterdir():
+        for file_essid in iter_split_capture_files(folder_split_by_essid):
             bssid, essid = decode_task_essid(file_essid)
             if bssid == task.bssid and essid == task.essid:
                 matched_file = file_essid

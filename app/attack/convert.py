@@ -118,7 +118,10 @@ def split_by_essid(file_22000, to_folder=None):
         os.chdir(to_folder)
         if output_suffix == ".22000":
             run_hcx_command(['hcxhashtool', '-i', file_22000, '--essid-group'], working_directory=to_folder)
-            used_external_split = any(to_folder.iterdir())
+            used_external_split = any(
+                partial.is_file() and partial.suffix == output_suffix
+                for partial in to_folder.iterdir()
+            )
     except FileNotFoundError:
         logger.warning("hcxhashtool is not available; falling back to built-in ESSID splitting")
     finally:

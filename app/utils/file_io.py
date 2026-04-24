@@ -127,7 +127,10 @@ def read_plain_key(key_path):
         return None
     found_keys = set()
     for line in lines:
-        essid, key = line.split(':')[-2:]
+        parts = line.split(':')
+        if len(parts) < 2:
+            continue
+        essid, key = parts[-2:]
         found_keys.add("{essid}:{key}".format(essid=essid, key=key))
     if not found_keys:
         return None

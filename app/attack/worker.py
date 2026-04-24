@@ -52,8 +52,12 @@ class CapAttack(BaseAttack):
     def is_attack_needed(self) -> bool:
         self.cancel_if_needed()
         if self.key_file.exists():
-            self.read_key()
-            return False
+            key_password = read_plain_key(self.key_file)
+            if key_password:
+                with self.lock:
+                    self.lock.found_key = key_password
+                    self.lock.set_status(TaskInfoStatus.CRACKED)
+                return False
         return True
 
     def read_key(self):
