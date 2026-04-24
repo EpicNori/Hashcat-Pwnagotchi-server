@@ -38,7 +38,7 @@ def read_settings():
             "temp_resume_delta": 5,
             "max_job_time_minutes": None,
             "default_devices": ["1"],
-            "default_api_workload": Workload.Fast.value
+            "default_api_workload": Workload.Normal.value
         }
     try:
         with open(ADMIN_SETTINGS_PATH, "r") as f:
@@ -55,7 +55,7 @@ def read_settings():
             if "temp_resume_delta" not in data: data["temp_resume_delta"] = 5
             if "max_job_time_minutes" not in data: data["max_job_time_minutes"] = None
             if "default_devices" not in data: data["default_devices"] = ["1"]
-            if "default_api_workload" not in data: data["default_api_workload"] = Workload.Fast.value
+            data["default_api_workload"] = Workload.normalize(data.get("default_api_workload", Workload.Normal.value))
             
             return data
     except Exception:
@@ -67,12 +67,12 @@ def read_settings():
             "temp_resume_delta": 5,
             "max_job_time_minutes": None,
             "default_devices": ["1"],
-            "default_api_workload": Workload.Fast.value
+            "default_api_workload": Workload.Normal.value
         }
 
 def write_settings(device_intensities: dict, cpu_percent: int, gpu_temp_limit: int = 90, cpu_temp_limit: int = 90,
                    temp_resume_delta: int = 5, max_job_time_minutes: int = None, default_devices: list = None,
-                   default_api_workload: str = Workload.Fast.value):
+                   default_api_workload: str = Workload.Normal.value):
     with open(ADMIN_SETTINGS_PATH, "w") as f:
         json.dump({
             "device_intensities": device_intensities, 
@@ -82,7 +82,7 @@ def write_settings(device_intensities: dict, cpu_percent: int, gpu_temp_limit: i
             "temp_resume_delta": temp_resume_delta,
             "max_job_time_minutes": max_job_time_minutes,
             "default_devices": default_devices or ["1"],
-            "default_api_workload": default_api_workload
+            "default_api_workload": Workload.normalize(default_api_workload)
         }, f)
 
 def apply_hashcat_limits(hashcat_args: list):

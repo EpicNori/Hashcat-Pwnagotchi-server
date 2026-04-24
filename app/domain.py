@@ -128,8 +128,6 @@ class HashcatMode:
 
 @unique
 class Workload(Enum):
-    Low = "1"
-    Fast = "2"
     Normal = "3"
     Rainbow = "4"
 
@@ -137,11 +135,26 @@ class Workload(Enum):
     def to_form():
         # (id_value, description) pairs
         return (
-            (Workload.Low.value, "Low"),
-            (Workload.Fast.value, "Fast"),
-            (Workload.Rainbow.value, "Rainbow"),
             (Workload.Normal.value, "Normal"),
+            (Workload.Rainbow.value, "Rainbow"),
         )
+
+    @staticmethod
+    def normalize(value):
+        if value in (None, NONE_STR):
+            return Workload.Normal.value
+
+        value = str(value)
+        if value == Workload.Rainbow.value:
+            return Workload.Rainbow.value
+        if value == Workload.Normal.value:
+            return Workload.Normal.value
+
+        legacy_map = {
+            "1": Workload.Normal.value,
+            "2": Workload.Normal.value,
+        }
+        return legacy_map.get(value, Workload.Normal.value)
 
 
 class TaskInfoStatus:

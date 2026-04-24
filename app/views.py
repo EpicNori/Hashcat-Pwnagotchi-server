@@ -334,7 +334,7 @@ def api_upload():
     form = UploadForm(
         formdata=CombinedMultiDict((request.files, request.form)),
         meta={'csrf': False},
-        data={'workload': settings.get("default_api_workload", Workload.Fast.value)}
+        data={'workload': Workload.normalize(settings.get("default_api_workload", Workload.Normal.value))}
     )
     if not form.validate():
         return flask.abort(HTTPStatus.BAD_REQUEST, description=str(form.errors))
@@ -720,7 +720,7 @@ class SettingsForm(FlaskForm):
     temp_resume_delta = IntegerField('Resume Margin (C)', validators=[DataRequired(), NumberRange(min=1, max=30)], default=5, description="Jobs resume after temperatures cool down by this many degrees below the limit.")
     max_job_time_minutes = IntegerField('Max Job Time (minutes, optional)', validators=[Optional(), NumberRange(min=1)], description="Stop any cracking job that runs longer than this limit.")
     default_devices = MultiCheckboxField('Default Devices (for Pwnagotchi/API)', choices=[])
-    default_api_workload = RadioField('Default Work Mode (for Pwnagotchi/API)', choices=Workload.to_form(), default=Workload.Fast.value)
+    default_api_workload = RadioField('Default Work Mode (for Pwnagotchi/API)', choices=Workload.to_form(), default=Workload.Normal.value)
     submit = SubmitField('Save Performance Settings')
 
 class TailscaleForm(FlaskForm):
@@ -814,7 +814,7 @@ def admin_settings():
     form.temp_resume_delta.data = settings.get("temp_resume_delta", 5)
     form.max_job_time_minutes.data = settings.get("max_job_time_minutes")
     form.default_devices.data = settings.get("default_devices", ["1"])
-    form.default_api_workload.data = settings.get("default_api_workload", Workload.Fast.value)
+    form.default_api_workload.data = Workload.normalize(settings.get("default_api_workload", Workload.Normal.value))
         
     if ts_form.submit_tailscale.data and ts_form.validate():
         if os.name == "nt":

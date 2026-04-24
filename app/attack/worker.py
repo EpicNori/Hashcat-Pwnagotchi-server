@@ -20,7 +20,7 @@ from app.word_magic.wordlist import WordListDefault, iter_user_wordlist_scripts,
 class CapAttack(BaseAttack):
 
     def __init__(self, file_22000, lock: ProgressLock, wordlist: Path = None, rule: Rule = None,
-                 hashcat_args=(), timeout=None, work_mode=Workload.Fast.value):
+                 hashcat_args=(), timeout=None, work_mode=Workload.Normal.value):
         super().__init__(file_22000=file_22000,
                          hashcat_args=hashcat_args,
                          verbose=False)
