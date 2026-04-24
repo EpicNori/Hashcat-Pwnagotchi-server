@@ -221,12 +221,42 @@ def decode_task_essid(file_22000: Path):
 
 
 def normalize_task_filename(saved_filename: str) -> str:
-    return PurePosixPath(str(saved_filename).replace('\\', '/')).as_posix()
+    raw_filename = str(saved_filename).strip()
+    normalized = raw_filename.replace('\\', '/')
+    capture_root = Path(app.config['CAPTURES_DIR']).resolve()
+
+    try:
+        absolute_path = Path(raw_filename).expanduser().resolve(strict=False)
+        if absolute_path.is_absolute():
+            try:
+                relative_path = absolute_path.relative_to(capture_root)
+                return PurePosixPath(*relative_path.parts).as_posix()
+            except ValueError:
+                pass
+    except OSError:
+        pass
+
+    return PurePosixPath(normalized).as_posix()
 
 
 def resolve_capture_path(saved_filename: str) -> Path:
-    relative_filename = PurePosixPath(normalize_task_filename(saved_filename))
-    return Path(app.config['CAPTURES_DIR'], *relative_filename.parts)
+    capture_root = Path(app.config['CAPTURES_DIR'])
+    normalized_filename = normalize_task_filename(saved_filename)
+    relative_filename = PurePosixPath(normalized_filename)
+    primary_path = capture_root.joinpath(*relative_filename.parts)
+
+    candidates = [primary_path]
+    raw_path = Path(str(saved_filename)).expanduser()
+    if raw_path.is_absolute():
+        candidates.insert(0, raw_path)
+    if relative_filename.name and primary_path != capture_root / relative_filename.name:
+        candidates.append(capture_root / relative_filename.name)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return primary_path
 
 
 def save_capture_for_user(file_storage, username: str) -> tuple[str, Path]:

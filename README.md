@@ -107,7 +107,7 @@ Safe updates replace the application layer only.
 
 The Windows installer automates the dashboard, virtual environment, autostart, CLI wrapper, and update path. For cracking workloads:
 
-- if an NVIDIA GPU is detected, the installer now also attempts a best-effort Windows-side NVIDIA helper install so driver setup is not left entirely manual
+- if an NVIDIA GPU is detected, the Windows installer now first tries Windows Update for an actual NVIDIA display driver and then falls back to NVIDIA's helper app if needed
 - `hashcat.exe` is still required and should be available system-wide or bundled under `windows/tools/hashcat/`
 - direct `.22000` uploads work on Windows even if `hcxhashtool.exe` is missing, because the server can fall back to built-in ESSID splitting
 - raw `.cap`, `.pcap`, and `.pcapng` conversion still prefers `hcxpcapngtool.exe`, either bundled under `windows/tools/hcxtools/`, installed system-wide, or available through WSL

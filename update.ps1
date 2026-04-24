@@ -50,31 +50,18 @@ function Test-NvidiaGpuPresent {
 }
 
 function Test-NvidiaDriverReady {
-    if (Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue) {
-        return $true
-    }
-
-    $defaultNvsmPath = "C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"
-    return Test-Path $defaultNvsmPath
-}
-
-function Get-WingetCommand {
-    $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
-    if ($winget) {
-        return $winget.Source
+    $nvidiaSmi = Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue
+    $nvidiaSmiPath = if ($nvidiaSmi) { $nvidiaSmi.Source } else { "C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe" }
+    if (-not (Test-Path $nvidiaSmiPath)) {
+        return $false
     }
 
     try {
-        Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction Stop
+        & $nvidiaSmiPath -L *> $null
+        return $LASTEXITCODE -eq 0
     } catch {
+        return $false
     }
-
-    $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
-    if ($winget) {
-        return $winget.Source
-    }
-
-    return $null
 }
 
 function Ensure-NvidiaDriverSupport {
@@ -89,17 +76,17 @@ function Ensure-NvidiaDriverSupport {
         return
     }
 
-    $wingetCmd = Get-WingetCommand
-    if (-not $wingetCmd) {
+    $helperScript = Join-Path $CurrentRoot "windows\install_nvidia_drivers.ps1"
+    if (-not (Test-Path $helperScript)) {
         $script:NvidiaDriverStatus = "manual-required"
-        Write-Step "NVIDIA GPU detected, but winget is unavailable for automatic driver helper installation."
+        Write-Step "NVIDIA GPU detected, but the NVIDIA driver helper script is missing."
         return
     }
 
-    Write-Step "NVIDIA GPU detected. Attempting to install NVIDIA GeForce Experience so drivers can be installed automatically"
+    Write-Step "NVIDIA GPU detected. Attempting automatic driver installation and validation"
     try {
-        & $wingetCmd install -e --id Nvidia.GeForceExperience --scope machine --accept-package-agreements --accept-source-agreements --silent --disable-interactivity
-        if ($LASTEXITCODE -eq 0) {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $helperScript check
+        if (Test-NvidiaDriverReady) {
             $script:NvidiaDriverStatus = "installed"
             return
         }

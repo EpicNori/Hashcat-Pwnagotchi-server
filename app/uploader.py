@@ -1,5 +1,5 @@
 import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from flask_uploads import UploadSet, configure_uploads
 from flask_wtf import FlaskForm
@@ -23,6 +23,25 @@ def check_incomplete_tasks():
 def backward_db_compatibility():
     for task in UploadedTask.query.filter(UploadedTask.status.startswith("InterruptedError('Cancelled'")):
         task.status = TaskInfoStatus.CANCELLED
+    capture_root = Path(app.config['CAPTURES_DIR']).resolve()
+    for task in UploadedTask.query.filter(UploadedTask.filename.is_not(None)):
+        filename = str(task.filename).strip()
+        normalized = filename.replace('\\', '/')
+        try:
+            absolute_path = Path(filename).expanduser().resolve(strict=False)
+            if absolute_path.is_absolute():
+                try:
+                    relative_path = absolute_path.relative_to(capture_root)
+                    normalized = PurePosixPath(*relative_path.parts).as_posix()
+                except ValueError:
+                    normalized = PurePosixPath(normalized).as_posix()
+            else:
+                normalized = PurePosixPath(normalized).as_posix()
+        except OSError:
+            normalized = PurePosixPath(normalized).as_posix()
+
+        if task.filename != normalized:
+            task.filename = normalized
     db.session.commit()
 
 
