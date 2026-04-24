@@ -20,11 +20,13 @@ def parse_hashcat_devices_output(output: str):
     # Device #1: NVIDIA GeForce RTX 3080, 10240/10240 MB, 68MCU
     for line in output.splitlines():
         line = line.strip()
-        if not line.startswith("Device #"):
+        if line.startswith("*"):
+            line = line.lstrip("*").strip()
+        if not re.match(r"^(?:Backend\s+)?Device(?:\s+ID)?\s+#\d+", line):
             continue
         try:
             id_part, rest = line.split(':', 1)
-            dev_id = id_part.replace("Device #", "").strip()
+            dev_id = re.sub(r"^(?:Backend\s+)?Device(?:\s+ID)?\s+#", "", id_part).strip()
             info_parts = [part.strip() for part in rest.split(',')]
             name = info_parts[0] if info_parts else f"Device {dev_id}"
             memory = next((part for part in info_parts[1:] if "MB" in part or "GB" in part), "Unknown")
@@ -263,15 +265,18 @@ def get_hashcat_devices():
     except Exception as e:
         logger.error(f"Hashcat device detection failed: {e}")
 
-    # 2. Augmentation: If no devices found, try to at least get NVIDIA GPUs via nvidia-smi
-    if not devices:
+    # 2. Augmentation: If hashcat parsing missed GPUs, try to at least get NVIDIA GPUs via nvidia-smi
+    detected_gpu_ids = {str(device.get("id")) for device in devices if device.get("is_gpu")}
+    if not detected_gpu_ids:
         try:
-            out = subprocess.check_output(['nvidia-smi', '--query-gpu=gpu_name,memory.total', '--format=csv,noheader'], 
+            out = subprocess.check_output(['nvidia-smi', '--query-gpu=index,gpu_name,memory.total', '--format=csv,noheader'],
                                           universal_newlines=True)
             for i, line in enumerate(out.strip().split('\n')):
-                name, mem = line.split(',')
+                index, name, mem = [part.strip() for part in line.split(',', 2)]
+                if index in detected_gpu_ids:
+                    continue
                 devices.append({
-                    "id": str(i + 1),
+                    "id": index or str(i + 1),
                     "name": name.strip(),
                     "memory": mem.strip(),
                     "is_gpu": True
@@ -279,8 +284,8 @@ def get_hashcat_devices():
         except Exception:
             pass
 
-    # 3. Linux fallback: enumerate PCI display adapters even if hashcat parsing fails
-    if not devices:
+    # 3. Linux fallback: enumerate PCI display adapters even if hashcat parsing misses GPUs
+    if not any(device.get("is_gpu") for device in devices):
         devices = get_linux_pci_gpus()
 
     # 4. Last Resort: CPU
