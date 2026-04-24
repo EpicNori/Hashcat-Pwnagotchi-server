@@ -132,25 +132,51 @@ class BaseAttack:
 
     @monitor_timer
     def run_names(self):
-        with tempfile.NamedTemporaryFile(mode='w') as f:
-            hashcat_stdout = HashcatCmdStdout(outfile=f.name, hashcat_args=self.hashcat_args)
+        temp_outfile_handle = tempfile.NamedTemporaryFile(delete=False)
+        temp_outfile = Path(temp_outfile_handle.name)
+        temp_outfile_handle.close()
+        try:
+            hashcat_stdout = HashcatCmdStdout(outfile=temp_outfile, hashcat_args=self.hashcat_args)
             hashcat_stdout.add_wordlists(WordList.NAMES_UA_RU,
                                          WordList.NAMES_RU_CYRILLIC)
             hashcat_stdout.add_rule(Rule(Rule.ESSID))
-            subprocess_call(hashcat_stdout.build())
-            hashcat_cmd = self.new_cmd()
-            hashcat_cmd.add_wordlists(f.name)
-            self.runner(hashcat_cmd)
+            stdout, _ = subprocess_call(hashcat_stdout.build())
+
+            temp_wordlist = tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8')
+            try:
+                temp_wordlist.write(stdout)
+                temp_wordlist.close()
+                hashcat_cmd = self.new_cmd()
+                hashcat_cmd.add_wordlists(temp_wordlist.name)
+                self.runner(hashcat_cmd)
+            finally:
+                try:
+                    temp_path = Path(temp_wordlist.name)
+                    if temp_path.exists():
+                        temp_path.unlink()
+                except Exception:
+                    pass
+        finally:
+            temp_outfile.unlink(missing_ok=True)
 
     @monitor_timer
     def run_names_with_digits(self):
-        with open(WordList.NAMES_UA_RU_WITH_DIGITS.path, 'w') as f:
-            wordlist_order = [WordList.NAMES_UA_RU, WordList.DIGITS_APPEND_SHORT]
+        wordlist_order = [WordList.NAMES_UA_RU, WordList.DIGITS_APPEND_SHORT]
+        with open(WordList.NAMES_UA_RU_WITH_DIGITS.path, 'w', encoding='utf-8') as f:
             for left in ['left', 'right']:
                 for rule_names in ['', 'T0', 'u']:
-                    hashcat_stdout = HashcatCmdStdout(outfile=f.name, hashcat_args=self.hashcat_args)
-                    hashcat_stdout.add_wordlists(*wordlist_order, options=['-a1', f'--rule-{left}={rule_names}'])
-                    subprocess_call(hashcat_stdout.build())
+                    temp_outfile_handle = tempfile.NamedTemporaryFile(delete=False)
+                    temp_outfile = Path(temp_outfile_handle.name)
+                    temp_outfile_handle.close()
+                    try:
+                        hashcat_stdout = HashcatCmdStdout(outfile=temp_outfile, hashcat_args=self.hashcat_args)
+                        hashcat_stdout.add_wordlists(*wordlist_order, options=['-a1', f'--rule-{left}={rule_names}'])
+                        stdout, _ = subprocess_call(hashcat_stdout.build())
+                    finally:
+                        temp_outfile.unlink(missing_ok=True)
+                    f.write(stdout)
+                    if stdout and not stdout.endswith('\n'):
+                        f.write('\n')
                 wordlist_order = wordlist_order[::-1]
         hashcat_cmd = self.new_cmd()
         hashcat_cmd.add_wordlists(WordList.NAMES_UA_RU_WITH_DIGITS)

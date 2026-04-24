@@ -262,14 +262,18 @@ def create_fast_wordlists():
         wlist_top1k = WordListInfo(path=WordList.TOP1K.path, url=top1k_url,
                                    checksum="070a10f5e7a23f12ec6fc8c8c0ccafe8")
         wlist_top1k.download()
-        hashcat_stdout = HashcatCmdStdout(outfile=WordList.TOP1K_RULE_BEST64.path)
-        hashcat_stdout.add_wordlists(WordList.TOP1K)
-        hashcat_stdout.add_rule(Rule.BEST_64)
-        subprocess_call(hashcat_stdout.build())
-        with open(WordList.TOP1K_RULE_BEST64.path) as f:
-            unique = set(f.readlines())
-        with open(WordList.TOP1K_RULE_BEST64.path, 'w') as f:
-            f.writelines(unique)
+        temp_outfile_handle = tempfile.NamedTemporaryFile(delete=False)
+        temp_outfile = Path(temp_outfile_handle.name)
+        temp_outfile_handle.close()
+        try:
+            hashcat_stdout = HashcatCmdStdout(outfile=temp_outfile)
+            hashcat_stdout.add_wordlists(WordList.TOP1K)
+            hashcat_stdout.add_rule(Rule.BEST_64)
+            stdout, _ = subprocess_call(hashcat_stdout.build())
+            unique = sorted({line for line in stdout.splitlines() if line})
+            WordList.TOP1K_RULE_BEST64.path.write_text('\n'.join(unique) + ('\n' if unique else ''))
+        finally:
+            temp_outfile.unlink(missing_ok=True)
 
 
 def find_wordlist_by_path(wordlist_path) -> Union[WordListInfo, None]:

@@ -86,14 +86,34 @@ def _collect_essid_rule(essid_wordlist_path: Path):
     """
     Run ESSID + best64.rule attack.
     """
-    with tempfile.NamedTemporaryFile(mode='w+', errors='ignore') as f:
-        # Ignore UnicodeDecodeError: 'utf-8' codec can't decode byte ...
-        hashcat_stdout = HashcatCmdStdout(outfile=f.name)
+    temp_outfile = _new_temp_path()
+    try:
+        hashcat_stdout = HashcatCmdStdout(outfile=temp_outfile)
         hashcat_stdout.add_wordlists(essid_wordlist_path)
         hashcat_stdout.add_rule(Rule(Rule.ESSID))
-        subprocess_call(hashcat_stdout.build())
-        candidates = f.read().splitlines()
-    return candidates
+        stdout, _ = subprocess_call(hashcat_stdout.build())
+    finally:
+        temp_outfile.unlink(missing_ok=True)
+    return [line for line in stdout.splitlines() if line]
+
+
+def _new_temp_path() -> Path:
+    temp_handle = tempfile.NamedTemporaryFile(delete=False)
+    try:
+        return Path(temp_handle.name)
+    finally:
+        temp_handle.close()
+
+
+def _write_candidates_to_tempfile(candidates: list[str]) -> Path:
+    temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8')
+    try:
+        temp_file.write('\n'.join(candidates))
+        if candidates:
+            temp_file.write('\n')
+    finally:
+        temp_file.close()
+    return Path(temp_file.name)
 
 
 def _run_essid_digits(compounds_fpath: Path, hashcat_cmd=None, fast=True, runner=None):
@@ -118,16 +138,24 @@ def _run_essid_digits(compounds_fpath: Path, hashcat_cmd=None, fast=True, runner
         # reduce IO operations, run the hashcat attack directly
         fast = False
     for reverse in range(2):
-        with tempfile.NamedTemporaryFile(mode='w+', errors='ignore') as f:
-            hashcat_stdout = HashcatCmdStdout(outfile=f.name, hashcat_args=hashcat_args)
+        temp_outfile = _new_temp_path()
+        try:
+            hashcat_stdout = HashcatCmdStdout(outfile=temp_outfile, hashcat_args=hashcat_args)
             hashcat_stdout.add_wordlists(*wordlist_order, options=['-a1'])
-            subprocess_call(hashcat_stdout.build())
-            if fast:
-                candidates.update(f.read().splitlines())
-            else:
+            stdout, _ = subprocess_call(hashcat_stdout.build())
+        finally:
+            temp_outfile.unlink(missing_ok=True)
+        stdout_candidates = [line for line in stdout.splitlines() if line]
+        if fast:
+            candidates.update(stdout_candidates)
+        else:
+            temp_path = _write_candidates_to_tempfile(stdout_candidates)
+            try:
                 _hashcat_cmd_tmp = deepcopy(hashcat_cmd)
-                _hashcat_cmd_tmp.add_wordlists(f.name)
+                _hashcat_cmd_tmp.add_wordlists(temp_path)
                 runner(_hashcat_cmd_tmp)
+            finally:
+                temp_path.unlink(missing_ok=True)
         wordlist_order = wordlist_order[::-1]
     return candidates
 
@@ -162,12 +190,14 @@ def run_essid_attack(essid, hashcat_cmd=None, fast=True, runner=None):
                                                   fast=fast,
                                                   runner=runner))
 
-    if hashcat_cmd is not None:
-        with tempfile.NamedTemporaryFile(mode='w') as f:
-            f.write('\n'.join(password_candidates))
+    if hashcat_cmd is not None and password_candidates:
+        temp_path = _write_candidates_to_tempfile(sorted(password_candidates))
+        try:
             hashcat_cmd = deepcopy(hashcat_cmd)
-            hashcat_cmd.add_wordlists(f.name)
+            hashcat_cmd.add_wordlists(temp_path)
             runner(hashcat_cmd)
+        finally:
+            temp_path.unlink(missing_ok=True)
 
     shutil.rmtree(essid_as_wordlist_dir, ignore_errors=True)
     return password_candidates
