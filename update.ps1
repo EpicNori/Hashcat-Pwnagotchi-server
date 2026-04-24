@@ -41,6 +41,7 @@ $VenvRoot = Join-Path $InstallRoot "venv"
 $LogsRoot = Join-Path $InstallRoot "logs"
 $ToolsRoot = Join-Path $InstallRoot "tools"
 $BundledToolsRoot = Join-Path $CurrentRoot "windows\tools"
+$ProgressFile = Join-Path $LogsRoot "app_update.progress"
 $script:NvidiaDriverStatus = "not-needed"
 
 function Test-IsAdministrator {
@@ -51,6 +52,11 @@ function Test-IsAdministrator {
 
 function Write-Step([string]$Message) {
     Write-Output "[*] $Message"
+}
+
+function Write-ProgressState([string]$State, [int]$Percent, [string]$Message) {
+    New-Item -ItemType Directory -Path $LogsRoot -Force | Out-Null
+    Set-Content -LiteralPath $ProgressFile -Value "$State|$Percent|$Message"
 }
 
 function Test-NvidiaGpuPresent {
@@ -99,12 +105,14 @@ function Test-NvidiaDriverReady {
 function Ensure-NvidiaDriverSupport {
     if (-not (Test-NvidiaGpuPresent)) {
         Write-Step "Skipping NVIDIA driver installation (no NVIDIA GPU detected)."
+        Write-ProgressState "not-applicable" 100 "No NVIDIA GPU detected"
         return
     }
 
     if (Test-NvidiaDriverReady) {
         $script:NvidiaDriverStatus = "already-installed"
         Write-Step "NVIDIA GPU runtime already appears to be available."
+        Write-ProgressState "success" 100 "NVIDIA drivers are already installed"
         return
     }
 
@@ -116,10 +124,12 @@ function Ensure-NvidiaDriverSupport {
     }
 
     Write-Step "NVIDIA GPU detected. Attempting automatic driver installation and validation"
+    Write-ProgressState "running" 15 "Checking NVIDIA driver support"
     try {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $helperScript check
         if (Test-NvidiaDriverReady) {
             $script:NvidiaDriverStatus = "installed"
+            Write-ProgressState "success" 100 "NVIDIA drivers are ready"
             return
         }
     } catch {
@@ -196,6 +206,7 @@ function Ensure-7ZipExe {
     New-Item -ItemType Directory -Path $sevenZipDir -Force | Out-Null
     $sevenZipUrl = "https://www.7-zip.org/a/7zr.exe"
     Write-Step "Downloading portable 7-Zip extractor for the official Hashcat archive"
+    Write-ProgressState "running" 72 "Downloading the Hashcat extractor"
     Invoke-WebRequest -Uri $sevenZipUrl -OutFile $sevenZipExe -UseBasicParsing
     if (-not (Test-Path $sevenZipExe)) {
         throw "Could not download 7zr.exe."
@@ -220,6 +231,7 @@ function Install-HashcatRelease {
         foreach ($uri in $downloadUris) {
             try {
                 Write-Step "Downloading official Hashcat release from $uri"
+                Write-ProgressState "running" 78 "Downloading the official Hashcat release"
                 Invoke-WebRequest -Uri $uri -OutFile $archivePath -UseBasicParsing
                 $downloaded = $true
                 break
@@ -236,6 +248,7 @@ function Install-HashcatRelease {
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to extract the Hashcat release archive."
         }
+        Write-ProgressState "running" 86 "Extracting the Hashcat release"
 
         $sourceDir = Get-ChildItem -LiteralPath $extractRoot -Directory -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -like "hashcat-*" } |
@@ -251,6 +264,7 @@ function Install-HashcatRelease {
         New-Item -ItemType Directory -Path $destinationRoot -Force | Out-Null
         Copy-Item -Path (Join-Path $sourceDir.FullName "*") -Destination $destinationRoot -Recurse -Force
         Ensure-MachinePathEntry -PathEntry $destinationRoot
+        Write-ProgressState "running" 92 "Installing the Hashcat binaries"
     } finally {
         if (Test-Path $archivePath) {
             Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue
@@ -324,6 +338,7 @@ function Get-SourceRoot {
     $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("hashcat-wpa-win-update-" + [guid]::NewGuid().ToString("N"))
     $zipPath = Join-Path $tempRoot "repo.zip"
     New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
+    Write-ProgressState "running" 20 "Downloading the latest application source"
     Invoke-WebRequest -Uri $RepoZipUrl -OutFile $zipPath -UseBasicParsing
     Expand-Archive -Path $zipPath -DestinationPath $tempRoot -Force
     $sourceRoot = Get-ChildItem -Path $tempRoot -Directory | Where-Object { $_.Name -like "Hashcat-Pwnagotchi-server-*" } | Select-Object -First 1
@@ -337,6 +352,7 @@ function Copy-RepoTree([string]$SourceRoot, [string]$DestinationRoot) {
     if (Test-Path $DestinationRoot) {
         Write-Step "Preserving existing runtime logs while refreshing application files"
     }
+    Write-ProgressState "running" 35 "Refreshing application files"
     New-Item -ItemType Directory -Path $DestinationRoot -Force | Out-Null
     & robocopy $SourceRoot $DestinationRoot /MIR /XD .git .github __pycache__ .venv venv logs | Out-Null
     if ($LASTEXITCODE -gt 7) {
@@ -414,6 +430,7 @@ New-Item -ItemType Directory -Path $ToolsRoot -Force | Out-Null
 Write-Step "--- CRACKSERVER SAFE UPDATE INITIATED ---"
 Write-Step "Data preservation: ACTIVE"
 Write-Step "Stopping current Windows service process"
+Write-ProgressState "running" 10 "Stopping the current server"
 Invoke-CheckedPowerShellFile -ScriptPath (Join-Path $CurrentRoot "windows\crackserver.ps1") -Arguments @("stop")
 
 $source = Get-SourceRoot
@@ -439,20 +456,25 @@ try {
     }
 
     Write-Step "Installing latest application files"
+    Write-ProgressState "running" 30 "Installing the updated application files"
     Copy-RepoTree -SourceRoot $source.Root -DestinationRoot $CurrentRoot
 
     $venvPython = Join-Path $VenvRoot "Scripts\python.exe"
     Write-Step "Refreshing Python dependencies"
+    Write-ProgressState "running" 45 "Refreshing Python dependencies"
     & $venvPython -m pip install --upgrade pip wheel
     & $venvPython -m pip install -r (Join-Path $CurrentRoot "requirements.txt")
 
     Write-Step "Refreshing Windows cracking toolchain"
+    Write-ProgressState "running" 65 "Downloading and installing Hashcat"
     Install-HashcatToolchain
 
     Write-Step "Refreshing autostart task"
+    Write-ProgressState "running" 85 "Updating the autostart task"
     Invoke-CheckedPowerShellFile -ScriptPath (Join-Path $CurrentRoot "windows\autostart_service.ps1") -Arguments @("enable")
 
     Write-Step "Restarting dashboard service"
+    Write-ProgressState "running" 95 "Restarting the server"
     Invoke-CheckedPowerShellFile -ScriptPath (Join-Path $CurrentRoot "windows\run_server.ps1") -Arguments @("-InstallRoot", $InstallRoot)
 
     if (Test-Path $PreviousRoot) {
@@ -487,6 +509,7 @@ finally {
 }
 
 Write-Step "Update complete. All user data and settings have been preserved."
+Write-ProgressState "success" 100 "Application update completed successfully"
 switch ($script:NvidiaDriverStatus) {
     "installed" {
         Write-Step "NVIDIA GPU detected. GeForce Experience was installed automatically so NVIDIA drivers can be provisioned. A reboot or first-time NVIDIA setup may still be required before Hashcat can use the GPU."

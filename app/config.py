@@ -37,6 +37,8 @@ HASHCAT_STATUS_TIMER = 5  # seconds
 BENCHMARK_FILE = HASHCAT_WPA_CACHE_DIR / "benchmark.csv"
 HASHCAT_BRAIN_PASSWORD_PATH = HASHCAT_WPA_CACHE_DIR / "brain" / "hashcat_brain_password"
 ADMIN_SETTINGS_PATH = HASHCAT_WPA_CACHE_DIR / "admin_settings.json"
+APP_UPDATE_PROGRESS_FILE = "app_update.progress"
+NVIDIA_INSTALL_PROGRESS_FILE = "nvidia_install.progress"
 
 # mkdirs
 HASHCAT_WPA_CACHE_DIR.mkdir(exist_ok=True, parents=True)

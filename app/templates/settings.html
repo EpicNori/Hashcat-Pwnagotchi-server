@@ -127,23 +127,38 @@
             </div>
         </div>
         <div class="col-md-6">
-            <div class="panel panel-info">
-                <div class="panel-heading">2. Download Test Capture</div>
-                <div class="panel-body">
-                    <p>Download the bundled test files to verify upload, conversion, and cracking behavior.</p>
-                    <p><a href="{{ url_for('static', filename='test_capture_hashcat_essid.22000') }}" download="test_capture_hashcat_essid.22000">Direct download link for the test file</a></p>
-                    <p><a href="{{ url_for('download_test_capture_pcap') }}" download="test_capture_hashcat_essid.pcap">Direct download link for the sample PCAP</a></p>
-                    {% if not gpu_visible %}
-                    <hr>
-                    <p>No GPU is currently visible in the settings view. You can ask the server to check whether NVIDIA drivers are missing and install them if needed.</p>
-                    <form method="POST">
-                        {{ nvidia_form.hidden_tag() }}
-                        {{ nvidia_form.submit_check_nvidia(class_="btn btn-warning") }}
-                    </form>
-                    {% endif %}
+                <div class="panel panel-info">
+                    <div class="panel-heading">2. Download Test Capture</div>
+                    <div class="panel-body">
+                        <p>Download the bundled test files to verify upload, conversion, and cracking behavior.</p>
+                        <p><a href="{{ url_for('static', filename='test_capture_hashcat_essid.22000') }}" download="test_capture_hashcat_essid.22000">Direct download link for the test file</a></p>
+                        <p><a href="{{ url_for('download_test_capture_pcap') }}" download="test_capture_hashcat_essid.pcap">Direct download link for the sample PCAP</a></p>
+                        <hr>
+                        <div class="form-group">
+                            <label>NVIDIA Driver Install Progress</label>
+                            <div class="progress" style="margin-bottom: 6px;">
+                                <div id="nvidia-progress-bar"
+                                     class="progress-bar progress-bar-info"
+                                     role="progressbar"
+                                     aria-valuemin="0"
+                                     aria-valuemax="100"
+                                     aria-valuenow="{{ install_progress.nvidia.progress }}"
+                                     style="width: {{ install_progress.nvidia.progress }}%;">
+                                    {{ install_progress.nvidia.progress }}%
+                                </div>
+                            </div>
+                            <p id="nvidia-progress-message" class="help-block">{{ install_progress.nvidia.message }}</p>
+                        </div>
+                        {% if not gpu_visible %}
+                        <p>No GPU is currently visible in the settings view. You can ask the server to check whether NVIDIA drivers are missing and install them if needed.</p>
+                        <form method="POST">
+                            {{ nvidia_form.hidden_tag() }}
+                            {{ nvidia_form.submit_check_nvidia(class_="btn btn-warning", id="nvidia-install-btn") }}
+                        </form>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
-        </div>
     </div>
     <div class="row">
         <div class="col-md-12" style="margin-top: 15px;">
@@ -182,26 +197,38 @@
     </div>
     <div class="row">
         <div class="col-md-6">
-            <div class="panel panel-danger">
-                <div class="panel-heading">Automated Upgrade</div>
-                <div class="panel-body">
-                    <p>Clicking the button below will automatically contact GitHub, pull the latest codebase, recompile the backend, and automatically restart the web-server daemon.</p>
-                    <p><i>Note: The server will be temporarily inaccessible for ~60 seconds during the upgrade process.</i></p>
-                    <p>
-                        Current update status:
-                        <span class="label {% if update_status == 'success' %}label-success{% elif update_status == 'running' %}label-warning{% elif update_status == 'failed' %}label-danger{% else %}label-default{% endif %}">
-                            {{ update_status|capitalize }}
-                        </span>
-                    </p>
-                    <p>{{ update_summary }}</p>
-                    <pre style="max-height: 220px; overflow-y: auto; white-space: pre-wrap;">{{ update_log_excerpt }}</pre>
-                    <form method="POST">
-                        {{ update_form.hidden_tag() }}
-                        {{ update_form.submit_update(class_="btn btn-danger") }}
-                    </form>
+                <div class="panel panel-danger">
+                    <div class="panel-heading">Automated Upgrade</div>
+                    <div class="panel-body">
+                        <p>Clicking the button below will automatically contact GitHub, pull the latest codebase, recompile the backend, and automatically restart the web-server daemon.</p>
+                        <p><i>Note: The server will be temporarily inaccessible for ~60 seconds during the upgrade process.</i></p>
+                        <p>
+                            Current update status:
+                            <span class="label {% if update_status == 'success' %}label-success{% elif update_status == 'running' %}label-warning{% elif update_status == 'failed' %}label-danger{% else %}label-default{% endif %}">
+                                {{ update_status|capitalize }}
+                            </span>
+                        </p>
+                        <div class="progress" style="margin-bottom: 6px;">
+                            <div id="update-progress-bar"
+                                 class="progress-bar progress-bar-info"
+                                 role="progressbar"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100"
+                                 aria-valuenow="{{ install_progress.update.progress }}"
+                                 style="width: {{ install_progress.update.progress }}%;">
+                                {{ install_progress.update.progress }}%
+                            </div>
+                        </div>
+                        <p id="update-progress-message" class="help-block">{{ install_progress.update.message }}</p>
+                        <p>{{ update_summary }}</p>
+                        <pre style="max-height: 220px; overflow-y: auto; white-space: pre-wrap;">{{ update_log_excerpt }}</pre>
+                        <form method="POST">
+                            {{ update_form.hidden_tag() }}
+                            {{ update_form.submit_update(class_="btn btn-danger", id="update-install-btn") }}
+                        </form>
+                    </div>
                 </div>
             </div>
-        </div>
         <div class="col-md-6">
             <div class="panel panel-danger">
                 <div class="panel-heading">Danger Zone: Permanent Uninstall</div>
@@ -257,5 +284,63 @@
     }
     setInterval(checkTailscale, 10000);
     checkTailscale();
+
+    function renderInstallerProgress(prefix, snapshot) {
+        var bar = $("#" + prefix + "-progress-bar");
+        var message = $("#" + prefix + "-progress-message");
+        var button = $("#" + prefix + "-install-btn");
+        if (!bar.length || !snapshot) {
+            return;
+        }
+
+        var progress = Number(snapshot.progress || 0);
+        if (isNaN(progress)) {
+            progress = 0;
+        }
+        progress = Math.max(0, Math.min(100, progress));
+        var state = (snapshot.state || "idle").toLowerCase();
+        var labelClass = "progress-bar-info";
+
+        bar.removeClass("progress-bar-info progress-bar-success progress-bar-warning progress-bar-danger progress-bar-striped active");
+        if (state === "running") {
+            labelClass = "progress-bar-warning";
+            bar.addClass("progress-bar-striped active");
+            if (button.length) {
+                button.prop("disabled", true);
+            }
+        } else if (state === "success") {
+            labelClass = "progress-bar-success";
+            if (button.length) {
+                button.prop("disabled", false);
+            }
+        } else if (state === "failed") {
+            labelClass = "progress-bar-danger";
+            if (button.length) {
+                button.prop("disabled", false);
+            }
+        } else {
+            if (button.length) {
+                button.prop("disabled", false);
+            }
+        }
+
+        bar.addClass(labelClass);
+        bar.css("width", progress + "%");
+        bar.attr("aria-valuenow", progress);
+        bar.text(progress + "%");
+        if (message.length) {
+            message.text(snapshot.message || "");
+        }
+    }
+
+    function refreshInstallerProgress() {
+        $.getJSON("/api/admin/install_progress", function(data) {
+            renderInstallerProgress("nvidia", data.nvidia);
+            renderInstallerProgress("update", data.update);
+        });
+    }
+
+    setInterval(refreshInstallerProgress, 5000);
+    refreshInstallerProgress();
 </script>
 {% endblock %}

@@ -11,6 +11,8 @@ $LogsRoot = Join-Path $InstallRoot "logs"
 $PidFile = Join-Path $InstallRoot "updater.pid"
 $LogFile = Join-Path $LogsRoot "updater.log"
 $ErrorLogFile = Join-Path $LogsRoot "updater_stderr.log"
+$ProgressFile = Join-Path $LogsRoot "app_update.progress"
+$NvidiaProgressFile = Join-Path $LogsRoot "nvidia_install.progress"
 $UpdateScript = Join-Path $InstallRoot "current\update.ps1"
 
 New-Item -ItemType Directory -Path $LogsRoot -Force | Out-Null
@@ -51,6 +53,8 @@ for key in ("SystemRoot", "WINDIR", "COMSPEC", "TEMP", "TMP", "HOME", "USERPROFI
     if value:
         env[key] = value
 env["PATH"] = _clean_path()
+env["HASHCAT_WPA_PROGRESS_FILE"] = __PROGRESS_FILE__
+env["HASHCAT_WPA_NVIDIA_PROGRESS_FILE"] = __NVIDIA_PROGRESS_FILE__
 
 stdout_log = open(__LOG_FILE__, "ab", buffering=0)
 stderr_log = open(__ERROR_LOG_FILE__, "ab", buffering=0)
@@ -70,6 +74,8 @@ sys.stdout.flush()
     $launcher = $launcher.Replace("__POWERSHELL_EXE__", (ConvertTo-Json -Compress (Get-Command powershell.exe).Source))
     $launcher = $launcher.Replace("__UPDATE_SCRIPT__", (ConvertTo-Json -Compress $UpdateScript))
     $launcher = $launcher.Replace("__UPDATE_ROOT__", (ConvertTo-Json -Compress (Split-Path $UpdateScript -Parent)))
+    $launcher = $launcher.Replace("__PROGRESS_FILE__", (ConvertTo-Json -Compress $ProgressFile))
+    $launcher = $launcher.Replace("__NVIDIA_PROGRESS_FILE__", (ConvertTo-Json -Compress $NvidiaProgressFile))
 
     $tempLauncher = Join-Path ([IO.Path]::GetTempPath()) ("hashcat-wpa-update-launch-" + [guid]::NewGuid().ToString("N") + ".py")
     Set-Content -LiteralPath $tempLauncher -Value $launcher -Encoding UTF8

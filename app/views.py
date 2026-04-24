@@ -12,6 +12,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.datastructures import CombinedMultiDict
 
 from app import app, db
+from app.config import APP_UPDATE_PROGRESS_FILE, NVIDIA_INSTALL_PROGRESS_FILE
 from app.attack.convert import split_by_essid, convert_to_22000
 from app.attack.worker import HashcatWorker
 from app.domain import TaskInfoStatus, Rule, InvalidFileError, Workload, HashcatMode
@@ -183,6 +184,68 @@ def get_update_status():
 
     return status, summary, "No update log available yet."
 
+
+def get_runtime_logs_dir() -> Path:
+    if os.name == "nt":
+        install_root = Path(os.environ.get("HASHCAT_WPA_INSTALL_ROOT", Path(app.root_path).parent))
+        return install_root / "logs"
+    return Path("/var/log/hashcat-wpa-server")
+
+
+def get_progress_file(kind: str) -> Path:
+    filename = APP_UPDATE_PROGRESS_FILE if kind == "update" else NVIDIA_INSTALL_PROGRESS_FILE
+    return get_runtime_logs_dir() / filename
+
+
+def read_progress_snapshot(path: Path, default_message: str) -> dict:
+    snapshot = {
+        "state": "idle",
+        "progress": 0,
+        "message": default_message,
+    }
+
+    try:
+        if not path.exists():
+            return snapshot
+
+        raw_value = path.read_text(errors="ignore").strip()
+        if not raw_value:
+            return snapshot
+
+        parts = raw_value.split("|", 2)
+        state = (parts[0] or "idle").strip().lower() if parts else "idle"
+        try:
+            progress = int(parts[1]) if len(parts) > 1 else 0
+        except ValueError:
+            progress = 0
+        progress = max(0, min(100, progress))
+        message = parts[2].strip() if len(parts) > 2 and parts[2].strip() else default_message
+        snapshot.update({
+            "state": state,
+            "progress": progress,
+            "message": message,
+        })
+        return snapshot
+    except Exception as error:
+        snapshot.update({
+            "state": "unknown",
+            "message": f"Could not read progress: {error}",
+        })
+        return snapshot
+
+
+def get_install_progress() -> dict:
+    return {
+        "update": read_progress_snapshot(
+            get_progress_file("update"),
+            "Waiting for the app update to start.",
+        ),
+        "nvidia": read_progress_snapshot(
+            get_progress_file("nvidia"),
+            "Waiting for the NVIDIA install to start.",
+        ),
+    }
+
 @app.context_processor
 def inject_version():
     import socket
@@ -313,6 +376,13 @@ def install_default_wordlist(wordlist_name):
         flask.flash(f"Failed to install {target.name}: {error}", category="error")
 
     return redirect(url_for('upload'))
+
+
+@app.route('/api/admin/install_progress')
+@login_required
+@roles_required(RoleEnum.ADMIN)
+def api_admin_install_progress():
+    return jsonify(get_install_progress())
 
 @app.route('/api/upload', methods=['POST'])
 def api_upload():
@@ -907,6 +977,7 @@ def admin_settings():
 
     autostart_status = get_autostart_status()
     update_status, update_summary, update_log_excerpt = get_update_status()
+    install_progress = get_install_progress()
         
     return render_template('settings.html', title='Admin Settings', form=form, ts_form=ts_form, 
                            update_form=update_form, uninstall_form=uninstall_form,
@@ -914,7 +985,8 @@ def admin_settings():
                            account_form=account_form, autostart_form=autostart_form,
                            nvidia_form=nvidia_form, gpu_visible=gpu_visible,
                            autostart_status=autostart_status, update_status=update_status,
-                           update_summary=update_summary, update_log_excerpt=update_log_excerpt)
+                           update_summary=update_summary, update_log_excerpt=update_log_excerpt,
+                           install_progress=install_progress)
 
 
 @app.route('/api/stats')
