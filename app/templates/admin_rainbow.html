@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block page_content %}
+<div class="container">
+    <h1>Rainbow Wordlist</h1>
+    <p class="text-muted">This page shows the reusable password list built from cracked keys across uploaded captures and cached task results.</p>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="panel panel-info">
+                <div class="panel-heading">Current Rainbow Cache</div>
+                <div class="panel-body">
+                    {% if rainbow_wordlist %}
+                        <p><strong>File:</strong> {{ rainbow_wordlist }}</p>
+                        <p><strong>Entries:</strong> {{ rainbow_size }}</p>
+                        <p><strong>Last updated:</strong>
+                            {% if rainbow_updated %}
+                                {{ rainbow_updated }}
+                            {% else %}
+                                Unknown
+                            {% endif %}
+                        </p>
+                        <p>
+                            <a href="{{ url_for('download_rainbow_wordlist') }}" class="btn btn-info">
+                                Download Rainbow Wordlist
+                            </a>
+                        </p>
+                    {% else %}
+                        <div class="alert alert-warning">
+                            No rainbow wordlist is available yet. Crack a few captures first, then return here to build the reuse list.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="panel panel-default">
+                <div class="panel-heading">Preview</div>
+                <div class="panel-body">
+                    {% if rainbow_entries %}
+                        <ol>
+                            {% for entry in rainbow_entries %}
+                            <li><code>{{ entry }}</code></li>
+                            {% endfor %}
+                        </ol>
+                    {% else %}
+                        <p class="text-muted">No entries to preview yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="panel panel-success">
+                <div class="panel-heading">How it works</div>
+                <div class="panel-body">
+                    <ul>
+                        <li>Passwords are collected from cracked tasks and cached key files.</li>
+                        <li>Duplicates are removed while keeping the newest discoveries first.</li>
+                        <li>The resulting list is saved as `wordlists/rainbow_processed.txt`.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

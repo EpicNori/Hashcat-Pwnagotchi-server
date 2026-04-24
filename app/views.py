@@ -482,12 +482,41 @@ def download_rainbow_wordlist():
     rainbow_wordlist = build_rainbow_wordlist()
     if rainbow_wordlist is None or not rainbow_wordlist.exists():
         flask.flash("No rainbow wordlist is available yet.", category="info")
-        return redirect(url_for('user_profile'))
+        return redirect(url_for('admin_rainbow'))
 
     return flask.send_file(
         str(rainbow_wordlist),
         as_attachment=True,
         download_name=rainbow_wordlist.name
+    )
+
+
+@app.route('/admin/rainbow')
+@login_required
+@roles_required(RoleEnum.ADMIN)
+def admin_rainbow():
+    from datetime import datetime
+
+    rainbow_wordlist = build_rainbow_wordlist()
+    rainbow_entries = []
+    rainbow_size = 0
+    rainbow_updated = None
+
+    if rainbow_wordlist is not None and rainbow_wordlist.exists():
+        rainbow_updated = datetime.fromtimestamp(rainbow_wordlist.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+        try:
+            rainbow_entries = rainbow_wordlist.read_text(errors="ignore").splitlines()
+        except OSError:
+            rainbow_entries = []
+        rainbow_size = len(rainbow_entries)
+
+    return render_template(
+        'admin_rainbow.html',
+        title='Rainbow Wordlist',
+        rainbow_wordlist=rainbow_wordlist,
+        rainbow_entries=rainbow_entries[:50],
+        rainbow_size=rainbow_size,
+        rainbow_updated=rainbow_updated,
     )
 
 
