@@ -38,6 +38,16 @@
                     <div class="col">{{ render_field(form.rule) }}</div>
                 </div>
             </div>
+            {% if missing_default_wordlists %}
+            <hr>
+            <h4>Install Missing Built-in Wordlists</h4>
+            <p class="text-muted small">These lists are only downloaded when you need them for a task.</p>
+            {% for wordlist in missing_default_wordlists %}
+            <form method="POST" action="{{ url_for('install_default_wordlist', wordlist_name=wordlist.path.name) }}" style="display: inline-block; margin-right: 10px; margin-bottom: 10px;">
+                <button type="submit" class="btn btn-info btn-sm">Install {{ wordlist.name }}</button>
+            </form>
+            {% endfor %}
+            {% endif %}
         </div>
 
         <p>Estimated runtime (per Access Point): <span id="runtime">{{ form.runtime }}</span></p>
@@ -60,17 +70,6 @@
         <button type="submit" class="btn btn-default btn-lg">Submit</button>
     </form>
 
-    {% if missing_default_wordlists %}
-    <div class="field-boxed" style="margin-top: 20px;">
-        <h4>Optional Extra Wordlists</h4>
-        <p class="text-muted small">Normal mode can use these built-in fallback lists if they are installed. Missing ones are skipped unless you install them here.</p>
-        {% for wordlist in missing_default_wordlists %}
-        <form method="POST" action="{{ url_for('install_default_wordlist', wordlist_name=wordlist.path.name) }}" style="display: inline-block; margin-right: 10px; margin-bottom: 10px;">
-            <button type="submit" class="btn btn-info btn-sm">Install {{ wordlist.name }}</button>
-        </form>
-        {% endfor %}
-    </div>
-    {% endif %}
     <p class="text-muted small" style="margin-top: 20px;">Rainbow mode only processes the reused-password list built from previously cracked keys, so it is useful when you want a quick replay pass without the full attack chain.</p>
     <p class="text-muted small" style="margin-top: 20px;">Normal mode now finishes with an exhaustive WPA brute-force pass across printable ASCII passwords from 8 to 63 characters, so it will keep trying combinations until a key is found or you cancel the task.</p>
 </div>
