@@ -1,8 +1,11 @@
 import datetime
+import os
 import re
 import subprocess
+from shutil import which
 from functools import lru_cache
 from typing import List
+from pathlib import Path
 from urllib.parse import urlparse, urljoin
 
 from flask import request, Markup
@@ -126,12 +129,20 @@ def subprocess_call(args: List[str]):
     :param args: shell args
     """
     args = list(map(str, args))
+    cwd = None
+    if args:
+        executable = Path(args[0]).name.lower()
+        if executable in {"hashcat", "hashcat.exe"}:
+            resolved_hashcat = resolve_hashcat_executable()
+            if resolved_hashcat:
+                args[0] = resolved_hashcat
+                cwd = str(Path(resolved_hashcat).parent)
     logger.debug(">>> {}".format(' '.join(args)))
     if not all(args):
         raise ValueError(f"Empty arg in {args}")
     try:
         completed = subprocess.run(args, universal_newlines=True,
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd)
     except FileNotFoundError as e:
         executable = args[0] if args else "unknown"
         raise FileNotFoundError(f"Tool not found: '{executable}'. Please ensure it is installed and in your PATH.") from e
@@ -140,6 +151,38 @@ def subprocess_call(args: List[str]):
         logger.debug(completed.stdout)
         logger.error(completed.stderr)
     return completed.stdout, completed.stderr
+
+
+def resolve_hashcat_executable():
+    install_root = os.environ.get("HASHCAT_WPA_INSTALL_ROOT")
+    if install_root:
+        install_root_path = Path(install_root)
+        current_root = Path(__file__).resolve().parents[2]
+        candidates = [
+            install_root_path / "tools" / "hashcat" / "hashcat.exe",
+            install_root_path / "tools" / "hashcat.exe",
+            install_root_path / "tools" / "hashcat" / "hashcat",
+            install_root_path / "current" / "windows" / "tools" / "hashcat" / "hashcat.exe",
+            install_root_path / "current" / "windows" / "tools" / "hashcat.exe",
+            current_root / "windows" / "tools" / "hashcat" / "hashcat.exe",
+            current_root / "windows" / "tools" / "hashcat.exe",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return str(candidate)
+
+    env_override = os.environ.get("HASHCAT_EXECUTABLE")
+    if env_override:
+        override_path = Path(env_override)
+        if override_path.exists():
+            return str(override_path)
+
+    for command_name in ("hashcat.exe", "hashcat"):
+        resolved = which(command_name)
+        if resolved:
+            return resolved
+
+    return None
 
 
 def is_safe_url(target):
@@ -244,8 +287,16 @@ def get_hashcat_devices():
     if not devices:
         import psutil
         devices.append({
-            "id": "1",
+            "id": "cpu",
             "name": "Host CPU (Fallback)",
+            "memory": f"{psutil.virtual_memory().total // (1024*1024)} MB",
+            "is_gpu": False
+        })
+    elif not any(not device.get("is_gpu") for device in devices):
+        import psutil
+        devices.append({
+            "id": "cpu",
+            "name": "Host CPU",
             "memory": f"{psutil.virtual_memory().total // (1024*1024)} MB",
             "is_gpu": False
         })

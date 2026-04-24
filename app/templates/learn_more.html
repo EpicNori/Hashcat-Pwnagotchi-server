@@ -30,15 +30,15 @@
                 </tr>
                 <tr>
                     <td>Hashcat EAPOL HCCAPX</td>
-                    <td>.hccapx, .2500</td>
+                    <td>.hccapx, .2500, .2501</td>
                 </tr>
                 <tr>
                     <td>Hashcat PMKID</td>
-                    <td>.pmkid, .16800</td>
+                    <td>.pmkid, .16800, .16801</td>
                 </tr>
                 <tr>
                     <td>Hashcat EAPOL/PMKID</td>
-                    <td>.22000</td>
+                    <td>.22000, .22001</td>
                 </tr>
                 </tbody>
             </table>
@@ -50,7 +50,9 @@
         packets).
     </p>
 
-    <p>Every capture file is essentially converted to a generic <code>.22000</code> file format.</p>
+    <p>Raw capture files are converted to a generic <code>.22000</code> file format. Existing hash-line files such as
+        <code>.2500</code>, <code>.2501</code>, <code>.16800</code>, <code>.16801</code>, <code>.22000</code>, and
+        <code>.22001</code> are accepted directly.</p>
 
 
     <h2>How to create capture files?</h2>

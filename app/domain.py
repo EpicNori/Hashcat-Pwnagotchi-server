@@ -96,8 +96,14 @@ class HashcatMode:
         return ("2500", "2501", "16800", "16801", "22000", "22001")
 
     @staticmethod
+    def valid_upload_suffixes():
+        # Suffixes the server can ingest directly or convert reliably on upload.
+        return ("cap", "pcap", "pcapng", "hccapx", "pmkid",
+                "2500", "2501", "16800", "16801", "22000", "22001")
+
+    @staticmethod
     def valid_suffixes():
-        # valid file suffixes
+        # Full set of suffixes used internally for hashcat mode detection.
         valid = ["cap", "pcap", "pcapng", "hccapx", "pmkid"]
         valid.extend(HashcatMode.valid_modes())
         return valid
@@ -125,6 +131,7 @@ class Workload(Enum):
     Low = "1"
     Fast = "2"
     Normal = "3"
+    Rainbow = "4"
 
     @staticmethod
     def to_form():
@@ -132,6 +139,7 @@ class Workload(Enum):
         return (
             (Workload.Low.value, "Low"),
             (Workload.Fast.value, "Fast"),
+            (Workload.Rainbow.value, "Rainbow"),
             (Workload.Normal.value, "Normal"),
         )
 

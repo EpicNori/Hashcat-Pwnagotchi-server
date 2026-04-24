@@ -73,14 +73,14 @@ class UploadForm(FlaskForm):
     rule = RadioField('Rule', choices=Rule.to_form(), default=NONE_STR)
     timeout = IntegerField('Timeout in minutes, optional', validators=[Optional(), NumberRange(min=1)])
     workload = RadioField("Work Mode", choices=Workload.to_form(), default=Workload.Fast.value,
-                          description="Fast is the new default. Normal keeps going without the usual time limit and ends with an exhaustive WPA passphrase brute-force search until the key is found or the job is cancelled.")
+                          description="Fast is the new default. Rainbow runs only the reused-password list. Normal keeps going without the usual time limit and ends with an exhaustive WPA passphrase brute-force search until the key is found or the job is cancelled.")
     brain = BooleanField("Hashcat Brain", default=False, description="Hashcat Brain skips already tried password candidates")
     brain_client_feature = RadioField("Brain client features", choices=BrainClientFeature.to_form(),
                                       default=BrainClientFeature.POSITIONS.value)
     devices = MultiCheckboxField("Target Devices", choices=[])
     capture = FileField(
         'Capture',
-        validators=[FileRequired(), FileAllowed(HashcatMode.valid_suffixes(),
+        validators=[FileRequired(), FileAllowed(HashcatMode.valid_upload_suffixes(),
                                                 message='Airodump & Hashcat capture files only')],
         render_kw={"accept": ".cap,.pcap,.pcapng,.hccapx,.pmkid,.2500,.2501,.16800,.16801,.22000,.22001"}
     )
@@ -136,7 +136,7 @@ class UploadForm(FlaskForm):
 
 cap_uploads = UploadSet(
     name='files',
-    extensions=HashcatMode.valid_suffixes(),
+    extensions=HashcatMode.valid_upload_suffixes(),
     default_dest=lambda app: str(app.config['CAPTURES_DIR'])
 )
 configure_uploads(app, cap_uploads)

@@ -80,6 +80,11 @@ The Windows installer also drops a machine-wide `crackserver` wrapper into PATH.
 - `crackserver disable-autostart`
 - `crackserver uninstall`
 
+If the installed `crackserver` command is broken, you can run the repo-local uninstall wrapper instead from the project root:
+
+- `.\uninstall.ps1`
+- `.\uninstall.cmd`
+
 ## Windows Layout
 
 The Windows installer uses a production-style split under `C:\ProgramData\HashcatWPAServer`:
@@ -112,6 +117,8 @@ The Windows installer automates the dashboard, virtual environment, autostart, C
 - direct `.22000` uploads work on Windows even if `hcxhashtool.exe` is missing, because the server can fall back to built-in ESSID splitting
 - raw `.cap`, `.pcap`, and `.pcapng` conversion still prefers `hcxpcapngtool.exe`, either bundled under `windows/tools/hcxtools/`, installed system-wide, or available through WSL
 - `hcxmactool.exe` is still needed for legacy `.hccapx` or `.pmkid` conversion support unless you provide an equivalent Linux-side path
+
+If a Windows install becomes unusable, the repo-local uninstall wrapper can still stop services, disable autostart, and remove `C:\ProgramData\HashcatWPAServer` without relying on the installed `current` tree.
 
 Recommended optional bundle layout:
 

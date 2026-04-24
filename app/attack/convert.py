@@ -6,36 +6,30 @@ import shutil
 from app.logger import logger
 from app.domain import InvalidFileError
 from app.utils import subprocess_call, check_file_22000, calculate_md5
+from app.utils.file_io import parse_wpa_hash_line
 
 
-def _split_22000_line(line: str):
-    info_split = line.strip().split('*')
-    if len(info_split) < 6:
-        raise InvalidFileError("Not a 22000 file")
-    return info_split[3], info_split[5]
-
-
-def _safe_group_filename(bssid: str, essid_hex: str, index: int) -> str:
+def _safe_group_filename(bssid: str, essid_hex: str, index: int, suffix: str) -> str:
     safe_bssid = re.sub(r'[^0-9A-Fa-f]', '', bssid) or f"bssid{index}"
     safe_essid = re.sub(r'[^0-9A-Fa-f]', '', essid_hex) or f"essid{index}"
-    return f"{index:03d}_{safe_bssid}_{safe_essid}.22000"
+    return f"{index:03d}_{safe_bssid}_{safe_essid}{suffix}"
 
 
-def _split_by_essid_fallback(file_22000: Path, to_folder: Path):
+def _split_by_essid_fallback(file_22000: Path, to_folder: Path, output_suffix: str):
     groups = {}
     with file_22000.open('r', errors='ignore') as handle:
         for line in handle:
             line = line.strip()
             if not line:
                 continue
-            bssid, essid_hex = _split_22000_line(line)
+            bssid, essid_hex = parse_wpa_hash_line(line)
             groups.setdefault((bssid, essid_hex), []).append(line)
 
     if not groups:
-        raise InvalidFileError("No valid hashes found in 22000 file")
+        raise InvalidFileError("No valid hashes found in supported WPA hash file")
 
     for index, ((bssid, essid_hex), lines) in enumerate(groups.items(), start=1):
-        output_path = to_folder / _safe_group_filename(bssid, essid_hex, index)
+        output_path = to_folder / _safe_group_filename(bssid, essid_hex, index, output_suffix)
         output_path.write_text('\n'.join(lines) + '\n')
 
 
@@ -56,7 +50,9 @@ def run_hcx_command(args, working_directory: Path | None = None):
     except FileNotFoundError as e:
         if os.name != "nt" or not shutil.which("wsl.exe"):
             executable = args[0] if args else "unknown"
-            raise FileNotFoundError(f"Missing dependency: '{executable}'. Please install 'hcxtools' and 'hashcat'.") from e
+            raise FileNotFoundError(
+                f"Missing dependency: '{executable}'. Please install 'hcxtools' and 'hashcat'."
+            ) from e
 
         distro = os.environ.get("HASHCAT_WPA_WSL_DISTRO", "Ubuntu")
         translated_args = []
@@ -91,10 +87,13 @@ def convert_to_22000(capture_path):
         convert_and_verify(['hcxpcapngtool', '-o', str(file_22000), str(capture_path)])
         capture_path = file_22000
 
-    # TODO: add support for 22001 (2501, 16801) modes
-    if capture_path.suffix in (".hccapx", ".2500"):
+    if capture_path.suffix in (".2500", ".2501", ".16800", ".16801", ".22000", ".22001"):
+        # Already in a supported text format; keep it as-is so the hash mode suffix
+        # stays aligned with the later hashcat invocation.
+        return Path(capture_path)
+    if capture_path.suffix == ".hccapx":
         convert_and_verify(['hcxmactool', f'--hccapxin={capture_path}', f'--pmkideapolout={file_22000}'])
-    elif capture_path.suffix in (".pmkid", ".16800"):
+    elif capture_path.suffix == ".pmkid":
         convert_and_verify(['hcxmactool', f'--pmkidin={capture_path}', f'--pmkideapolout={file_22000}'])
     elif capture_path.suffix != ".22000":
         raise InvalidFileError(f"Invalid file suffix: '{capture_path.suffix}'")
@@ -113,13 +112,15 @@ def split_by_essid(file_22000, to_folder=None):
             logger.warning(f"{to_folder} already exists")
     to_folder.mkdir(exist_ok=True)
     curdir = os.getcwd()
+    output_suffix = file_22000.suffix
     used_external_split = False
     try:
         os.chdir(to_folder)
-        run_hcx_command(['hcxhashtool', '-i', file_22000, '--essid-group'], working_directory=to_folder)
-        used_external_split = any(to_folder.iterdir())
+        if output_suffix == ".22000":
+            run_hcx_command(['hcxhashtool', '-i', file_22000, '--essid-group'], working_directory=to_folder)
+            used_external_split = any(to_folder.iterdir())
     except FileNotFoundError:
-        logger.warning("hcxhashtool is not available; falling back to built-in 22000 ESSID splitting")
+        logger.warning("hcxhashtool is not available; falling back to built-in ESSID splitting")
     finally:
         os.chdir(curdir)
 
@@ -127,6 +128,6 @@ def split_by_essid(file_22000, to_folder=None):
         for partial in to_folder.iterdir():
             if partial.is_file():
                 partial.unlink()
-        _split_by_essid_fallback(file_22000, to_folder)
+        _split_by_essid_fallback(file_22000, to_folder, output_suffix=output_suffix)
 
     return to_folder

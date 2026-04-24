@@ -1,5 +1,68 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$script:InstallerScriptPath = $PSCommandPath
+$script:BootstrapScriptPath = $null
+
+function Get-InstallerScriptPath {
+    if (-not [string]::IsNullOrWhiteSpace($script:InstallerScriptPath)) {
+        return $script:InstallerScriptPath
+    }
+
+    $bootstrapSource = $env:HASHCAT_WPA_INSTALL_SOURCE
+    if ([string]::IsNullOrWhiteSpace($bootstrapSource)) {
+        $bootstrapSource = "https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/install.ps1"
+    }
+
+    $bootstrapTarget = Join-Path ([IO.Path]::GetTempPath()) ("hashcat-wpa-install-" + [guid]::NewGuid().ToString("N") + ".ps1")
+    if ($bootstrapSource -match '^[A-Za-z]:\\' -or $bootstrapSource -match '^\\\\') {
+        Copy-Item -LiteralPath $bootstrapSource -Destination $bootstrapTarget -Force
+    } else {
+        Invoke-WebRequest -Uri $bootstrapSource -OutFile $bootstrapTarget -UseBasicParsing
+    }
+
+    $script:InstallerScriptPath = $bootstrapTarget
+    $script:BootstrapScriptPath = $bootstrapTarget
+    return $bootstrapTarget
+}
+
+function Ensure-Administrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        return $true
+    }
+
+    $scriptPath = Get-InstallerScriptPath
+    $launchArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $scriptPath
+    )
+    try {
+        $process = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $launchArgs -Wait -PassThru
+        if ($process.ExitCode -ne 0) {
+            try {
+                $probe = Invoke-WebRequest -Uri "http://127.0.0.1:9111" -UseBasicParsing -TimeoutSec 5
+                if ($probe.StatusCode -eq 200) {
+                    return $false
+                }
+            } catch {
+            }
+        }
+        if ($process.ExitCode -ne 0) {
+            throw "Elevated installer failed with exit code $($process.ExitCode)."
+        }
+        return $false
+    } finally {
+        if ($script:BootstrapScriptPath -and (Test-Path -LiteralPath $script:BootstrapScriptPath)) {
+            Remove-Item -LiteralPath $script:BootstrapScriptPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+if (-not (Ensure-Administrator)) {
+    return
+}
 
 $RepoZipUrl = "https://github.com/EpicNori/Hashcat-Pwnagotchi-server/archive/refs/heads/main.zip"
 $InstallRoot = "C:\ProgramData\HashcatWPAServer"
@@ -127,15 +190,15 @@ function Get-SourceRoot {
 }
 
 function Copy-RepoTree([string]$SourceRoot, [string]$DestinationRoot) {
-    if (Test-Path $DestinationRoot) {
-        Remove-Item -LiteralPath $DestinationRoot -Recurse -Force
-    }
     New-Item -ItemType Directory -Path $DestinationRoot -Force | Out-Null
+    if (Test-Path $DestinationRoot) {
+        Write-Step "Preserving existing runtime logs while refreshing application files"
+    }
     $robocopyArgs = @(
         $SourceRoot,
         $DestinationRoot,
         "/MIR",
-        "/XD", ".git", ".github", "__pycache__", ".venv", "venv"
+        "/XD", ".git", ".github", "__pycache__", ".venv", "venv", "logs"
     )
     & robocopy @robocopyArgs | Out-Null
     if ($LASTEXITCODE -gt 7) {
@@ -218,25 +281,114 @@ function Copy-BundledToolDirectory([string]$SourceDir, [string]$DestinationDir) 
         return $false
     }
     New-Item -ItemType Directory -Path $DestinationDir -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $SourceDir "*") -Destination $DestinationDir -Recurse -Force
+    Copy-Item -Path (Join-Path $SourceDir "*") -Destination $DestinationDir -Recurse -Force
     return $true
 }
 
-function Require-ToolInPath([string]$ToolName, [string]$BundledSubdir, [string]$MissingMessage) {
-    if (Get-Command $ToolName -ErrorAction SilentlyContinue) {
-        return
+function Ensure-7ZipExe {
+    $candidate = Get-Command 7z.exe -ErrorAction SilentlyContinue
+    if ($candidate) {
+        return $candidate.Source
     }
 
-    $bundledDir = Join-Path $BundledToolsRoot $BundledSubdir
-    $installedDir = Join-Path $ToolsRoot $BundledSubdir
+    $sevenZipDir = Join-Path $ToolsRoot "7zip"
+    $sevenZipExe = Join-Path $sevenZipDir "7zr.exe"
+    if (Test-Path $sevenZipExe) {
+        return $sevenZipExe
+    }
+
+    New-Item -ItemType Directory -Path $sevenZipDir -Force | Out-Null
+    $sevenZipUrl = "https://www.7-zip.org/a/7zr.exe"
+    Write-Step "Downloading portable 7-Zip extractor for the official Hashcat archive"
+    Invoke-WebRequest -Uri $sevenZipUrl -OutFile $sevenZipExe -UseBasicParsing
+    if (-not (Test-Path $sevenZipExe)) {
+        throw "Could not download 7zr.exe."
+    }
+    return $sevenZipExe
+}
+
+function Install-HashcatRelease {
+    $hashcatVersion = "7.1.2"
+    $archiveName = "hashcat-$hashcatVersion.7z"
+    $downloadUris = @(
+        "https://hashcat.net/files/$archiveName",
+        "https://github.com/hashcat/hashcat/releases/download/v$hashcatVersion/$archiveName"
+    )
+    $archivePath = Join-Path ([IO.Path]::GetTempPath()) ("hashcat-" + [guid]::NewGuid().ToString("N") + ".7z")
+    $extractRoot = Join-Path ([IO.Path]::GetTempPath()) ("hashcat-extract-" + [guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
+    $sevenZipExe = Ensure-7ZipExe
+
+    try {
+        $downloaded = $false
+        foreach ($uri in $downloadUris) {
+            try {
+                Write-Step "Downloading official Hashcat release from $uri"
+                Invoke-WebRequest -Uri $uri -OutFile $archivePath -UseBasicParsing
+                $downloaded = $true
+                break
+            } catch {
+                Write-Step "Warning: download attempt failed for $uri"
+            }
+        }
+
+        if (-not $downloaded) {
+            throw "Could not download the Hashcat release archive."
+        }
+
+        & $sevenZipExe x "-o$extractRoot" -y $archivePath | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to extract the Hashcat release archive."
+        }
+
+        $sourceDir = Get-ChildItem -LiteralPath $extractRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like "hashcat-*" } |
+            Select-Object -First 1
+        if (-not $sourceDir) {
+            throw "Could not locate extracted Hashcat files."
+        }
+
+        $destinationRoot = Join-Path $ToolsRoot "hashcat"
+        if (Test-Path $destinationRoot) {
+            Remove-Item -LiteralPath $destinationRoot -Recurse -Force
+        }
+        New-Item -ItemType Directory -Path $destinationRoot -Force | Out-Null
+        Copy-Item -Path (Join-Path $sourceDir.FullName "*") -Destination $destinationRoot -Recurse -Force
+        Ensure-MachinePathEntry -PathEntry $destinationRoot
+    } finally {
+        if (Test-Path $archivePath) {
+            Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue
+        }
+        if (Test-Path $extractRoot) {
+            Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Ensure-HashcatTool([string]$PythonExe) {
+    if (Get-Command hashcat.exe -ErrorAction SilentlyContinue) {
+        return $true
+    }
+
+    $bundledDir = Join-Path $BundledToolsRoot "hashcat"
+    $installedDir = Join-Path $ToolsRoot "hashcat"
     $copied = Copy-BundledToolDirectory -SourceDir $bundledDir -DestinationDir $installedDir
     if ($copied) {
         Ensure-MachinePathEntry -PathEntry $installedDir
+    } elseif (-not (Get-Command hashcat.exe -ErrorAction SilentlyContinue)) {
+        try {
+            Install-HashcatRelease
+        } catch {
+            Write-Step "Warning: automatic Hashcat download failed - $($_.Exception.Message)"
+        }
     }
 
-    if (-not (Get-Command $ToolName -ErrorAction SilentlyContinue)) {
-        throw $MissingMessage
+    if (-not (Get-Command hashcat.exe -ErrorAction SilentlyContinue)) {
+        Write-Step "Warning: hashcat.exe was not found. Bundle it under windows\\tools\\hashcat or let the installer download the official release."
+        return $false
     }
+
+    return $true
 }
 
 function Try-InstallWSL {
@@ -261,7 +413,8 @@ function Try-InstallWSL {
 
 function Install-HashcatToolchain() {
     Ensure-NvidiaDriverSupport
-    Require-ToolInPath -ToolName "hashcat.exe" -BundledSubdir "hashcat" -MissingMessage "hashcat.exe is required. Bundle it under windows\\tools\\hashcat or install it system-wide before running the installer."
+    $venvPython = Join-Path $VenvRoot "Scripts\python.exe"
+    $null = Ensure-HashcatTool -PythonExe $venvPython
     $hcxBundled = Copy-BundledToolDirectory -SourceDir (Join-Path $BundledToolsRoot "hcxtools") -DestinationDir (Join-Path $ToolsRoot "hcxtools")
     if ($hcxBundled) {
         Ensure-MachinePathEntry -PathEntry (Join-Path $ToolsRoot "hcxtools")
@@ -293,6 +446,29 @@ if (-not (Test-IsAdministrator)) {
 
 Write-Step "Preparing Windows installation directories"
 New-Item -ItemType Directory -Path $InstallRoot, $DataRoot, $LogsRoot, $BinRoot, $ToolsRoot -Force | Out-Null
+$InstallDebugLog = Join-Path $LogsRoot "install_debug.log"
+try {
+    Start-Transcript -Path $InstallDebugLog -Append | Out-Null
+} catch {
+}
+
+if (Test-Path $CurrentRoot) {
+    $existingTask = Join-Path $CurrentRoot "windows\autostart_service.ps1"
+    $existingCli = Join-Path $CurrentRoot "windows\crackserver.ps1"
+    if (Test-Path $existingTask) {
+        try {
+            Invoke-CheckedPowerShellFile -ScriptPath $existingTask -Arguments @("disable", "-InstallRoot", $InstallRoot)
+        } catch {
+        }
+    }
+    if (Test-Path $existingCli) {
+        try {
+            Invoke-CheckedPowerShellFile -ScriptPath $existingCli -Arguments @("stop", "-InstallRoot", $InstallRoot)
+        } catch {
+        }
+    }
+    Get-Process -Name hashcat -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+}
 
 $source = Get-SourceRoot
 try {
@@ -332,6 +508,10 @@ try {
 finally {
     if ($source.Temp -and (Test-Path $source.Temp)) {
         Remove-Item -LiteralPath $source.Temp -Recurse -Force
+    }
+    try {
+        Stop-Transcript | Out-Null
+    } catch {
     }
 }
 

@@ -14,7 +14,7 @@ from app.config import ESSID_TRIED
 from app.domain import Rule, WordList, Mask
 from app.logger import logger
 from app.utils import read_plain_key, subprocess_call, bssid_essid_from_22000, \
-    check_file_22000
+    check_file_22000, decode_essid_hex
 from app.word_magic import create_digits_wordlist, create_fast_wordlists
 from app.word_magic.essid import run_essid_attack
 from app.word_magic.wordlist import WordListDefault
@@ -95,7 +95,7 @@ class BaseAttack:
             if bssid_essid in bssid_essid_tried:
                 continue
             bssid, essid = bssid_essid.split(':')
-            essid = bytes.fromhex(essid).decode('utf-8')
+            essid = decode_essid_hex(essid)
             hashcat_cmd = self.new_cmd(hcap_file=hcap_fpath_essid)
             
             # Note: run_essid_attack in word_magic.essid also takes a runner
@@ -105,7 +105,7 @@ class BaseAttack:
 
             with open(ESSID_TRIED, 'a') as f:
                 f.write(bssid_essid + '\n')
-        shutil.rmtree(split_by_essid_dir)
+        shutil.rmtree(split_by_essid_dir, ignore_errors=True)
 
     @monitor_timer
     def run_digits8(self):

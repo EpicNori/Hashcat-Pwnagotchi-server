@@ -181,6 +181,9 @@ class CapAttack(BaseAttack):
         with self.lock:
             self.lock.set_status("Running rainbow reuse list...")
         self.run_rainbow_attack()
+
+        if self.work_mode == Workload.Rainbow.value:
+            return
         
         with self.lock:
             self.lock.set_status("Running top1k with rules...")
@@ -245,7 +248,7 @@ def _hashcat_benchmark_async():
     Called in background process.
     """
     out, err = subprocess_call(['hashcat', '-m2500', "-b", "--machine-readable", "--quiet", "--force"])
-    pattern = re.compile("\d+:2500:.*:.*:\d+\.\d+:\d+")
+    pattern = re.compile(r"\d+:2500:.*:.*:\d+\.\d+:\d+")
     total_speed = 0
     for line in filter(pattern.fullmatch, out.splitlines()):
         device_speed = int(line.split(':')[-1])
@@ -310,6 +313,9 @@ class HashcatWorker:
         :param uploaded_task: uploaded .cap file task
         :param timeout: brute force timeout in minutes
         """
+        file_22000 = Path(file_22000)
+        if not file_22000.exists():
+            raise FileNotFoundError(f"Capture file not found: {file_22000}")
         lock = ProgressLock(task_id=task.id)
         from app.utils.settings import apply_hashcat_limits, read_settings
         hashcat_args = uploaded_form.hashcat_args(secret=True)
