@@ -401,4 +401,26 @@ def get_hashcat_devices():
             "is_gpu": False
         })
 
-    return devices
+    normalized_devices = []
+    for device in devices:
+        name = str(device.get("name", "")).strip()
+        device_type = str(device.get("device_type", ""))
+        device["is_gpu"] = infer_device_is_gpu(name, device_type)
+        normalized_devices.append(device)
+
+    gpu_devices = [device for device in normalized_devices if device.get("is_gpu")]
+    cpu_devices = [device for device in normalized_devices if not device.get("is_gpu")]
+
+    if len(cpu_devices) > 1:
+        preferred_cpu = next(
+            (
+                device
+                for device in cpu_devices
+                if "host cpu" in str(device.get("name", "")).lower()
+                or "cpu" in str(device.get("name", "")).lower()
+            ),
+            cpu_devices[0],
+        )
+        cpu_devices = [preferred_cpu]
+
+    return gpu_devices + cpu_devices
