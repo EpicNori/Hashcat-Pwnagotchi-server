@@ -126,6 +126,60 @@ def get_linux_pci_gpus():
         return []
 
 
+def get_windows_video_adapters():
+    try:
+        completed = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-Command",
+                "Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | Format-List",
+            ],
+            universal_newlines=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if completed.returncode != 0 or not completed.stdout.strip():
+            return []
+
+        devices = []
+        current = {}
+        for raw_line in completed.stdout.splitlines():
+            line = raw_line.strip()
+            if not line:
+                if current.get("name"):
+                    devices.append(current)
+                current = {}
+                continue
+            if ":" not in line:
+                continue
+            key, value = [part.strip() for part in line.split(":", 1)]
+            key = key.lower()
+            if key == "name":
+                current["name"] = value
+            elif key == "adapternram":
+                try:
+                    current["memory"] = f"{int(value) // (1024 * 1024)} MB"
+                except Exception:
+                    current["memory"] = "Unknown"
+        if current.get("name"):
+            devices.append(current)
+
+        normalized = []
+        for index, device in enumerate(devices, start=1):
+            normalized.append({
+                "id": str(index),
+                "name": device.get("name", f"Video Adapter {index}"),
+                "memory": device.get("memory", "Unknown"),
+                "is_gpu": any(marker in device.get("name", "").lower() for marker in ["nvidia", "amd", "radeon", "graphics", "gpu", "intel arc"]),
+            })
+        return normalized
+    except Exception as error:
+        logger.debug(f"Windows video adapter detection failed: {error}")
+        return []
+
+
 def subprocess_call(args: List[str]):
     """
     :param args: shell args
@@ -265,30 +319,52 @@ def get_hashcat_devices():
     except Exception as e:
         logger.error(f"Hashcat device detection failed: {e}")
 
-    # 2. Augmentation: If hashcat parsing missed GPUs, try to at least get NVIDIA GPUs via nvidia-smi
-    detected_gpu_ids = {str(device.get("id")) for device in devices if device.get("is_gpu")}
-    if not detected_gpu_ids:
-        try:
-            out = subprocess.check_output(['nvidia-smi', '--query-gpu=index,gpu_name,memory.total', '--format=csv,noheader'],
-                                          universal_newlines=True)
-            for i, line in enumerate(out.strip().split('\n')):
-                index, name, mem = [part.strip() for part in line.split(',', 2)]
-                if index in detected_gpu_ids:
-                    continue
-                devices.append({
-                    "id": index or str(i + 1),
-                    "name": name.strip(),
-                    "memory": mem.strip(),
-                    "is_gpu": True
-                })
-        except Exception:
-            pass
+    def upsert_device(new_device):
+        new_id = str(new_device.get("id"))
+        new_name = str(new_device.get("name", "")).strip()
+        for existing in devices:
+            if str(existing.get("id")) == new_id:
+                if new_device.get("is_gpu") and not existing.get("is_gpu"):
+                    existing["is_gpu"] = True
+                if existing.get("memory", "Unknown") in ("Unknown", "", None) and new_device.get("memory"):
+                    existing["memory"] = new_device["memory"]
+                if existing.get("name", "").startswith("Device ") and new_name:
+                    existing["name"] = new_name
+                return
+        devices.append(new_device)
 
-    # 3. Linux fallback: enumerate PCI display adapters even if hashcat parsing misses GPUs
+    # 2. Augmentation: always merge in NVIDIA GPUs when available.
+    try:
+        out = subprocess.check_output(
+            ['nvidia-smi', '--query-gpu=index,name,memory.total', '--format=csv,noheader'],
+            universal_newlines=True,
+        )
+        for line in out.splitlines():
+            parts = [part.strip() for part in line.split(',', 2)]
+            if len(parts) != 3:
+                continue
+            index, name, mem = parts
+            upsert_device({
+                "id": index or name,
+                "name": name,
+                "memory": mem,
+                "is_gpu": True
+            })
+    except Exception:
+        pass
+
+    # 3. Windows fallback: query adapters directly so the UI can still show the
+    # real GPU name when hashcat device discovery is incomplete.
+    if os.name == "nt" and not any(device.get("is_gpu") for device in devices):
+        for device in get_windows_video_adapters():
+            upsert_device(device)
+
+    # 4. Linux fallback: enumerate PCI display adapters if no GPU was discovered.
     if not any(device.get("is_gpu") for device in devices):
-        devices = get_linux_pci_gpus()
+        for device in get_linux_pci_gpus():
+            upsert_device(device)
 
-    # 4. Last Resort: CPU
+    # 5. Last Resort: CPU
     if not devices:
         import psutil
         devices.append({

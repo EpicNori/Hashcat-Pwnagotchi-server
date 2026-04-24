@@ -29,7 +29,7 @@
                         <div class="panel panel-default" id="device-card-{{ device['id'] }}">
                             <div class="panel-heading">
                                 <h3 class="panel-title">
-                                    {% if device['is_gpu'] %}🎮 GPU{% else %}💻 CPU{% endif %} #{{ device['id'] }}
+                                    {% if device['is_gpu'] %}🎮 GPU{% else %}💻 CPU{% endif %}: {{ device['name'] }}
                                     <span class="pull-right label label-info" id="temp-badge-{{ device['id'] }}">--°C</span>
                                 </h3>
                             </div>

@@ -49,6 +49,17 @@ td, th {
   white-space: normal !important;
 }
 
+/* Keep checkbox lists from rendering browser bullets in form controls */
+.form-group ul {
+  list-style: none;
+  padding-left: 0;
+  margin-left: 0;
+}
+
+.form-group li {
+  list-style: none;
+}
+
 /* Jumbotron adjustments for mobile */
 @media (max-width: 768px) {
   .jumbotron h1 {

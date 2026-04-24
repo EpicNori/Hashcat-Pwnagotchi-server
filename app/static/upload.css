@@ -3,6 +3,22 @@
   padding: 15px;
 }
 
+.field-boxed ul {
+  list-style: none;
+  padding-left: 0;
+  margin-left: 0;
+  margin-bottom: 0;
+}
+
+.field-boxed li {
+  list-style: none;
+}
+
+.field-boxed .checkbox {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
 p.error {
   color: red;
 }
