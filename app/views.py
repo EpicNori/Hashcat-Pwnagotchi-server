@@ -426,15 +426,17 @@ def download(task_id, file_type):
     
     if file_type == 'capture':
         p = base_file
+        download_name = Path(task.filename).name
     elif file_type == 'result':
         p = base_file.with_suffix('.key')
+        download_name = Path(task.filename).with_suffix('.key').name
     else:
         return flask.abort(HTTPStatus.BAD_REQUEST)
         
     if not p.exists():
         return flask.abort(HTTPStatus.NOT_FOUND, description=f"The requested {file_type} file could not be found.")
         
-    return flask.send_file(str(p), as_attachment=True)
+    return flask.send_file(str(p), as_attachment=True, download_name=download_name)
 
 
 @app.route('/download_all_results')
