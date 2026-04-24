@@ -21,13 +21,13 @@ def infer_device_is_gpu(name: str, device_type: str = "") -> bool:
     normalized_name = (name or "").lower()
     normalized_type = (device_type or "").lower()
 
+    if any(marker in normalized_name for marker in CPU_NAME_MARKERS):
+        return False
     if "cpu" in normalized_type:
         return False
     if "gpu" in normalized_type:
         return True
 
-    if any(marker in normalized_name for marker in CPU_NAME_MARKERS):
-        return False
     if any(marker in normalized_name for marker in GPU_NAME_MARKERS):
         return True
     return False
