@@ -120,8 +120,11 @@ def read_plain_key(key_path):
     key_path = Path(key_path)
     if not key_path.exists():
         return None
-    with open(key_path) as f:
-        lines = f.read().splitlines()
+    try:
+        with open(key_path) as f:
+            lines = f.read().splitlines()
+    except FileNotFoundError:
+        return None
     found_keys = set()
     for line in lines:
         essid, key = line.split(':')[-2:]
@@ -203,7 +206,16 @@ def build_rainbow_wordlist():
             ordered_passwords.append(password)
 
     if CAPTURES_DIR.exists():
-        for key_file in sorted(CAPTURES_DIR.rglob("*.key"), key=lambda path: path.stat().st_mtime, reverse=True):
+        candidate_key_files = []
+        for key_file in CAPTURES_DIR.rglob("*.key"):
+            try:
+                candidate_key_files.append((key_file.stat().st_mtime, key_file))
+            except FileNotFoundError:
+                logger.warning(f"Skipping missing rainbow cache file: {key_file}")
+            except OSError as error:
+                logger.warning(f"Skipping unreadable rainbow cache file {key_file}: {error}")
+
+        for _, key_file in sorted(candidate_key_files, key=lambda item: item[0], reverse=True):
             try:
                 found_key = read_plain_key(key_file)
             except Exception:
@@ -213,5 +225,14 @@ def build_rainbow_wordlist():
                 seen_passwords.add(password)
                 ordered_passwords.append(password)
 
-    rainbow_wordlist.write_text('\n'.join(ordered_passwords) + ('\n' if ordered_passwords else ''))
-    return rainbow_wordlist if ordered_passwords else None
+    if not ordered_passwords:
+        return None
+
+    rainbow_wordlist.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        rainbow_wordlist.write_text('\n'.join(ordered_passwords) + '\n')
+    except OSError as error:
+        logger.warning(f"Could not write rainbow reuse list {rainbow_wordlist}: {error}")
+        return None
+
+    return rainbow_wordlist

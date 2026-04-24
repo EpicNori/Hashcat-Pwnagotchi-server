@@ -72,6 +72,8 @@ class CapAttack(BaseAttack):
         """
         Check .hccapx file for hashes.
         """
+        if not self.file_22000.exists():
+            raise FileNotFoundError(f"Capture file not found: {self.file_22000}")
         file_size = self.file_22000.stat().st_size
         if file_size == 0:
             raise InvalidFileError("No hashes found")
@@ -155,8 +157,12 @@ class CapAttack(BaseAttack):
         if not self.is_attack_needed():
             return
 
-        with app.app_context():
-            rainbow_wordlist = build_rainbow_wordlist()
+        try:
+            with app.app_context():
+                rainbow_wordlist = build_rainbow_wordlist()
+        except OSError as error:
+            logger.warning(f"Skipping rainbow reuse list: {error}")
+            return
 
         if rainbow_wordlist is None or not rainbow_wordlist.exists():
             return
