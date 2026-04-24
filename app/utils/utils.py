@@ -13,6 +13,26 @@ from flask import request, Markup
 from app.logger import logger
 
 
+GPU_NAME_MARKERS = ("nvidia", "amd", "radeon", "geforce", "quadro", "rtx", "gtx", "intel arc", "graphics", "gpu")
+CPU_NAME_MARKERS = ("cpu", "core(tm)", "xeon", "ryzen", "epyc", "threadripper", "pentium", "celeron", "athlon")
+
+
+def infer_device_is_gpu(name: str, device_type: str = "") -> bool:
+    normalized_name = (name or "").lower()
+    normalized_type = (device_type or "").lower()
+
+    if "cpu" in normalized_type:
+        return False
+    if "gpu" in normalized_type:
+        return True
+
+    if any(marker in normalized_name for marker in CPU_NAME_MARKERS):
+        return False
+    if any(marker in normalized_name for marker in GPU_NAME_MARKERS):
+        return True
+    return False
+
+
 def parse_hashcat_devices_output(output: str):
     devices = []
 
@@ -34,7 +54,7 @@ def parse_hashcat_devices_output(output: str):
                 "id": dev_id,
                 "name": name,
                 "memory": memory,
-                "is_gpu": any(x in name.lower() for x in ["nvidia", "amd", "radeon", "graphics", "gpu", "intel arc"])
+                "is_gpu": infer_device_is_gpu(name)
             })
         except Exception:
             continue
@@ -77,11 +97,10 @@ def parse_hashcat_devices_output(output: str):
 
         if normalized_key in ("name", "device name"):
             current["name"] = value
-            if any(x in value.lower() for x in ["nvidia", "amd", "radeon", "graphics", "gpu", "intel arc"]):
-                current["is_gpu"] = True
+            current["is_gpu"] = infer_device_is_gpu(value, current.get("device_type", ""))
         elif normalized_key in ("device type", "type"):
-            if "gpu" in value.lower():
-                current["is_gpu"] = True
+            current["device_type"] = value
+            current["is_gpu"] = infer_device_is_gpu(current.get("name", ""), value)
         elif normalized_key.startswith("memory total") or normalized_key == "global memory":
             current["memory"] = value
 
@@ -172,7 +191,7 @@ def get_windows_video_adapters():
                 "id": str(index),
                 "name": device.get("name", f"Video Adapter {index}"),
                 "memory": device.get("memory", "Unknown"),
-                "is_gpu": any(marker in device.get("name", "").lower() for marker in ["nvidia", "amd", "radeon", "graphics", "gpu", "intel arc"]),
+                "is_gpu": infer_device_is_gpu(device.get("name", "")),
             })
         return normalized
     except Exception as error:
