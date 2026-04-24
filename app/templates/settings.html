@@ -130,8 +130,9 @@
             <div class="panel panel-info">
                 <div class="panel-heading">2. Download Test Capture</div>
                 <div class="panel-body">
-                    <p>Download a known-good sample <code>.22000</code> capture to verify that the server can process and crack a test file.</p>
+                    <p>Download the bundled test files to verify upload, conversion, and cracking behavior.</p>
                     <p><a href="{{ url_for('static', filename='test_capture_hashcat_essid.22000') }}" download="test_capture_hashcat_essid.22000">Direct download link for the test file</a></p>
+                    <p><a href="{{ url_for('download_test_capture_pcap') }}" download="test_capture_hashcat_essid.pcap">Direct download link for the sample PCAP</a></p>
                     {% if not gpu_visible %}
                     <hr>
                     <p>No GPU is currently visible in the settings view. You can ask the server to check whether NVIDIA drivers are missing and install them if needed.</p>

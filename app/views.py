@@ -502,6 +502,19 @@ def download_test_capture():
     )
 
 
+@app.route('/download_test_capture_pcap')
+@login_required
+def download_test_capture_pcap():
+    sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.pcap"
+    if not sample_capture.exists():
+        return flask.abort(HTTPStatus.NOT_FOUND, description="The bundled test PCAP could not be found.")
+    return flask.send_file(
+        str(sample_capture),
+        as_attachment=True,
+        download_name=sample_capture.name
+    )
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
