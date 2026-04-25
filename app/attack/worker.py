@@ -49,17 +49,6 @@ class CapAttack(BaseAttack):
             if self.lock.cancelled:
                 raise CancelledError(TaskInfoStatus.CANCELLED)
 
-    def is_attack_needed(self) -> bool:
-        self.cancel_if_needed()
-        if self.key_file.exists():
-            key_password = read_plain_key(self.key_file)
-            if key_password:
-                with self.lock:
-                    self.lock.found_key = key_password
-                    self.lock.set_status(TaskInfoStatus.CRACKED)
-                return False
-        return True
-
     def read_key(self):
         # Use a clean hashcat call for --show to avoid conflicting flags
         from app.domain import HashcatMode
@@ -87,22 +76,19 @@ class CapAttack(BaseAttack):
         Run ESSID + digits_append.txt combinator attack.
         Run ESSID + best64.rule attack.
         """
-        if not self.is_attack_needed():
-            return
+        self.cancel_if_needed()
         with self.lock:
             self.lock.set_status("Running ESSID attack")
         super().run_essid_attack()
 
     def run_top1k(self):
-        if not self.is_attack_needed():
-            return
+        self.cancel_if_needed()
         with self.lock:
             self.lock.set_status("Running top1k with rules")
         super().run_top1k()
 
     def run_digits8(self):
-        if not self.is_attack_needed():
-            return
+        self.cancel_if_needed()
         with self.lock:
             self.lock.set_status("Running digits8")
         super().run_digits8()
@@ -111,7 +97,8 @@ class CapAttack(BaseAttack):
         """
         Run main attack, specified by the user through the client app.
         """
-        if self.wordlist is None or not self.is_attack_needed():
+        self.cancel_if_needed()
+        if self.wordlist is None:
             return
         if not self.wordlist.exists():
             with self.lock:
@@ -129,8 +116,7 @@ class CapAttack(BaseAttack):
 
     def run_default_wordlist_chain(self):
         for default_wordlist in WordListDefault.list():
-            if not self.is_attack_needed():
-                return
+            self.cancel_if_needed()
             if not default_wordlist.path.exists():
                 with self.lock:
                     self.lock.set_status(f"Skipping missing fallback wordlist: {default_wordlist.name}")
@@ -143,8 +129,7 @@ class CapAttack(BaseAttack):
 
     def run_user_script_wordlist_chain(self):
         for script_path in iter_user_wordlist_scripts():
-            if not self.is_attack_needed():
-                return
+            self.cancel_if_needed()
             with self.lock:
                 self.lock.set_status(f"Running user wordlist script: {script_path.name}")
             resolved_wordlist = materialize_wordlist_source(script_path)
@@ -158,8 +143,7 @@ class CapAttack(BaseAttack):
         """
         Reuse previously found passwords before the regular attack chain.
         """
-        if not self.is_attack_needed():
-            return
+        self.cancel_if_needed()
 
         try:
             with app.app_context():
@@ -232,10 +216,9 @@ class CapAttack(BaseAttack):
                 self.lock.set_status("Running user wordlist scripts...")
             self.run_user_script_wordlist_chain()
 
-            if self.is_attack_needed():
-                with self.lock:
-                    self.lock.set_status("Running exhaustive WPA brute force (8-63)...")
-                self.run_exhaustive_bruteforce(min_length=8)
+            with self.lock:
+                self.lock.set_status("Running exhaustive WPA brute force (8-63)...")
+            self.run_exhaustive_bruteforce(min_length=8)
 
 
 def _crack_async(attack: CapAttack):
