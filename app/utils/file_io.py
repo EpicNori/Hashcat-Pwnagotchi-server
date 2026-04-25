@@ -141,7 +141,10 @@ def read_last_benchmark():
     if not BENCHMARK_FILE.exists():
         return Benchmark(date="(Never)", speed=0)
     with lock_app, open(BENCHMARK_FILE) as f:
-        last_line = f.read().splitlines()[-1]
+        lines = f.read().splitlines()
+    if not lines:
+        return Benchmark(date="(Never)", speed=0)
+    last_line = lines[-1]
     date_str, speed = last_line.split(',')
     return Benchmark(date=date_str, speed=speed)
 

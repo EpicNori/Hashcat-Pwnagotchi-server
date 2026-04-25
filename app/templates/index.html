@@ -11,7 +11,7 @@
         <!-- System Stats -->
         <div class="col-md-3">
             <div class="panel panel-primary text-center">
-                <div class="panel-heading">📦 Handshakes</div>
+                <div class="panel-heading">Handshakes</div>
                 <div class="panel-body">
                     <h2 style="margin: 0;" id="stat-total-handshakes">{{ stats.total_handshakes }}</h2>
                     <p class="text-muted">Processed on Top of the Original Project Foundation</p>
@@ -20,7 +20,7 @@
         </div>
         <div class="col-md-3">
             <div class="panel panel-success text-center">
-                <div class="panel-heading">✅ Success</div>
+                <div class="panel-heading">Success</div>
                 <div class="panel-body">
                     <h2 style="margin: 0;" id="stat-total-cracked">{{ stats.total_cracked }}</h2>
                     <p class="text-muted">Successful Results Made Possible by the Original Work</p>
@@ -29,7 +29,7 @@
         </div>
         <div class="col-md-3">
             <div class="panel panel-danger text-center">
-                <div class="panel-heading">❌ Failed</div>
+                <div class="panel-heading">Failed</div>
                 <div class="panel-body">
                     <h2 style="margin: 0;" id="stat-total-failed">{{ stats.total_failed }}</h2>
                     <p class="text-muted">Attempts Logged as Part of Ongoing Research</p>
@@ -38,7 +38,7 @@
         </div>
         <div class="col-md-3">
             <div class="panel panel-info text-center">
-                <div class="panel-heading">⚡ Active</div>
+                <div class="panel-heading">Active</div>
                 <div class="panel-body">
                     <h2 style="margin: 0;" id="stat-total-active">{{ stats.total_active }}</h2>
                     <p class="text-muted">Current Tasks Continuing the Upstream Vision</p>
@@ -51,7 +51,7 @@
         <!-- Hardware Usage -->
         <div class="col-md-8">
             <div class="panel panel-default">
-                <div class="panel-heading">💻 Hardware Utilization</div>
+                <div class="panel-heading">Hardware Utilization</div>
                 <div class="panel-body">
                     <div class="table-responsive-wrapper">
                         <table class="table table-striped" id="hardware-table">
@@ -103,7 +103,7 @@
 
         <div class="col-md-4">
             <div class="panel panel-default">
-                <div class="panel-heading">ℹ️ How it works</div>
+                <div class="panel-heading">How it works</div>
                 <div class="panel-body">
                     <p><strong>Original repository:</strong> <a href="https://github.com/dizcza/hashcat-wpa-server" target="_blank" rel="noopener noreferrer">dizcza/hashcat-wpa-server</a></p>
                     <p>This is a special thanks page for <strong>Danylo Ulianych</strong>, the original repository creator. All visible changes in this version were done by <strong>EpicNori</strong>, while honoring the original architecture, idea, and open source work from the upstream project.</p>
@@ -141,7 +141,7 @@
                         const gpuLive = data.live_usage.gpus.find(g => g.id == device.id);
                         if (gpuLive) {
                             row.querySelector('.actual-load').innerText = gpuLive.util + '%';
-                            row.querySelector('.actual-temp').innerText = gpuLive.temp + '°C';
+                            row.querySelector('.actual-temp').innerText = gpuLive.temp + ' C';
                         }
                     }
                 });
@@ -152,7 +152,7 @@
                         return;
                     }
                     row.querySelector('.actual-load').innerText = Math.round(data.live_usage.cpu_usage) + '%';
-                    row.querySelector('.actual-temp').innerText = data.live_usage.cpu_temp ? data.live_usage.cpu_temp + 'Â°C' : '(System)';
+                    row.querySelector('.actual-temp').innerText = data.live_usage.cpu_temp ? data.live_usage.cpu_temp + ' C' : '(System)';
                 });
 
                 // Update Global CPU

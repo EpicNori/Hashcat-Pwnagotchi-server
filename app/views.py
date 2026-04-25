@@ -20,7 +20,7 @@ from app.logger import logger
 from app.login import LoginForm, RegistrationForm, User, RoleEnum, register_user, create_first_users, Role, \
     roles_required, user_has_roles
 from app.uploader import cap_uploads, UploadForm, UploadedTask, check_incomplete_tasks, backward_db_compatibility
-from app.utils.file_io import read_last_benchmark, bssid_essid_from_22000, build_rainbow_wordlist, read_hashcat_brain_password, decode_essid_hex, normalize_stored_capture_filename, resolve_existing_capture_path
+from app.utils.file_io import read_last_benchmark, bssid_essid_from_22000, build_rainbow_wordlist, read_hashcat_brain_password, decode_essid_hex, normalize_stored_capture_filename, resolve_existing_capture_path, extract_password_from_found_key
 from app.utils.utils import is_safe_url, hashcat_devices_info, date_formatted
 from app.word_magic import create_digits_wordlist, estimate_runtime_fmt, create_fast_wordlists
 from app.word_magic.wordlist import download_wordlist, find_wordlist_by_name, WordListDefault
@@ -280,7 +280,7 @@ def windows_management_command(script_name: str, *args: str):
 def decode_task_essid(file_22000: Path):
     bssid_essid = next(bssid_essid_from_22000(file_22000))
     bssid, essid_hex = bssid_essid.split(':')
-    essid = bytes.fromhex(essid_hex).decode('utf-8')
+    essid = decode_essid_hex(essid_hex)
     return bssid, essid
 
 
@@ -531,7 +531,8 @@ def download_all_results():
     output.write("-" * 50 + "\n")
     
     for task in tasks:
-        output.write(f"{task.essid} | {task.bssid} | {task.found_key}\n")
+        password = extract_password_from_found_key(task.found_key) or ""
+        output.write(f"{task.essid} | {task.bssid} | {password}\n")
         
     # Seek to beginning to read
     output.seek(0)

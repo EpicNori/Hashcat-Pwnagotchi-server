@@ -2,7 +2,7 @@
 
 {% macro class_status(task) %}
 
-{% if task.found_key != None %}
+{% if task.found_key is not none %}
 success
 {% elif task.status == "Completed" %}
 info
@@ -40,7 +40,7 @@ danger
 
     <div class="row" style="margin-bottom: 20px; margin-top: 10px;">
         <div class="col-md-7">
-            <input type="text" id="taskSearchInput" class="form-control" onkeyup="filterTasks()" placeholder="🔍 Quick Search for WiFi Name, Capture File, or Cracked Password...">
+            <input type="text" id="taskSearchInput" class="form-control" onkeyup="filterTasks()" placeholder="Quick Search for WiFi Name, Capture File, or Cracked Password...">
         </div>
         <div class="col-md-5 text-right">
             <a href="{{ url_for('download_all_results') }}" class="btn btn-success">
@@ -81,12 +81,12 @@ danger
                     <div class="btn-group">
                         <a href="{{ url_for('download', task_id=task.id, file_type='capture') }}" class="btn btn-default btn-xs" title="Download Capture">Capture</a>
                         {% if task.found_key %}
-                        <a href="{{ url_for('download', task_id=task.id, file_type='result') }}" class="btn btn-success btn-xs" title="Download Result">🔑 KEY</a>
+                        <a href="{{ url_for('download', task_id=task.id, file_type='result') }}" class="btn btn-success btn-xs" title="Download Result">KEY</a>
                         {% endif %}
                     </div>
                 </td>
                 <td class="progress"></td>
-                <td class="found_key">{{ task.found_key }}</td>
+                <td class="found_key">{{ task.found_key or '' }}</td>
                 <td>
                  {% if not task.completed %}
                     <button class="btn btn-danger btn-xs" onclick="cancelTask({{ task.id }})">Cancel</button>
@@ -121,7 +121,7 @@ danger
             task_row.find("td.progress").text(progressText);
             task_row.find("td.status").text(task_progress.status);
             task_row.find("td.duration").text(task_progress.duration);
-            task_row.find("td.found_key").text(task_progress.found_key);
+            task_row.find("td.found_key").text(task_progress.found_key ?? "");
         }
     }
 
@@ -136,7 +136,7 @@ danger
             tdFile = tr[i].getElementsByTagName("td")[1];
             tdBSSID = tr[i].getElementsByTagName("td")[4];
             tdESSID = tr[i].getElementsByTagName("td")[5];
-            tdKey = tr[i].getElementsByTagName("td")[10];
+            tdKey = tr[i].getElementsByTagName("td")[11];
             
             if (tdFile || tdESSID || tdBSSID || tdKey) {
                 var txtFile = tdFile.textContent || tdFile.innerText;
