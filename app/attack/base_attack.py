@@ -42,7 +42,7 @@ def download_wordlists():
 
 class BaseAttack:
     timers = defaultdict(lambda: dict(count=0, elapsed=1e-6))
-    WPA_EXHAUSTIVE_MASK = "?a"
+    WPA_EXHAUSTIVE_MASK = "?a" * 63
 
     def __init__(self, file_22000: Union[str, Path], hashcat_args=(), fast=False, verbose=True):
         """
