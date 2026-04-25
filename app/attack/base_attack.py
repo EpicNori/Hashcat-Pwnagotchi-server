@@ -182,12 +182,12 @@ class BaseAttack:
         self.runner(hashcat_cmd)
 
     @monitor_timer
-    def run_exhaustive_bruteforce(self):
+    def run_exhaustive_bruteforce(self, min_length=8, max_length=63):
         hashcat_args = list(self.hashcat_args)
         hashcat_args.extend([
             "--increment",
-            "--increment-min=8",
-            "--increment-max=63",
+            f"--increment-min={min_length}",
+            f"--increment-max={max_length}",
         ])
         hashcat_cmd = HashcatCmdCapture(
             hcap_file=self.file_22000,

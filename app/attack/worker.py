@@ -194,14 +194,14 @@ class CapAttack(BaseAttack):
 
         if self.work_mode == Workload.Rainbow.value:
             return
+
+        with self.lock:
+            self.lock.set_status("Running digits8...")
+        self.run_digits8()
         
         with self.lock:
             self.lock.set_status("Running top1k with rules...")
         self.run_top1k()
-        
-        with self.lock:
-            self.lock.set_status("Running digits8...")
-        self.run_digits8()
         
         with self.lock:
             self.lock.set_status("Running keyboard walk...")
@@ -234,8 +234,8 @@ class CapAttack(BaseAttack):
 
             if self.is_attack_needed():
                 with self.lock:
-                    self.lock.set_status("Running exhaustive WPA brute force...")
-                self.run_exhaustive_bruteforce()
+                    self.lock.set_status("Running exhaustive WPA brute force (9-63)...")
+                self.run_exhaustive_bruteforce(min_length=9)
 
 
 def _crack_async(attack: CapAttack):
