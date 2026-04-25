@@ -234,8 +234,8 @@ class CapAttack(BaseAttack):
 
             if self.is_attack_needed():
                 with self.lock:
-                    self.lock.set_status("Running exhaustive WPA brute force (9-63)...")
-                self.run_exhaustive_bruteforce(min_length=9)
+                    self.lock.set_status("Running exhaustive WPA brute force (8-63)...")
+                self.run_exhaustive_bruteforce(min_length=8)
 
 
 def _crack_async(attack: CapAttack):
