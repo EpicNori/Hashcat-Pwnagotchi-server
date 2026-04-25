@@ -11,7 +11,7 @@ from tqdm import tqdm
 from app.attack.convert import split_by_essid
 from app.attack.hashcat_cmd import HashcatCmdCapture, HashcatCmdStdout
 from app.config import ESSID_TRIED
-from app.domain import Rule, WordList, Mask
+from app.domain import Rule, WordList
 from app.logger import logger
 from app.utils import read_plain_key, subprocess_call, bssid_essid_from_22000, \
     check_file_22000, decode_essid_hex
@@ -42,8 +42,7 @@ def download_wordlists():
 
 class BaseAttack:
     timers = defaultdict(lambda: dict(count=0, elapsed=1e-6))
-    WPA_PRINTABLE_ASCII = ''.join(chr(codepoint) for codepoint in range(32, 127))
-    WPA_EXHAUSTIVE_MASK = "?1" * 63
+    WPA_EXHAUSTIVE_MASK = "?a"
 
     def __init__(self, file_22000: Union[str, Path], hashcat_args=(), fast=False, verbose=True):
         """
@@ -186,11 +185,9 @@ class BaseAttack:
     def run_exhaustive_bruteforce(self):
         hashcat_args = list(self.hashcat_args)
         hashcat_args.extend([
-            "-a3",
             "--increment",
             "--increment-min=8",
             "--increment-max=63",
-            f"--custom-charset1={self.WPA_PRINTABLE_ASCII}",
         ])
         hashcat_cmd = HashcatCmdCapture(
             hcap_file=self.file_22000,

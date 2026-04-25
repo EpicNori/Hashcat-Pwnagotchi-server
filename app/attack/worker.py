@@ -224,14 +224,13 @@ class CapAttack(BaseAttack):
                 self.lock.set_status("Running name mutations with digits...")
             self.run_names_with_digits()
 
-            if self.wordlist is None:
-                with self.lock:
-                    self.lock.set_status("Running extended default wordlists...")
-                self.run_default_wordlist_chain()
+            with self.lock:
+                self.lock.set_status("Running extended default wordlists...")
+            self.run_default_wordlist_chain()
 
-                with self.lock:
-                    self.lock.set_status("Running user wordlist scripts...")
-                self.run_user_script_wordlist_chain()
+            with self.lock:
+                self.lock.set_status("Running user wordlist scripts...")
+            self.run_user_script_wordlist_chain()
 
             if self.is_attack_needed():
                 with self.lock:
