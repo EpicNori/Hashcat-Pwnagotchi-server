@@ -22,6 +22,19 @@
 
 <div class="container-fluid">
     <h1>Upload a handshake capture</h1>
+
+    {% if missing_default_wordlists %}
+    <div class="field-boxed" style="margin-bottom: 20px;">
+        <h4>Install Missing Built-in Wordlists</h4>
+        <p class="text-muted small">These lists are only downloaded when you need them for a task.</p>
+        {% for wordlist in missing_default_wordlists %}
+        <form method="POST" action="{{ url_for('install_default_wordlist', wordlist_name=wordlist.path.name) }}" style="display: inline-block; margin-right: 10px; margin-bottom: 10px;">
+            <button type="submit" class="btn btn-info btn-sm">Install {{ wordlist.name }}</button>
+        </form>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <form action="" method="post" class="form" enctype="multipart/form-data" role="form" onchange="updateEstimatedRuntime()">
         <!-- csrf_token is in the hidden_tag -->
         {{ form.hidden_tag() }}
@@ -38,16 +51,6 @@
                     <div class="col">{{ render_field(form.rule) }}</div>
                 </div>
             </div>
-            {% if missing_default_wordlists %}
-            <hr>
-            <h4>Install Missing Built-in Wordlists</h4>
-            <p class="text-muted small">These lists are only downloaded when you need them for a task.</p>
-            {% for wordlist in missing_default_wordlists %}
-            <form method="POST" action="{{ url_for('install_default_wordlist', wordlist_name=wordlist.path.name) }}" style="display: inline-block; margin-right: 10px; margin-bottom: 10px;">
-                <button type="submit" class="btn btn-info btn-sm">Install {{ wordlist.name }}</button>
-            </form>
-            {% endfor %}
-            {% endif %}
         </div>
 
         <p>Estimated runtime (per Access Point): <span id="runtime">{{ form.runtime }}</span></p>
