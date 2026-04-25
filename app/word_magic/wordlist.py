@@ -354,7 +354,9 @@ def materialize_wordlist_source(wordlist_path: Path) -> Path:
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            universal_newlines=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
             cwd=str(WORDLISTS_USER_DIR)
         )

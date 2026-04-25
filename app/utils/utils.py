@@ -116,10 +116,12 @@ def get_linux_pci_gpus():
     try:
         completed = subprocess.run(
             [lspci_bin],
-            universal_newlines=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            check=False
+            check=False,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if completed.returncode != 0:
             return []
@@ -154,10 +156,12 @@ def get_windows_video_adapters():
                 "-Command",
                 "Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | Format-List",
             ],
-            universal_newlines=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if completed.returncode != 0 or not completed.stdout.strip():
             return []
@@ -216,8 +220,15 @@ def subprocess_call(args: List[str]):
     if not all(args):
         raise ValueError(f"Empty arg in {args}")
     try:
-        completed = subprocess.run(args, universal_newlines=True,
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd)
+        completed = subprocess.run(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=cwd,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
     except FileNotFoundError as e:
         executable = args[0] if args else "unknown"
         raise FileNotFoundError(f"Tool not found: '{executable}'. Please ensure it is installed and in your PATH.") from e
@@ -313,7 +324,7 @@ def get_live_usage():
     # Try to get NVIDIA GPU stats
     try:
         out = subprocess.check_output(['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu', '--format=csv,noheader,nounits'], 
-                                      universal_newlines=True)
+                                      text=True, encoding="utf-8", errors="replace")
         for i, line in enumerate(out.strip().split('\n')):
             util, temp = line.split(',')
             stats["gpus"].append({
@@ -356,7 +367,9 @@ def get_hashcat_devices():
     try:
         out = subprocess.check_output(
             ['nvidia-smi', '--query-gpu=index,name,memory.total', '--format=csv,noheader'],
-            universal_newlines=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         for line in out.splitlines():
             parts = [part.strip() for part in line.split(',', 2)]

@@ -173,11 +173,13 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
     try:
         process = subprocess.Popen(
             hashcat_cmd_list,
-            universal_newlines=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             bufsize=1,
-            cwd=hashcat_cwd
+            cwd=hashcat_cwd,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     except FileNotFoundError as e:
         executable = hashcat_cmd_list[0] if hashcat_cmd_list else "unknown"
