@@ -1,6 +1,7 @@
 import html
 import logging
 import os
+import re
 
 import requests
 from pwnagotchi import plugins
@@ -91,9 +92,57 @@ main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"</pre>
 </body>
 </html>"""
 
+    # ------------------------------------------------------------------
+    # Config auto-injection helpers
+    # ------------------------------------------------------------------
+
+    _CONFIG_PATH = '/etc/pwnagotchi/config.toml'
+
+    _DEFAULT_CONFIG_BLOCK = """
+# --- pwnagotchi_hashcat_wpa plugin (auto-added on first start) ---
+main.plugins.pwnagotchi_hashcat_wpa.enabled = true
+main.plugins.pwnagotchi_hashcat_wpa.url = "http://100.x.x.x:9111"
+main.plugins.pwnagotchi_hashcat_wpa.username = "admin"
+main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"
+# ----------------------------------------------------------------
+"""
+
+    def _inject_default_config(self):
+        """Append default plugin keys to config.toml if they are not already present."""
+        config_path = self._CONFIG_PATH
+        try:
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    content = f.read()
+            else:
+                content = ''
+
+            # Only inject if none of the four keys are present yet
+            if re.search(r'main\.plugins\.pwnagotchi_hashcat_wpa\.', content):
+                return  # already configured – nothing to do
+
+            with open(config_path, 'a') as f:
+                f.write(self._DEFAULT_CONFIG_BLOCK)
+
+            logging.info(
+                "[HashcatWPAServer] Default plugin config injected into %s. "
+                "Please edit the URL, username, and password to match your server.",
+                config_path
+            )
+        except Exception as exc:
+            logging.warning("[HashcatWPAServer] Could not inject default config: %s", exc)
+
+    # ------------------------------------------------------------------
+
     def on_loaded(self):
+        self._inject_default_config()
+
         if 'url' not in self.options or 'username' not in self.options or 'password' not in self.options:
-            logging.error("[HashcatWPAServer] URL, username, or password not set in config.toml")
+            logging.warning(
+                "[HashcatWPAServer] URL, username, or password not set. "
+                "Default values were written to %s – please update them and restart.",
+                self._CONFIG_PATH
+            )
             self.ready = False
             return
         self.ready = True
