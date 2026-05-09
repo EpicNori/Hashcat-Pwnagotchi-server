@@ -27,6 +27,8 @@ sudo pwnagotchi plugins update
 sudo pwnagotchi plugins install pwnagotchi_hashcat_wpa
 ```
 
+After enabling the plugin, click `pwnagotchi_hashcat_wpa` in the Pwnagotchi plugins page to open its web UI. The plugin page includes a quick server connection test and setup reminders.
+
 ### Manual fallback
 
 If you prefer manual installation, place the Python plugin file inside your Pwnagotchi's custom plugins directory.
@@ -65,6 +67,21 @@ The plugin only uploads the capture and credentials. The actual cracking mode an
 Restart your Pwnagotchi to fully initialize the plugin:
 ```bash
 sudo systemctl restart pwnagotchi
+```
+
+## Optional: simple Tailscale setup
+
+If you want uploads to work while mobile without exposing your hashcat server publicly, install Tailscale on both devices:
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+```
+
+Then point the plugin to the hashcat server's Tailscale IP:
+
+```toml
+main.plugins.pwnagotchi_hashcat_wpa.url = "http://100.x.x.x:9111"
 ```
 
 Now, anytime you turn on the native **Pwnagotchi BT-Tether** connection over your phone (meaning the Pwnagotchi possesses an active internet channel), the plugin will watch for new captures. Upon capturing a handshake and verifying connectivity, it will blast the `.pcap` off to the Hashcat server, schedule a task, and your CPU/GPU instance will immediately start cracking!
