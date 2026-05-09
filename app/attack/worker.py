@@ -168,7 +168,7 @@ class CapAttack(BaseAttack):
         """
         with lock_app:
             with app.app_context():
-                task = UploadedTask.query.get(self.lock.task_id)
+                task = db.session.get(UploadedTask, self.lock.task_id)
                 task.status = TaskInfoStatus.RUNNING
                 db.session.commit()
 

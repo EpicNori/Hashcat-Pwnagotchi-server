@@ -58,7 +58,9 @@ def read_settings():
             data["default_api_workload"] = Workload.normalize(data.get("default_api_workload", Workload.Normal.value))
             
             return data
-    except Exception:
+    except Exception as exc:
+        from app.logger import logger
+        logger.error("Failed to read settings (%s); using defaults.", exc)
         return {
             "device_intensities": {"1": 100},
             "cpu_percent": 100,

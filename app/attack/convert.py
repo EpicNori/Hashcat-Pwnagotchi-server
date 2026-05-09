@@ -111,21 +111,20 @@ def split_by_essid(file_22000, to_folder=None):
             # should never happen
             logger.warning(f"{to_folder} already exists")
     to_folder.mkdir(exist_ok=True)
-    curdir = os.getcwd()
     output_suffix = file_22000.suffix
     used_external_split = False
     try:
-        os.chdir(to_folder)
         if output_suffix == ".22000":
-            run_hcx_command(['hcxhashtool', '-i', file_22000, '--essid-group'], working_directory=to_folder)
+            # Pass working_directory so subprocess runs in the right folder without chdir()
+            # We must use str(file_22000.resolve()) so hcxhashtool can find it from the new cwd
+            file_absolute = str(file_22000.resolve())
+            run_hcx_command(['hcxhashtool', '-i', file_absolute, '--essid-group'], working_directory=to_folder)
             used_external_split = any(
                 partial.is_file() and partial.suffix == output_suffix
                 for partial in to_folder.iterdir()
             )
     except FileNotFoundError:
         logger.warning("hcxhashtool is not available; falling back to built-in ESSID splitting")
-    finally:
-        os.chdir(curdir)
 
     if not used_external_split:
         for partial in to_folder.iterdir():

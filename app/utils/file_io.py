@@ -89,10 +89,19 @@ def resolve_existing_capture_path(saved_filename: str) -> Path:
             if not capture_root.exists():
                 continue
             matches = sorted(capture_root.rglob(relative_filename.name), key=lambda path: len(path.parts))
-            if matches:
-                return matches[0]
+            for match in matches:
+                try:
+                    match.relative_to(capture_root)
+                    return match
+                except ValueError:
+                    continue
 
-    return CAPTURES_DIR.joinpath(*relative_filename.parts)
+    fallback = CAPTURES_DIR.joinpath(*relative_filename.parts)
+    try:
+        fallback.relative_to(CAPTURES_DIR)
+        return fallback
+    except ValueError:
+        raise PermissionError("Resolved path escapes capture directory")
 
 
 def parse_wpa_hash_line(line: str):
@@ -145,7 +154,11 @@ def read_last_benchmark():
     if not lines:
         return Benchmark(date="(Never)", speed=0)
     last_line = lines[-1]
-    date_str, speed = last_line.split(',')
+    parts = last_line.split(',', 1)
+    if len(parts) != 2:
+        logger.warning("Benchmark file has a corrupt line: %r", last_line)
+        return Benchmark(date="(corrupt)", speed=0)
+    date_str, speed = parts
     return Benchmark(date=date_str, speed=speed)
 
 

@@ -281,11 +281,12 @@ def date_formatted() -> str:
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
 
-@lru_cache()
 def hashcat_devices_info():
     try:
+        from markupsafe import escape
         hashcat_devices, _ = subprocess_call(['hashcat', '-I', '--force'])
-        hashcat_devices = f"<code>$ hashcat -I --force</code>\n<samp>{hashcat_devices}</samp>"
+        # escape() prevents XSS from unexpected chars in device names / hashcat output
+        hashcat_devices = f"<code>$ hashcat -I --force</code>\n<samp>{escape(hashcat_devices)}</samp>"
         return Markup(hashcat_devices.replace('\n', '<br>'))
     except Exception:
         return Markup("Hashcat device information is unavailable. Install hashcat or add it to PATH.")
@@ -325,18 +326,27 @@ def get_live_usage():
     try:
         out = subprocess.check_output(['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu', '--format=csv,noheader,nounits'], 
                                       text=True, encoding="utf-8", errors="replace")
-        for i, line in enumerate(out.strip().split('\n')):
-            util, temp = line.split(',')
-            stats["gpus"].append({
-                "id": str(i + 1),
-                "util": util.strip(),
-                "temp": int(temp.strip())
-            })
+        for line in out.strip().split('\n'):
+            # Use maxsplit=1 to handle GPU names that contain commas
+            parts = line.split(',', 1)
+            if len(parts) != 2:
+                continue
+            util, temp = parts
+            try:
+                stats["gpus"].append({
+                    "id": str(i + 1),
+                    "util": util.strip(),
+                    "temp": int(temp.strip())
+                })
+            except ValueError:
+                logger.warning("Could not parse nvidia-smi temp on line: %r", line)
+                continue
     except Exception:
         pass
         
     return stats
 
+@lru_cache(maxsize=1)
 def get_hashcat_devices():
     """ Returns a list of detected hashcat devices (GPUs/CPUs). """
     devices = []
@@ -376,8 +386,12 @@ def get_hashcat_devices():
             if len(parts) != 3:
                 continue
             index, name, mem = parts
+            # Only use numeric device IDs to prevent command injection
+            if not str(index).strip().isdigit():
+                logger.warning("Skipping non-numeric nvidia-smi device index: %r", index)
+                continue
             upsert_device({
-                "id": index or name,
+                "id": index,
                 "name": name,
                 "memory": mem,
                 "is_gpu": True

@@ -11,7 +11,7 @@ from flask.json import jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.datastructures import CombinedMultiDict
 
-from app import app, db
+from app import app, db, limiter
 from app.config import APP_UPDATE_PROGRESS_FILE, NVIDIA_INSTALL_PROGRESS_FILE
 from app.attack.convert import split_by_essid, convert_to_22000
 from app.attack.worker import HashcatWorker
@@ -302,7 +302,13 @@ def iter_split_capture_files(split_folder: Path):
 def save_capture_for_user(file_storage, username: str) -> tuple[str, Path]:
     saved_filename = cap_uploads.save(file_storage, folder=username)
     filename = normalize_task_filename(saved_filename)
-    return filename, resolve_capture_path(filename)
+    cap_path = resolve_capture_path(filename)
+    if cap_path.suffix.lstrip('.').lower() not in set(HashcatMode.valid_upload_suffixes()):
+        cap_path.unlink(missing_ok=True)
+        import flask
+        from http import HTTPStatus
+        flask.abort(HTTPStatus.BAD_REQUEST, description="Invalid file type after save")
+    return filename, cap_path
 
 @app.route('/pwnagotchi')
 def pwnagotchi():
@@ -618,6 +624,7 @@ def download_test_capture_pcap():
 
 
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
@@ -661,7 +668,7 @@ def benchmark():
 @app.route("/cancel/<int:task_id>")
 @login_required
 def cancel(task_id):
-    task = UploadedTask.query.get(task_id)
+    task = db.session.get(UploadedTask, task_id)
     if task is None:
         return flask.Response(status=HTTPStatus.BAD_REQUEST)
     if task.user_id != current_user.id:
@@ -677,7 +684,9 @@ def cancel(task_id):
 def requeue(task_id):
     from types import SimpleNamespace
 
-    task = UploadedTask.query.get_or_404(task_id)
+    task = db.session.get(UploadedTask, task_id)
+    if task is None:
+        return flask.abort(HTTPStatus.NOT_FOUND)
     if not user_has_roles(current_user, RoleEnum.ADMIN) and task.user_id != current_user.id:
         return flask.abort(HTTPStatus.FORBIDDEN, description="You do not have permission to re-queue this task.")
 
@@ -892,7 +901,8 @@ def admin_settings():
             flask.flash('Tailscale one-click installation is currently only automated for Linux deployments.', category='info')
         else:
             try:
-                subprocess.Popen(["sudo", get_management_script_path("install_tailscale.sh"), ts_form.auth_key.data])
+                proc = subprocess.Popen(["sudo", get_management_script_path("install_tailscale.sh")], stdin=subprocess.PIPE)
+                proc.communicate(input=ts_form.auth_key.data.encode())
                 flask.flash('Tailscale connection initiated in the background! Check your Tailscale admin console.', category='success')
             except Exception as e:
                 flask.flash(f'Failed to run Tailscale securely: {e}', category='error')

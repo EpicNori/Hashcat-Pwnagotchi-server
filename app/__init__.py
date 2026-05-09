@@ -23,4 +23,22 @@ db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 lock_app = RLock()
 
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    limiter = Limiter(
+        get_remote_address,
+        app=app,
+        default_limits=["200 per day", "50 per hour"],
+        storage_uri="memory://"
+    )
+except Exception:
+    # Dummy limiter if module is missing
+    class DummyLimiter:
+        def limit(self, *args, **kwargs):
+            def decorator(f):
+                return f
+            return decorator
+    limiter = DummyLimiter()
+
 from app import views

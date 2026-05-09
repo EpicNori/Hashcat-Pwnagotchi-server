@@ -1,5 +1,7 @@
+import datetime
 import secrets
 import os
+import stat
 from pathlib import Path
 
 
@@ -57,9 +59,10 @@ class Config:
     else:
         SECRET_KEY = secrets.token_bytes(64)
         _secret_file.write_bytes(SECRET_KEY)
+        _secret_file.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0o600 — owner-only
 
-    REMEMBER_COOKIE_DURATION = 3600 * 24 * 30  # 30 days
-    PERMANENT_SESSION_LIFETIME = 3600 * 24 * 30  # 30 days
+    REMEMBER_COOKIE_DURATION = datetime.timedelta(days=30)  # Flask-Login requires timedelta
+    PERMANENT_SESSION_LIFETIME = datetime.timedelta(days=30)
 
     # Flask-SQLAlchemy settings
     SQLALCHEMY_DATABASE_URI = "sqlite:///{}".format(DATABASE_PATH)

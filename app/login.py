@@ -128,7 +128,8 @@ def create_first_users():
               "\n flask db init"
               "\n flask db migrate"
               "\n flask db upgrade")
-        register_user(user=admin_name, password=os.environ['HASHCAT_ADMIN_PASSWORD'],
+        admin_password = os.environ.pop('HASHCAT_ADMIN_PASSWORD', None)
+        register_user(user=admin_name, password=admin_password,
                       roles=(RoleEnum.ADMIN, RoleEnum.USER))
 
 
