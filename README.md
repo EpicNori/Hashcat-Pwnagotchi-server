@@ -139,6 +139,34 @@ If native hcxtools are not available, the app will still accept direct `.22000` 
 - Optional user-provided wordlist generator scripts
 - Tailscale integration on Linux deployments
 
+## Pwnagotchi Plugin Install
+
+The repository now exposes the Pwnagotchi uploader plugin at the repo root so Jayofelony Pwnagotchi can install it through the built-in plugin manager.
+
+Add this repository URL to your existing `main.custom_plugin_repos` list in `/etc/pwnagotchi/config.toml`:
+
+```toml
+main.custom_plugin_repos = [
+    "https://github.com/EpicNori/Hashcat-Pwnagotchi-server/archive/refs/heads/main.zip"
+]
+```
+
+Then run:
+
+```bash
+sudo pwnagotchi plugins update
+sudo pwnagotchi plugins install pwnagotchi_hashcat_wpa
+```
+
+Enable it with:
+
+```toml
+main.plugins.pwnagotchi_hashcat_wpa.enabled = true
+main.plugins.pwnagotchi_hashcat_wpa.url = "http://<SERVER_IP>:9111"
+main.plugins.pwnagotchi_hashcat_wpa.username = "admin"
+main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"
+```
+
 ## Supported Formats
 
 The app accepts modern Hashcat and common capture formats:

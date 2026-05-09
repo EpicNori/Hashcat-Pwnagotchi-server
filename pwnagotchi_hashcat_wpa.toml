@@ -1,0 +1,12 @@
+[meta]
+name = "pwnagotchi_hashcat_wpa"
+description = "Automatically upload captured WPA/WPA2 handshakes to a Hashcat WPA Server instance."
+author = "EpicNori (via Antigravity AI)"
+license = "GPL3"
+version = "1.0.0"
+
+[config]
+enabled = false
+url = "http://127.0.0.1:9111"
+username = "admin"
+password = "changeme"
