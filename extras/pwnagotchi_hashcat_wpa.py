@@ -8,14 +8,12 @@ import re
 import requests
 from pwnagotchi import plugins
 
-# ---------------------------------------------------------------------------
-# In-memory upload event log (most-recent-first, capped at 40 entries)
-# ---------------------------------------------------------------------------
+
 _MAX_LOG = 40
 _upload_log = collections.deque(maxlen=_MAX_LOG)
 
 
-def _log_event(ok: bool, message: str):
+def _log_event(ok, message):
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     _upload_log.appendleft({"ts": ts, "ok": ok, "message": message})
     if ok:
@@ -24,20 +22,24 @@ def _log_event(ok: bool, message: str):
         logging.error("[HashcatWPAServer] %s", message)
 
 
-# ---------------------------------------------------------------------------
-
 class PwnagotchiHashcatWPA(plugins.Plugin):
     __author__ = 'EpicNori (via Antigravity AI)'
-    __version__ = '1.2.0'
+    __version__ = '1.3.0'
     __license__ = 'GPL3'
-    __description__ = 'Uploads captured handshakes automatically to a self-hosted hashcat-wpa-server instance.'
+    __description__ = 'Uploads captured WPA/WPA2 handshakes to a self-hosted Hashcat WPA Server.'
+
+    _CONFIG_PATH = '/etc/pwnagotchi/config.toml'
+    _PLUGIN_KEY = 'pwnagotchi_hashcat_wpa'
+    _PLACEHOLDER_URL = 'http://100.x.x.x:9111'
+    _DEFAULTS = {
+        'enabled': True,
+        'url': _PLACEHOLDER_URL,
+        'username': 'admin',
+        'password': 'changeme',
+    }
 
     def __init__(self):
         self.ready = False
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
     def _base_url(self):
         return (self.options.get('url') or '').rstrip('/')
@@ -46,65 +48,136 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         base = self._base_url()
         return f"{base}/api/upload" if base else ''
 
-    # ------------------------------------------------------------------
-    # Config auto-injection
-    # ------------------------------------------------------------------
+    def _is_placeholder_url(self):
+        return self._base_url() in ('', self._PLACEHOLDER_URL)
 
-    _CONFIG_PATH = '/etc/pwnagotchi/config.toml'
+    def _is_configured(self):
+        return (
+            not self._is_placeholder_url()
+            and bool(self.options.get('username'))
+            and bool(self.options.get('password'))
+        )
 
-    _DEFAULT_CONFIG_BLOCK = """
-# --- pwnagotchi_hashcat_wpa plugin (auto-added on first start) ---
-main.plugins.pwnagotchi_hashcat_wpa.enabled = true
-main.plugins.pwnagotchi_hashcat_wpa.url = "http://100.x.x.x:9111"
-main.plugins.pwnagotchi_hashcat_wpa.username = "admin"
-main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"
-# ----------------------------------------------------------------
-"""
+    def _status(self):
+        if self._is_placeholder_url():
+            return 'Needs server URL', '#f59e0b'
+        if not self.options.get('username') or not self.options.get('password'):
+            return 'Needs login', '#f59e0b'
+        return 'Ready', '#22c55e'
 
-    def _inject_default_config(self):
-        """Append default plugin keys to config.toml if they are not already present."""
-        config_path = self._CONFIG_PATH
+    def _read_config(self):
+        if not os.path.exists(self._CONFIG_PATH):
+            return ''
+        with open(self._CONFIG_PATH, 'r', encoding='utf-8', errors='replace') as fh:
+            return fh.read()
+
+    def _write_config_text(self, content):
+        tmp_path = self._CONFIG_PATH + '.tmp'
+        with open(tmp_path, 'w', encoding='utf-8') as fh:
+            fh.write(content)
+        os.replace(tmp_path, self._CONFIG_PATH)
+
+    def _format_value(self, value):
+        if isinstance(value, bool):
+            return 'true' if value else 'false'
+        return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+    def _table_bounds(self, content):
+        table_re = re.compile(
+            rf'(?m)^\s*\[main\.plugins\.{re.escape(self._PLUGIN_KEY)}\]\s*$'
+        )
+        match = table_re.search(content)
+        if not match:
+            return None
+        next_table = re.search(r'(?m)^\s*\[.+\]\s*$', content[match.end():])
+        end = match.end() + next_table.start() if next_table else len(content)
+        return match.start(), end
+
+    def _upsert_table_config(self, content, values):
+        bounds = self._table_bounds(content)
+        if not bounds:
+            block = '\n[main.plugins.pwnagotchi_hashcat_wpa]\n'
+            block += ''.join(f'{key} = {self._format_value(value)}\n' for key, value in values.items())
+            return content.rstrip() + '\n' + block
+
+        start, end = bounds
+        block = content[start:end]
+        missing = []
+        for key, value in values.items():
+            line_re = re.compile(rf'(?m)^(\s*){re.escape(key)}\s*=.*$')
+            formatted = self._format_value(value)
+            block, count = line_re.subn(lambda match: f'{match.group(1)}{key} = {formatted}', block, count=1)
+            if count == 0:
+                missing.append(f'{key} = {self._format_value(value)}')
+        if missing:
+            block = block.rstrip() + '\n' + '\n'.join(missing) + '\n'
+        return content[:start] + block + content[end:]
+
+    def _upsert_dotted_config(self, content, values):
+        prefix = f'main.plugins.{self._PLUGIN_KEY}.'
+        missing = []
+        for key, value in values.items():
+            line_re = re.compile(rf'(?m)^(\s*){re.escape(prefix + key)}\s*=.*$')
+            formatted = self._format_value(value)
+            content, count = line_re.subn(lambda match: f'{match.group(1)}{prefix}{key} = {formatted}', content, count=1)
+            if count == 0:
+                missing.append(f'{prefix}{key} = {self._format_value(value)}')
+        if missing:
+            content = content.rstrip() + '\n\n# pwnagotchi_hashcat_wpa plugin defaults\n'
+            content += '\n'.join(missing) + '\n'
+        return content
+
+    def _write_plugin_config(self, values):
+        content = self._read_config()
+        if self._table_bounds(content):
+            content = self._upsert_table_config(content, values)
+        else:
+            content = self._upsert_dotted_config(content, values)
+        self._write_config_text(content)
+
+    def _missing_default_values(self, content):
+        bounds = self._table_bounds(content)
+        if bounds:
+            start, end = bounds
+            block = content[start:end]
+            return {
+                key: value for key, value in self._DEFAULTS.items()
+                if not re.search(rf'(?m)^\s*{re.escape(key)}\s*=', block)
+            }
+
+        prefix = f'main.plugins.{self._PLUGIN_KEY}.'
+        return {
+            key: value for key, value in self._DEFAULTS.items()
+            if not re.search(rf'(?m)^\s*{re.escape(prefix + key)}\s*=', content)
+        }
+
+    def _ensure_default_config(self):
         try:
-            content = open(config_path).read() if os.path.exists(config_path) else ''
-            if re.search(r'main\.plugins\.pwnagotchi_hashcat_wpa\.', content):
-                return  # already configured – nothing to do
-            with open(config_path, 'a') as f:
-                f.write(self._DEFAULT_CONFIG_BLOCK)
-            logging.info(
-                "[HashcatWPAServer] Default plugin config injected into %s. "
-                "Please edit the URL, username, and password to match your server.",
-                config_path
-            )
+            content = self._read_config()
+            missing = self._missing_default_values(content)
+            if missing:
+                self._write_plugin_config(missing)
+                logging.info("[HashcatWPAServer] Added default config block to %s", self._CONFIG_PATH)
         except Exception as exc:
-            logging.warning("[HashcatWPAServer] Could not inject default config: %s", exc)
-
-    # ------------------------------------------------------------------
-    # Lifecycle
-    # ------------------------------------------------------------------
+            logging.warning("[HashcatWPAServer] Could not add default config: %s", exc)
 
     def on_loaded(self):
-        self._inject_default_config()
-        if not self.options.get('url') or not self.options.get('username') or not self.options.get('password'):
+        self._ensure_default_config()
+        self.ready = self._is_configured()
+        if self.ready:
+            logging.info("[HashcatWPAServer] Plugin loaded. Upload target: %s", self._upload_url())
+        else:
             logging.warning(
-                "[HashcatWPAServer] URL, username, or password not configured. "
-                "Edit %s and restart pwnagotchi.",
-                self._CONFIG_PATH
+                "[HashcatWPAServer] Plugin installed. Set the server URL in %s or use the plugin web UI.",
+                self._CONFIG_PATH,
             )
-            self.ready = False
-            return
-        self.ready = True
-        logging.info("[HashcatWPAServer] Plugin loaded. Upload target: %s", self._upload_url())
-
-    # ------------------------------------------------------------------
-    # Handshake upload
-    # ------------------------------------------------------------------
 
     def on_handshake(self, agent, filename, access_point, client_station):
         if not self.ready:
-            _log_event(False, f"Skipped {os.path.basename(filename)}: plugin not ready (check config).")
+            _log_event(False, f"Skipped {os.path.basename(filename)}: set the server URL first.")
             return
 
-        url      = self._upload_url()
+        url = self._upload_url()
         username = self.options.get('username', '')
         password = self.options.get('password', '')
         basename = os.path.basename(filename)
@@ -118,55 +191,48 @@ main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"
                     timeout=30,
                 )
             if response.status_code == 200:
-                _log_event(True, f"Uploaded {basename} → task scheduled. Server: {response.text[:120]}")
+                _log_event(True, f"Uploaded {basename}. Server response: {response.text[:120]}")
             else:
-                _log_event(
-                    False,
-                    f"Upload of {basename} failed: HTTP {response.status_code} — {response.text[:200]}"
-                )
+                _log_event(False, f"Upload of {basename} failed: HTTP {response.status_code} - {response.text[:200]}")
         except Exception as exc:
             _log_event(False, f"Upload of {basename} raised exception: {exc}")
 
-    # ------------------------------------------------------------------
-    # Web UI
-    # ------------------------------------------------------------------
-
     def _render_log_rows(self):
         if not _upload_log:
-            return '<tr><td colspan="3" style="text-align:center;color:#6b7280;padding:18px;">No uploads recorded yet.</td></tr>'
+            return '<tr><td colspan="3" class="empty">No upload attempts yet.</td></tr>'
+
         rows = []
         for entry in _upload_log:
-            color  = '#4ade80' if entry['ok'] else '#f87171'
-            badge  = '✓ OK'   if entry['ok'] else '✗ ERR'
-            msg    = html.escape(entry['message'])
-            ts     = html.escape(entry['ts'])
+            badge_class = 'ok' if entry['ok'] else 'err'
+            label = 'OK' if entry['ok'] else 'ERR'
             rows.append(
-                f'<tr>'
-                f'<td style="padding:6px 10px;color:#9ca3af;font-size:0.78rem;white-space:nowrap;">{ts}</td>'
-                f'<td style="padding:6px 10px;"><span style="color:{color};font-weight:600;">{badge}</span></td>'
-                f'<td style="padding:6px 10px;word-break:break-word;font-size:0.82rem;">{msg}</td>'
-                f'</tr>'
+                '<tr>'
+                f'<td>{html.escape(entry["ts"])}</td>'
+                f'<td><span class="pill {badge_class}">{label}</span></td>'
+                f'<td>{html.escape(entry["message"])}</td>'
+                '</tr>'
             )
         return ''.join(rows)
 
-    def _render_page(self, test_result=None):
-        base_url    = html.escape(self._base_url() or '(not set)')
-        upload_url  = html.escape(self._upload_url() or '(not set)')
-        username    = html.escape(self.options.get('username') or '(not set)')
-        status_text = 'Ready' if self.ready else 'Config incomplete'
-        status_dot  = '#4ade80' if self.ready else '#f87171'
+    def _render_notice(self, notice):
+        if not notice:
+            return ''
+        cls = 'success' if notice.get('ok') else 'warning'
+        return (
+            f'<div class="notice {cls}">'
+            f'<strong>{html.escape(notice.get("label", ""))}</strong>'
+            f'<span>{html.escape(notice.get("message", ""))}</span>'
+            '</div>'
+        )
 
-        test_html = ''
-        if test_result:
-            rc = '#4ade80' if test_result.get('ok') else '#f87171'
-            test_html = (
-                f'<div style="margin-top:14px;padding:12px 16px;border-radius:10px;'
-                f'background:#1e293b;border:1px solid #334155;">'
-                f'<span style="color:{rc};font-weight:600;">⬤ {html.escape(test_result.get("label",""))}</span>'
-                f'<span style="color:#94a3b8;margin-left:10px;">{html.escape(test_result.get("message",""))}</span>'
-                f'</div>'
-            )
-
+    def _render_page(self, notice=None):
+        base_url = html.escape(self._base_url() or self._PLACEHOLDER_URL)
+        upload_url = html.escape(self._upload_url() or f'{self._PLACEHOLDER_URL}/api/upload')
+        username = html.escape(self.options.get('username') or 'admin')
+        password = html.escape(self.options.get('password') or 'changeme')
+        status_text, status_color = self._status()
+        status_text = html.escape(status_text)
+        notice_html = self._render_notice(notice)
         log_rows = self._render_log_rows()
 
         return f"""<!doctype html>
@@ -174,115 +240,204 @@ main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Hashcat WPA · Pwnagotchi Plugin</title>
+  <title>Hashcat WPA Server</title>
   <style>
-    *{{box-sizing:border-box;margin:0;padding:0}}
-    body{{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;padding:24px 16px}}
-    .card{{background:#1e293b;border:1px solid #334155;border-radius:16px;padding:24px;max-width:860px;margin:0 auto 24px}}
-    h1{{font-size:1.55rem;font-weight:700;color:#f1f5f9;margin-bottom:4px}}
-    h2{{font-size:1.05rem;font-weight:600;color:#cbd5e1;margin:22px 0 10px}}
-    .subtitle{{color:#64748b;font-size:0.88rem;margin-bottom:22px}}
-    .badge{{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:8px;
-            background:#0f172a;border:1px solid #334155;font-size:0.85rem}}
-    .dot{{width:8px;height:8px;border-radius:50%;display:inline-block}}
-    .row{{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;align-items:baseline}}
-    .label{{color:#64748b;font-size:0.82rem;min-width:110px}}
-    code{{background:#0f172a;color:#7dd3fc;padding:2px 7px;border-radius:5px;font-size:0.82rem}}
-    .btn{{display:inline-block;padding:9px 18px;border-radius:10px;background:#3b82f6;color:#fff;
-          text-decoration:none;font-size:0.88rem;font-weight:600;border:none;cursor:pointer;
-          transition:background .15s}}
-    .btn:hover{{background:#2563eb}}
-    pre{{background:#0f172a;color:#a5f3fc;padding:16px;border-radius:10px;font-size:0.8rem;
-         overflow-x:auto;white-space:pre-wrap;word-break:break-word;border:1px solid #334155}}
-    table{{width:100%;border-collapse:collapse;font-size:0.82rem}}
-    thead th{{text-align:left;padding:7px 10px;color:#64748b;font-weight:500;
-              border-bottom:1px solid #334155;font-size:0.78rem;text-transform:uppercase;letter-spacing:.05em}}
-    tbody tr:nth-child(even){{background:#0f172a22}}
-    tbody tr:hover{{background:#0f172a55}}
-    ol{{padding-left:20px;color:#94a3b8;line-height:1.85}}
-    ol code{{color:#7dd3fc}}
-    .tip{{color:#475569;font-size:0.8rem;margin-top:14px}}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      min-height: 100vh;
+      background: #eef2f6;
+      color: #172033;
+      font-family: "Trebuchet MS", Verdana, sans-serif;
+      padding: 14px;
+    }}
+    main {{ max-width: 980px; margin: 0 auto; }}
+    .top {{
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr);
+      gap: 12px;
+      margin-bottom: 12px;
+    }}
+    section {{
+      background: #ffffff;
+      border: 1px solid #cfd8e3;
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+    }}
+    h1 {{ margin: 0 0 6px; font-size: 1.45rem; line-height: 1.2; }}
+    h2 {{ margin: 0 0 12px; font-size: 1rem; color: #334155; }}
+    p {{ margin: 0; color: #64748b; line-height: 1.45; }}
+    label {{ display: block; margin: 11px 0 5px; font-weight: 700; font-size: .86rem; }}
+    input {{
+      width: 100%;
+      padding: 10px 11px;
+      border: 1px solid #b8c4d4;
+      border-radius: 6px;
+      font-size: .95rem;
+      background: #fbfdff;
+      color: #172033;
+    }}
+    input:focus {{ outline: 2px solid #82c7ff; border-color: #2687d9; }}
+    button, .button {{
+      display: inline-block;
+      border: 0;
+      border-radius: 6px;
+      background: #1770b8;
+      color: #fff;
+      padding: 10px 13px;
+      margin-top: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      font-size: .92rem;
+    }}
+    .button.secondary {{ background: #475569; margin-left: 6px; }}
+    .status {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: #f8fafc;
+      border: 1px solid #dbe4ee;
+      font-weight: 700;
+      margin-top: 10px;
+    }}
+    .dot {{ width: 10px; height: 10px; border-radius: 99px; background: {status_color}; }}
+    .kv {{ display: grid; grid-template-columns: 98px minmax(0, 1fr); gap: 8px; margin: 9px 0; }}
+    .kv span {{ color: #64748b; font-size: .84rem; }}
+    code {{
+      display: inline-block;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      background: #edf6ff;
+      color: #075985;
+      border: 1px solid #cfe7ff;
+      border-radius: 5px;
+      padding: 2px 5px;
+      font-size: .84rem;
+    }}
+    .notice {{
+      margin: 12px 0 0;
+      padding: 10px 12px;
+      border-radius: 6px;
+      display: grid;
+      gap: 3px;
+    }}
+    .notice.success {{ background: #ecfdf5; border: 1px solid #bbf7d0; color: #14532d; }}
+    .notice.warning {{ background: #fff7ed; border: 1px solid #fed7aa; color: #7c2d12; }}
+    .steps {{ display: grid; gap: 8px; margin-top: 10px; }}
+    .step {{ display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 9px; align-items: start; }}
+    .num {{
+      height: 24px;
+      width: 24px;
+      border-radius: 99px;
+      background: #dbeafe;
+      color: #075985;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      font-size: .78rem;
+    }}
+    table {{ width: 100%; border-collapse: collapse; font-size: .84rem; }}
+    th {{ text-align: left; color: #64748b; border-bottom: 1px solid #dbe4ee; padding: 8px; }}
+    td {{ border-bottom: 1px solid #edf2f7; padding: 8px; vertical-align: top; }}
+    .pill {{ border-radius: 99px; padding: 3px 7px; color: #fff; font-weight: 800; font-size: .72rem; }}
+    .pill.ok {{ background: #16a34a; }}
+    .pill.err {{ background: #dc2626; }}
+    .empty {{ text-align: center; color: #64748b; padding: 18px; }}
+    @media (max-width: 760px) {{
+      .top {{ grid-template-columns: 1fr; }}
+      .kv {{ grid-template-columns: 1fr; gap: 3px; }}
+      .button.secondary {{ margin-left: 0; }}
+    }}
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>🔐 Hashcat WPA Server</h1>
-    <p class="subtitle">Pwnagotchi plugin — auto-uploads handshakes for cracking</p>
+<main>
+  <div class="top">
+    <section>
+      <h1>Hashcat WPA Server</h1>
+      <p>One place to set the server address, test the link, and watch upload attempts.</p>
+      <div class="status"><span class="dot"></span><span>{status_text}</span></div>
+      {notice_html}
 
-    <div class="badge">
-      <span class="dot" style="background:{status_dot}"></span>
-      <span style="color:#e2e8f0">{status_text}</span>
-    </div>
+      <form method="post" action="/plugins/pwnagotchi_hashcat_wpa/save">
+        <label for="url">Server URL</label>
+        <input id="url" name="url" value="{base_url}" placeholder="http://100.x.x.x:9111">
 
-    <h2>Current Settings</h2>
-    <div class="row"><span class="label">Server URL</span><code>{base_url}</code></div>
-    <div class="row"><span class="label">Upload URL</span><code>{upload_url}</code></div>
-    <div class="row"><span class="label">Username</span><code>{username}</code></div>
+        <label for="username">Username</label>
+        <input id="username" name="username" value="{username}" autocomplete="username">
 
-    <div style="margin-top:16px">
-      <a href="/plugins/pwnagotchi_hashcat_wpa/test" class="btn">⚡ Test Connection</a>
-    </div>
-    {test_html}
+        <label for="password">Password</label>
+        <input id="password" name="password" value="{password}" autocomplete="current-password">
+
+        <button type="submit">Save config</button>
+        <a class="button secondary" href="/plugins/pwnagotchi_hashcat_wpa/test">Test connection</a>
+      </form>
+    </section>
+
+    <section>
+      <h2>Current target</h2>
+      <div class="kv"><span>Server</span><code>{base_url}</code></div>
+      <div class="kv"><span>Upload API</span><code>{upload_url}</code></div>
+      <div class="kv"><span>Config file</span><code>{self._CONFIG_PATH}</code></div>
+
+      <h2 style="margin-top:18px">Easy setup</h2>
+      <div class="steps">
+        <div class="step"><div class="num">1</div><p>Install the plugin from the server page.</p></div>
+        <div class="step"><div class="num">2</div><p>Open this page and replace <code>100.x.x.x</code> with your server IP.</p></div>
+        <div class="step"><div class="num">3</div><p>Use Tailscale when the Pwnagotchi uploads through phone tethering.</p></div>
+      </div>
+    </section>
   </div>
 
-  <div class="card">
-    <h2 style="margin-top:0">📋 Upload Log</h2>
-    <p class="subtitle">Last {_MAX_LOG} upload events (most recent first)</p>
+  <section>
+    <h2>Upload log</h2>
     <table>
       <thead><tr><th>Time</th><th>Status</th><th>Detail</th></tr></thead>
       <tbody>{log_rows}</tbody>
     </table>
-  </div>
-
-  <div class="card">
-    <h2 style="margin-top:0">⚙️ Quick Setup</h2>
-    <p style="color:#64748b;font-size:0.85rem;margin-bottom:10px">
-      Add these lines to <code>/etc/pwnagotchi/config.toml</code> and restart:
-    </p>
-    <pre>main.plugins.pwnagotchi_hashcat_wpa.enabled = true
-main.plugins.pwnagotchi_hashcat_wpa.url = "http://100.x.x.x:9111"
-main.plugins.pwnagotchi_hashcat_wpa.username = "admin"
-main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"</pre>
-
-    <h2>🌐 Easy Tailscale Path</h2>
-    <ol>
-      <li>Install Tailscale on the hashcat server and on the Pwnagotchi.</li>
-      <li>Log both devices into the same tailnet (<code>tailscale up</code>).</li>
-      <li>Use the server's Tailscale IP in the plugin URL — e.g. <code>http://100.x.x.x:9111</code>.</li>
-      <li>Turn on phone BT tethering when mobile so the Pwnagotchi has internet.</li>
-    </ol>
-
-    <p class="tip">Tip: the cracking mode &amp; devices are controlled by the server's Admin → Settings page.</p>
-  </div>
+  </section>
+</main>
 </body>
 </html>"""
 
     def on_webhook(self, path, request):
-        test_result = None
+        notice = None
         normalized_path = (path or '').strip('/')
+
+        if normalized_path == 'save' and getattr(request, 'method', 'GET') == 'POST':
+            url = (request.form.get('url') or '').strip().rstrip('/')
+            username = (request.form.get('username') or '').strip()
+            password = request.form.get('password') or ''
+            if not url.startswith(('http://', 'https://')):
+                notice = {'ok': False, 'label': 'Check the URL', 'message': 'Use a full URL like http://100.x.x.x:9111.'}
+            else:
+                values = {'enabled': True, 'url': url, 'username': username or 'admin', 'password': password or 'changeme'}
+                try:
+                    self._write_plugin_config(values)
+                    self.options.update(values)
+                    self.ready = self._is_configured()
+                    notice = {'ok': True, 'label': 'Config saved', 'message': 'The plugin is updated. Restart Pwnagotchi if Webcfg still shows old values.'}
+                except Exception as exc:
+                    notice = {'ok': False, 'label': 'Could not save', 'message': str(exc)}
 
         if normalized_path == 'test':
             base_url = self._base_url()
-            if not base_url:
-                test_result = {
-                    'ok': False,
-                    'label': 'Not configured',
-                    'message': 'The plugin URL is not set in config.toml.',
-                }
+            if self._is_placeholder_url():
+                notice = {'ok': False, 'label': 'Set the server URL first', 'message': 'Replace 100.x.x.x with the real Tailscale or LAN IP.'}
             else:
                 try:
                     response = requests.get(base_url, timeout=10, allow_redirects=True)
                     ok = response.status_code < 500
-                    test_result = {
+                    notice = {
                         'ok': ok,
                         'label': 'Connected' if ok else 'Server error',
                         'message': f'HTTP {response.status_code} from {base_url}',
                     }
                 except Exception as exc:
-                    test_result = {
-                        'ok': False,
-                        'label': 'Unreachable',
-                        'message': f'Could not reach {base_url}: {exc}',
-                    }
+                    notice = {'ok': False, 'label': 'Unreachable', 'message': f'Could not reach {base_url}: {exc}'}
 
-        return self._render_page(test_result=test_result)
+        return self._render_page(notice=notice)

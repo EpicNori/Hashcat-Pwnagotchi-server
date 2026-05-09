@@ -27,7 +27,7 @@ sudo pwnagotchi plugins update
 sudo pwnagotchi plugins install pwnagotchi_hashcat_wpa
 ```
 
-After enabling the plugin, click `pwnagotchi_hashcat_wpa` in the Pwnagotchi plugins page to open its web UI. The plugin page includes a quick server connection test and setup reminders.
+The plugin installs enabled and creates default settings on first start. Click `pwnagotchi_hashcat_wpa` in the Pwnagotchi plugins page, replace `100.x.x.x` with your server IP, then press **Save config** and **Test connection**.
 
 ### Manual fallback
 
@@ -42,17 +42,17 @@ sudo wget https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/m
 
 ## Step 3: Configure Settings
 
-You must tell the plugin your server's IP and basic login credentials.
+The easiest way is the plugin setup page. It writes the plugin section into `/etc/pwnagotchi/config.toml` for you.
 
-Access your `config.toml` (Usually located at `/etc/pwnagotchi/config.toml` or editable directly via the Web UI). Add the following parameters at the bottom:
+If you prefer editing the file by hand, the first-start defaults look like this:
 
 ```toml
 main.plugins.pwnagotchi_hashcat_wpa.enabled = true
-main.plugins.pwnagotchi_hashcat_wpa.url = "http://<YOUR_HASHCAT_LINUX_SERVER_IP>:9111"
+main.plugins.pwnagotchi_hashcat_wpa.url = "http://100.x.x.x:9111"
 main.plugins.pwnagotchi_hashcat_wpa.username = "admin"
 main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"
 ```
-*(Make sure to change `YOUR_HASHCAT_LINUX_SERVER_IP` and the password accordingly).*
+Change `100.x.x.x` to your hashcat server's LAN IP or Tailscale IP.
 
 ### How task mode is chosen
 

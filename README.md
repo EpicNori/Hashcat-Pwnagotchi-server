@@ -158,11 +158,13 @@ sudo pwnagotchi plugins update
 sudo pwnagotchi plugins install pwnagotchi_hashcat_wpa
 ```
 
-Enable it with:
+The plugin installs enabled and creates safe placeholder settings. Open the Pwnagotchi plugins page, click `pwnagotchi_hashcat_wpa`, replace `100.x.x.x` with your server's LAN or Tailscale IP, then press **Save config** and **Test connection**.
+
+The first-start defaults are:
 
 ```toml
 main.plugins.pwnagotchi_hashcat_wpa.enabled = true
-main.plugins.pwnagotchi_hashcat_wpa.url = "http://<SERVER_IP>:9111"
+main.plugins.pwnagotchi_hashcat_wpa.url = "http://100.x.x.x:9111"
 main.plugins.pwnagotchi_hashcat_wpa.username = "admin"
 main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"
 ```

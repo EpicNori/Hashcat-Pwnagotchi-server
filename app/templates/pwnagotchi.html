@@ -12,26 +12,26 @@
             <div class="panel panel-default">
                 <div class="panel-heading">1. Install the Plugin</div>
                 <div class="panel-body">
-                    <p>On Jayofelony Pwnagotchi, add this repository URL to your existing custom plugin repos, update the plugin index, and install the plugin with the built-in plugin manager:</p>
+                    <p>On Jayofelony Pwnagotchi, add this repository URL to your existing custom plugin repos, update the plugin index, and install the plugin with the built-in plugin manager.</p>
                     <pre style="word-wrap: break-word; white-space: pre-wrap;">main.custom_plugin_repos = [
     "https://github.com/EpicNori/Hashcat-Pwnagotchi-server/archive/refs/heads/main.zip"
 ]</pre>
                     <pre style="word-wrap: break-word; white-space: pre-wrap;">sudo pwnagotchi plugins update
 sudo pwnagotchi plugins install pwnagotchi_hashcat_wpa</pre>
-                    <p>If you prefer a manual fallback, place <code>pwnagotchi_hashcat_wpa.py</code> in your custom plugins directory such as <code>/usr/local/share/pwnagotchi/custom-plugins/</code>.</p>
+                    <p>The plugin installs enabled with default settings, so the next step is only replacing the placeholder server URL.</p>
                 </div>
             </div>
 
             <div class="panel panel-default">
-                <div class="panel-heading">2. Configure your Settings</div>
+                <div class="panel-heading">2. Open the Plugin Setup Page</div>
                 <div class="panel-body">
-                    <p>Edit your <code>/etc/pwnagotchi/config.toml</code> and add the following entry. Replace the IP with your server's IP address.</p>
+                    <p>Open the Pwnagotchi plugins page, click <code>pwnagotchi_hashcat_wpa</code>, replace <code>100.x.x.x</code> with your server IP, then press <b>Save config</b> and <b>Test connection</b>.</p>
+                    <p>If you prefer editing <code>/etc/pwnagotchi/config.toml</code> by hand, the plugin creates this default block for you on first start:</p>
                     <pre style="word-wrap: break-word; white-space: pre-wrap;">
 main.plugins.pwnagotchi_hashcat_wpa.enabled = true
-main.plugins.pwnagotchi_hashcat_wpa.url = "http://{{ network_ip }}:9111"
+main.plugins.pwnagotchi_hashcat_wpa.url = "http://100.x.x.x:9111"
 main.plugins.pwnagotchi_hashcat_wpa.username = "admin"
 main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"</pre>
-                    <p>After enabling the plugin, click <code>pwnagotchi_hashcat_wpa</code> in the Pwnagotchi plugins page to open its web UI and run a quick server connection test.</p>
                 </div>
             </div>
 
@@ -41,7 +41,7 @@ main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"</pre>
                     <p>If you want mobile uploads without exposing your server to the public internet, Tailscale is the easiest path.</p>
                     <pre style="word-wrap: break-word; white-space: pre-wrap;">curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up</pre>
-                    <p>Run that on both the hashcat server and the Pwnagotchi, then set the plugin URL to the server's Tailscale IP like <code>http://100.x.x.x:9111</code>.</p>
+                    <p>Run that on both the hashcat server and the Pwnagotchi, then put the server's Tailscale IP into the plugin setup page like <code>http://100.x.x.x:9111</code>.</p>
                 </div>
             </div>
 
