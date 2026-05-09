@@ -3,7 +3,7 @@ name = "pwnagotchi_hashcat_wpa"
 description = "Automatically upload captured WPA/WPA2 handshakes to a Hashcat WPA Server instance."
 author = "EpicNori (via Antigravity AI)"
 license = "GPL3"
-version = "1.1.0"
+version = "1.1.1"
 
 [config]
 enabled = false

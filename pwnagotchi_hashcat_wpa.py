@@ -6,7 +6,7 @@ import requests
 from pwnagotchi import plugins
 
 
-class HashcatWPAServer(plugins.Plugin):
+class PwnagotchiHashcatWPA(plugins.Plugin):
     __author__ = 'EpicNori (via Antigravity AI)'
     __version__ = '1.1.0'
     __license__ = 'GPL3'
