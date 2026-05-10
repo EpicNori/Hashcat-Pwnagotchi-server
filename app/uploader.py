@@ -3,7 +3,10 @@ from pathlib import Path
 
 from flask_uploads import UploadSet, configure_uploads
 from flask_wtf import FlaskForm
-from flask_wtf.file import FileField, FileAllowed, FileRequired
+from flask_wtf.file import FileAllowed, FileRequired
+from werkzeug.datastructures import FileStorage
+from wtforms.fields import MultipleFileField
+from wtforms.validators import StopValidation
 from wtforms.fields import RadioField, SubmitField, BooleanField, IntegerField
 from wtforms.validators import Optional, ValidationError, NumberRange
 
@@ -58,6 +61,31 @@ class MultiCheckboxField(SelectMultipleField):
     widget = widgets.ListWidget(prefix_label=False)
     option_widget = widgets.CheckboxInput()
 
+
+class MultipleFilesRequired(FileRequired):
+    def __call__(self, form, field):
+        files = [upload for upload in (field.data or []) if isinstance(upload, FileStorage) and upload.filename]
+        if not files:
+            raise StopValidation(self.message or field.gettext("This field is required."))
+
+
+class MultipleFilesAllowed(FileAllowed):
+    def __call__(self, form, field):
+        files = [upload for upload in (field.data or []) if isinstance(upload, FileStorage) and upload.filename]
+        for upload in files:
+            filename = upload.filename.lower()
+            if isinstance(self.upload_set, tuple) or isinstance(self.upload_set, list) or isinstance(self.upload_set, set):
+                if any(filename.endswith("." + extension) for extension in self.upload_set):
+                    continue
+                raise StopValidation(
+                    self.message
+                    or field.gettext("File does not have an approved extension: {extensions}").format(
+                        extensions=", ".join(self.upload_set)
+                    )
+                )
+            if not self.upload_set.file_allowed(upload, filename):
+                raise StopValidation(self.message or field.gettext("File does not have an approved extension."))
+
 class UploadForm(FlaskForm):
     wordlist = RadioField('Wordlist', choices=wordlist_choices(), default=NONE_STR, description="The higher the rate, the better")
     rule = RadioField('Rule', choices=Rule.to_form(), default=NONE_STR)
@@ -68,10 +96,10 @@ class UploadForm(FlaskForm):
     brain_client_feature = RadioField("Brain client features", choices=BrainClientFeature.to_form(),
                                       default=BrainClientFeature.POSITIONS.value)
     devices = MultiCheckboxField("Target Devices", choices=[])
-    capture = FileField(
-        'Capture',
-        validators=[FileRequired(), FileAllowed(HashcatMode.valid_upload_suffixes(),
-                                                message='Airodump & Hashcat capture files only')],
+    capture = MultipleFileField(
+        'Captures',
+        validators=[MultipleFilesRequired(), MultipleFilesAllowed(HashcatMode.valid_upload_suffixes(),
+                                                                  message='Airodump & Hashcat capture files only')],
         render_kw={"accept": ".cap,.pcap,.pcapng,.hccapx,.pmkid,.2500,.2501,.16800,.16801,.22000,.22001"}
     )
     submit = SubmitField('Submit')

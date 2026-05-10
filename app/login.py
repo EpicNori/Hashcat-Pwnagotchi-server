@@ -116,19 +116,21 @@ def create_first_users():
         # no 'guest' user yet
         register_user(user='guest', password='guest', roles=RoleEnum.GUEST)
 
-    admin_cred_env_keys = ('HASHCAT_ADMIN_USER', 'HASHCAT_ADMIN_PASSWORD')
-    for key in admin_cred_env_keys:
-        if key not in os.environ:
-            raise KeyError(f"Please set '{key}' environment.")
-    admin_name = os.environ['HASHCAT_ADMIN_USER']
-    if not User.query.filter(User.username == admin_name).first():
+    admin_name = os.environ.get('HASHCAT_ADMIN_USER', 'admin')
+    admin_password = os.environ.get('HASHCAT_ADMIN_PASSWORD', 'changeme')
+    admin_exists = User.query.filter(User.username == admin_name).first()
+    if not admin_exists:
+        if 'HASHCAT_ADMIN_USER' not in os.environ or 'HASHCAT_ADMIN_PASSWORD' not in os.environ:
+            warnings.warn(
+                "HASHCAT_ADMIN_USER/HASHCAT_ADMIN_PASSWORD not set; using default bootstrap credentials.",
+                RuntimeWarning,
+            )
         # no 'admin' user yet
         print("It appears that you're running hashcat-wpa-server for the first time. "
               "To migrate database in the future, run:"
               "\n flask db init"
               "\n flask db migrate"
               "\n flask db upgrade")
-        admin_password = os.environ.pop('HASHCAT_ADMIN_PASSWORD', None)
         register_user(user=admin_name, password=admin_password,
                       roles=(RoleEnum.ADMIN, RoleEnum.USER))
 

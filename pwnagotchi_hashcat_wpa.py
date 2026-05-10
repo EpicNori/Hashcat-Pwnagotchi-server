@@ -4,6 +4,7 @@ import html
 import logging
 import os
 import re
+import time
 
 import requests
 from pwnagotchi import plugins
@@ -11,6 +12,7 @@ from pwnagotchi import plugins
 
 _MAX_LOG = 40
 _upload_log = collections.deque(maxlen=_MAX_LOG)
+_SUPPORTED_SUFFIXES = ('.cap', '.pcap', '.pcapng', '.hccapx', '.pmkid', '.2500', '.2501', '.16800', '.16801', '.22000', '.22001')
 
 
 def _log_event(ok, message):
@@ -24,7 +26,7 @@ def _log_event(ok, message):
 
 class PwnagotchiHashcatWPA(plugins.Plugin):
     __author__ = 'EpicNori (via Antigravity AI)'
-    __version__ = '1.3.0'
+    __version__ = '1.4.0'
     __license__ = 'GPL3'
     __description__ = 'Uploads captured WPA/WPA2 handshakes to a self-hosted Hashcat WPA Server.'
 
@@ -40,6 +42,8 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
 
     def __init__(self):
         self.ready = False
+        self._pending_files = collections.OrderedDict()
+        self._last_status = 'Hashcat WPA ready'
 
     def _base_url(self):
         return (self.options.get('url') or '').rstrip('/')
@@ -64,6 +68,77 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         if not self.options.get('username') or not self.options.get('password'):
             return 'Needs login', '#f59e0b'
         return 'Ready', '#22c55e'
+
+    def _set_status(self, agent, message):
+        self._last_status = message
+        logging.info("[HashcatWPAServer] %s", message)
+        try:
+            view = agent.view()
+            if hasattr(view, 'set'):
+                view.set('status', message)
+            if hasattr(view, 'update'):
+                view.update(force=True)
+        except Exception as exc:
+            logging.debug("[HashcatWPAServer] Could not update Pwnagotchi status text: %s", exc)
+
+    def _add_pending_file(self, filename):
+        if not filename:
+            return
+        path = os.path.abspath(filename)
+        if not os.path.isfile(path):
+            return
+        if not path.lower().endswith(_SUPPORTED_SUFFIXES):
+            return
+        self._pending_files[path] = time.time()
+
+    def _upload_pending_files(self, agent=None):
+        if not self.ready:
+            return
+        if not self._pending_files:
+            return
+
+        paths = list(self._pending_files.keys())
+        url = self._upload_url()
+        username = self.options.get('username', '')
+        password = self.options.get('password', '')
+        opened_files = []
+        try:
+            if agent is not None:
+                self._set_status(agent, f"Wrapping {len(paths)} capture(s) for upload")
+            for path in paths:
+                opened_files.append(('capture', (os.path.basename(path), open(path, 'rb'), 'application/octet-stream')))
+
+            if agent is not None:
+                self._set_status(agent, f"Uploading {len(paths)} capture(s) to server")
+            response = requests.post(
+                url,
+                auth=(username, password),
+                files=opened_files,
+                timeout=max(30, 20 * len(paths)),
+            )
+            basenames = ', '.join(os.path.basename(path) for path in paths[:3])
+            if len(paths) > 3:
+                basenames += f", +{len(paths) - 3} more"
+            if response.status_code == 200:
+                for path in paths:
+                    self._pending_files.pop(path, None)
+                _log_event(True, f"Uploaded {len(paths)} capture(s): {basenames}. Server response: {response.text[:120]}")
+                if agent is not None:
+                    self._set_status(agent, f"Upload complete: {len(paths)} capture(s)")
+            else:
+                _log_event(False, f"Upload batch failed: HTTP {response.status_code} - {response.text[:200]}")
+                if agent is not None:
+                    self._set_status(agent, f"Upload failed: HTTP {response.status_code}")
+        except Exception as exc:
+            _log_event(False, f"Upload batch raised exception: {exc}")
+            if agent is not None:
+                self._set_status(agent, f"Upload failed: {exc}")
+        finally:
+            for _, file_tuple in opened_files:
+                try:
+                    file_tuple[1].close()
+                except Exception:
+                    pass
 
     def _read_config(self):
         if not os.path.exists(self._CONFIG_PATH):
@@ -175,27 +250,16 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
     def on_handshake(self, agent, filename, access_point, client_station):
         if not self.ready:
             _log_event(False, f"Skipped {os.path.basename(filename)}: set the server URL first.")
+            self._set_status(agent, "Hashcat upload skipped: configure server")
             return
 
-        url = self._upload_url()
-        username = self.options.get('username', '')
-        password = self.options.get('password', '')
         basename = os.path.basename(filename)
+        self._set_status(agent, f"Queued {basename} for Hashcat upload")
+        self._add_pending_file(filename)
+        self._upload_pending_files(agent)
 
-        try:
-            with open(filename, 'rb') as fh:
-                response = requests.post(
-                    url,
-                    auth=(username, password),
-                    files={'capture': (basename, fh, 'application/vnd.tcpdump.pcap')},
-                    timeout=30,
-                )
-            if response.status_code == 200:
-                _log_event(True, f"Uploaded {basename}. Server response: {response.text[:120]}")
-            else:
-                _log_event(False, f"Upload of {basename} failed: HTTP {response.status_code} - {response.text[:200]}")
-        except Exception as exc:
-            _log_event(False, f"Upload of {basename} raised exception: {exc}")
+    def on_internet_available(self, agent):
+        self._upload_pending_files(agent)
 
     def _render_log_rows(self):
         if not _upload_log:

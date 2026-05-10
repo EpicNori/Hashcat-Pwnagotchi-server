@@ -310,6 +310,42 @@ def save_capture_for_user(file_storage, username: str) -> tuple[str, Path]:
         flask.abort(HTTPStatus.BAD_REQUEST, description="Invalid file type after save")
     return filename, cap_path
 
+
+def non_empty_uploads(field_name: str = 'capture'):
+    return [upload for upload in request.files.getlist(field_name) if upload and upload.filename]
+
+
+def submit_uploaded_capture(file_storage, user: User, form: UploadForm, wordlist_started: bool = False):
+    filename, cap_path = save_capture_for_user(file_storage, user.username)
+    file_22000 = convert_to_22000(cap_path)
+    folder_split_by_essid = split_by_essid(file_22000)
+
+    if not wordlist_started:
+        Thread(target=download_wordlist, args=(form.get_wordlist_path(),)).start()
+
+    tasks = {}
+    hashcat_args = ' '.join(form.hashcat_args())
+    for file_essid in iter_split_capture_files(folder_split_by_essid):
+        bssid_essid = next(bssid_essid_from_22000(file_essid))
+        bssid, essid = bssid_essid.split(':')
+        essid = decode_essid_hex(essid)
+        new_task = UploadedTask(user_id=user.id, filename=filename, wordlist=form.get_wordlist_name(),
+                                rule=form.rule.data, bssid=bssid, essid=essid, hashcat_args=hashcat_args)
+        tasks[file_essid] = new_task
+
+    if not tasks:
+        raise InvalidFileError(f"No crackable WPA data was found in {file_storage.filename}.")
+
+    db.session.add_all(tasks.values())
+    db.session.commit()
+    for file_essid, task in tasks.items():
+        hashcat_worker.submit_capture(file_essid, uploaded_form=form, task=task)
+
+    return {
+        "filename": filename,
+        "tasks": len(tasks),
+    }
+
 @app.route('/pwnagotchi')
 def pwnagotchi():
     return render_template('pwnagotchi.html', title='Pwnagotchi Integration')
@@ -326,29 +362,27 @@ def upload():
     if form.validate_on_submit():
         if not user_has_roles(current_user, RoleEnum.USER):
             return flask.abort(HTTPStatus.FORBIDDEN, description="You do not have the permission to start jobs.")
-        # flask-uploads already uses werkzeug.secure_filename()
-        filename, cap_path = save_capture_for_user(request.files['capture'], current_user.username)
-        try:
-            file_22000 = convert_to_22000(cap_path)
-            folder_split_by_essid = split_by_essid(file_22000)
-        except (FileNotFoundError, InvalidFileError) as error:
-            logger.exception(error)
-            return flask.abort(HTTPStatus.BAD_REQUEST, description=str(error))
-        Thread(target=download_wordlist, args=(form.get_wordlist_path(),)).start()
-        tasks = {}
-        hashcat_args = ' '.join(form.hashcat_args())
-        for file_essid in iter_split_capture_files(folder_split_by_essid):
-            bssid_essid = next(bssid_essid_from_22000(file_essid))
-            bssid, essid = bssid_essid.split(':')
-            essid = decode_essid_hex(essid)
-            new_task = UploadedTask(user_id=current_user.id, filename=filename, wordlist=form.get_wordlist_name(),
-                                    rule=form.rule.data, bssid=bssid, essid=essid, hashcat_args=hashcat_args)
-            tasks[file_essid] = new_task
-        db.session.add_all(tasks.values())
-        db.session.commit()
-        for file_essid, task in tasks.items():
-            hashcat_worker.submit_capture(file_essid, uploaded_form=form, task=task)
-        flask.flash(f"Uploaded {filename}")
+
+        uploads = non_empty_uploads()
+        uploaded = []
+        failed = []
+        wordlist_started = False
+        for file_storage in uploads:
+            try:
+                result = submit_uploaded_capture(file_storage, current_user, form, wordlist_started=wordlist_started)
+                wordlist_started = True
+                uploaded.append(result)
+            except (FileNotFoundError, InvalidFileError, ValueError) as error:
+                logger.exception(error)
+                failed.append((file_storage.filename, str(error)))
+
+        if uploaded:
+            task_count = sum(item["tasks"] for item in uploaded)
+            flask.flash(f"Uploaded {len(uploaded)} capture(s) and scheduled {task_count} task(s).", category="success")
+        for filename, error in failed:
+            flask.flash(f"Skipped {filename}: {error}", category="error")
+        if not uploaded and failed:
+            return flask.abort(HTTPStatus.BAD_REQUEST, description="No captures could be uploaded.")
         return redirect(url_for('user_profile'))
     missing_default_wordlists = [wlist for wlist in WordListDefault.list() if not wlist.path.exists()]
     return render_template('upload.html', title='Upload', form=form, missing_default_wordlists=missing_default_wordlists)
@@ -401,7 +435,8 @@ def api_upload():
     if not user_has_roles(user, RoleEnum.USER):
         return flask.abort(HTTPStatus.FORBIDDEN, description="Insufficient permissions")
     
-    if 'capture' not in request.files:
+    uploads = non_empty_uploads()
+    if not uploads:
         return flask.abort(HTTPStatus.BAD_REQUEST, description="Missing capture file")
         
     # Disable CSRF for this API endpoint
@@ -415,30 +450,27 @@ def api_upload():
     if not form.validate():
         return flask.abort(HTTPStatus.BAD_REQUEST, description=str(form.errors))
 
-    filename, cap_path = save_capture_for_user(request.files['capture'], user.username)
-    try:
-        file_22000 = convert_to_22000(cap_path)
-        folder_split_by_essid = split_by_essid(file_22000)
-    except (FileNotFoundError, InvalidFileError) as error:
-        logger.exception(error)
-        return flask.abort(HTTPStatus.BAD_REQUEST, description=str(error))
-        
-    Thread(target=download_wordlist, args=(form.get_wordlist_path(),)).start()
-    tasks = {}
-    hashcat_args = ' '.join(form.hashcat_args())
-    for file_essid in iter_split_capture_files(folder_split_by_essid):
-        bssid_essid = next(bssid_essid_from_22000(file_essid))
-        bssid, essid = bssid_essid.split(':')
-        essid = decode_essid_hex(essid)
-        new_task = UploadedTask(user_id=user.id, filename=filename, wordlist=form.get_wordlist_name(),
-                                rule=form.rule.data, bssid=bssid, essid=essid, hashcat_args=hashcat_args)
-        tasks[file_essid] = new_task
-    db.session.add_all(tasks.values())
-    db.session.commit()
-    for file_essid, task in tasks.items():
-        hashcat_worker.submit_capture(file_essid, uploaded_form=form, task=task)
-        
-    return jsonify({"status": "success", "message": f"Uploaded {filename} with tasks scheduled."})
+    uploaded = []
+    failed = []
+    wordlist_started = False
+    for file_storage in uploads:
+        try:
+            result = submit_uploaded_capture(file_storage, user, form, wordlist_started=wordlist_started)
+            wordlist_started = True
+            uploaded.append(result)
+        except (FileNotFoundError, InvalidFileError, ValueError) as error:
+            logger.exception(error)
+            failed.append({"filename": file_storage.filename, "error": str(error)})
+
+    if not uploaded:
+        return flask.abort(HTTPStatus.BAD_REQUEST, description=f"Could not upload any captures: {failed}")
+
+    return jsonify({
+        "status": "success" if not failed else "partial_success",
+        "message": f"Uploaded {len(uploaded)} capture(s) with {sum(item['tasks'] for item in uploaded)} task(s) scheduled.",
+        "uploaded": uploaded,
+        "failed": failed,
+    })
 
 
 
