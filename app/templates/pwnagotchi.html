@@ -25,23 +25,31 @@ sudo pwnagotchi plugins install pwnagotchi_hashcat_wpa</pre>
             <div class="panel panel-default">
                 <div class="panel-heading">2. Open the Plugin Setup Page</div>
                 <div class="panel-body">
-                    <p>Open the Pwnagotchi plugins page, click <code>pwnagotchi_hashcat_wpa</code>, replace <code>100.x.x.x</code> with your server IP, then press <b>Save config</b> and <b>Test connection</b>.</p>
+                    <p>Open the Pwnagotchi plugins page, click <code>pwnagotchi_hashcat_wpa</code>, replace <code>100.x.x.x</code> with your server IP or hostname, then press <b>Save config</b> and <b>Test connection</b>.</p>
                     <p>If you prefer editing <code>/etc/pwnagotchi/config.toml</code> by hand, the plugin creates this default block for you on first start:</p>
                     <pre style="word-wrap: break-word; white-space: pre-wrap;">
 main.plugins.pwnagotchi_hashcat_wpa.enabled = true
 main.plugins.pwnagotchi_hashcat_wpa.url = "http://100.x.x.x:9111"
 main.plugins.pwnagotchi_hashcat_wpa.username = "admin"
 main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"</pre>
+                    <p>Use a URL that matches the path you want: local LAN, Tailscale, or an HTTPS Cloudflare Tunnel hostname.</p>
                 </div>
             </div>
 
             <div class="panel panel-default">
-                <div class="panel-heading">3. Easy Tailscale Setup</div>
+                <div class="panel-heading">3. Choose Your Remote Access Path</div>
                 <div class="panel-body">
-                    <p>If you want mobile uploads without exposing your server to the public internet, Tailscale is the easiest path.</p>
+                    <p><b>Tailscale:</b> If you want private mobile uploads without exposing your server to the public internet, Tailscale remains the easiest VPN path.</p>
                     <pre style="word-wrap: break-word; white-space: pre-wrap;">curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up</pre>
                     <p>Run that on both the hashcat server and the Pwnagotchi, then put the server's Tailscale IP into the plugin setup page like <code>http://100.x.x.x:9111</code>.</p>
+                    <hr>
+                    <p><b>Cloudflare Tunnel:</b> If you want the Pwnagotchi to upload over normal tethered internet without running a VPN client, publish the server through Cloudflare Tunnel and use an HTTPS hostname in the plugin.</p>
+                    <pre style="word-wrap: break-word; white-space: pre-wrap;">cloudflared tunnel login
+cloudflared tunnel create hashcat-wpa
+cloudflared tunnel route dns hashcat-wpa upload.example.com
+cloudflared tunnel run hashcat-wpa</pre>
+                    <p>Point the plugin to a hostname like <code>https://upload.example.com</code>. Keep Tailscale if you prefer a fully private network path. The system supports both so the operator can choose.</p>
                 </div>
             </div>
 
@@ -63,6 +71,7 @@ sudo tailscale up</pre>
                 <h4>Quick Tips</h4>
                 <p><b>Bluetooth Tethering:</b> Tether your phone to your Pwnagotchi to enable instant uploads while mobile.</p>
                 <p><b>Tailscale:</b> Use the same tailnet on both devices and point the plugin to the server's <code>100.x.x.x</code> address.</p>
+                <p><b>Cloudflare Tunnel:</b> Use an HTTPS hostname if you want internet-based uploads without a VPN client on the Pwnagotchi.</p>
                 <p><b>Multiple Users:</b> You can create separate operator accounts for each of your Pwnagotchi units.</p>
             </div>
             <div class="text-center">

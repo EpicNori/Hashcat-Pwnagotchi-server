@@ -138,6 +138,7 @@ If native hcxtools are not available, the app will still accept direct `.22000` 
 - Built-in fallback wordlist installation from the dashboard
 - Optional user-provided wordlist generator scripts
 - Tailscale integration on Linux deployments
+- Cloudflare Tunnel guidance for HTTPS uploads without a VPN client on the Pwnagotchi
 
 ## Pwnagotchi Plugin Install
 
@@ -158,7 +159,7 @@ sudo pwnagotchi plugins update
 sudo pwnagotchi plugins install pwnagotchi_hashcat_wpa
 ```
 
-The plugin installs enabled and creates safe placeholder settings. Open the Pwnagotchi plugins page, click `pwnagotchi_hashcat_wpa`, replace `100.x.x.x` with your server's LAN or Tailscale IP, then press **Save config** and **Test connection**.
+The plugin installs enabled and creates safe placeholder settings. Open the Pwnagotchi plugins page, click `pwnagotchi_hashcat_wpa`, replace `100.x.x.x` with your server's LAN IP, Tailscale IP, or Cloudflare Tunnel hostname, then press **Save config** and **Test connection**.
 
 The first-start defaults are:
 
@@ -168,6 +169,14 @@ main.plugins.pwnagotchi_hashcat_wpa.url = "http://100.x.x.x:9111"
 main.plugins.pwnagotchi_hashcat_wpa.username = "admin"
 main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"
 ```
+
+If you want the Pwnagotchi to upload through normal internet access without running a VPN client on the device, you can expose the server through Cloudflare Tunnel and point the plugin to an HTTPS hostname such as `https://upload.example.com`.
+
+Recommended access choices:
+
+- `http://192.168.x.x:9111` for local LAN-only uploads
+- `http://100.x.x.x:9111` for private uploads over Tailscale
+- `https://upload.example.com` for mobile uploads through Cloudflare Tunnel
 
 ## Supported Formats
 

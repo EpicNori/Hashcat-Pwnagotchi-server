@@ -429,7 +429,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
 
       <form method="post" action="/plugins/pwnagotchi_hashcat_wpa/save">
         <label for="url">Server URL</label>
-        <input id="url" name="url" value="{base_url}" placeholder="http://100.x.x.x:9111">
+        <input id="url" name="url" value="{base_url}" placeholder="http://100.x.x.x:9111 or https://upload.example.com">
 
         <label for="username">Username</label>
         <input id="username" name="username" value="{username}" autocomplete="username">
@@ -451,8 +451,8 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
       <h2 style="margin-top:18px">Easy setup</h2>
       <div class="steps">
         <div class="step"><div class="num">1</div><p>Install the plugin from the server page.</p></div>
-        <div class="step"><div class="num">2</div><p>Open this page and replace <code>100.x.x.x</code> with your server IP.</p></div>
-        <div class="step"><div class="num">3</div><p>Use Tailscale when the Pwnagotchi uploads through phone tethering.</p></div>
+        <div class="step"><div class="num">2</div><p>Replace the placeholder with your LAN IP, Tailscale IP, or HTTPS Cloudflare Tunnel hostname.</p></div>
+        <div class="step"><div class="num">3</div><p>Use Tailscale for a private VPN path, or Cloudflare Tunnel if the Pwnagotchi only has normal internet through phone tethering.</p></div>
       </div>
     </section>
   </div>
@@ -477,7 +477,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
             username = (request.form.get('username') or '').strip()
             password = request.form.get('password') or ''
             if not url.startswith(('http://', 'https://')):
-                notice = {'ok': False, 'label': 'Check the URL', 'message': 'Use a full URL like http://100.x.x.x:9111.'}
+                notice = {'ok': False, 'label': 'Check the URL', 'message': 'Use a full URL like http://100.x.x.x:9111 or https://upload.example.com.'}
             else:
                 values = {'enabled': True, 'url': url, 'username': username or 'admin', 'password': password or 'changeme'}
                 try:
@@ -491,7 +491,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         if normalized_path == 'test':
             base_url = self._base_url()
             if self._is_placeholder_url():
-                notice = {'ok': False, 'label': 'Set the server URL first', 'message': 'Replace 100.x.x.x with the real Tailscale or LAN IP.'}
+                notice = {'ok': False, 'label': 'Set the server URL first', 'message': 'Replace 100.x.x.x with the real LAN IP, Tailscale IP, or Cloudflare Tunnel hostname.'}
             else:
                 try:
                     response = requests.get(base_url, timeout=10, allow_redirects=True)
