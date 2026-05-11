@@ -4,6 +4,7 @@ import html
 import logging
 import os
 import re
+import socket
 import time
 
 import requests
@@ -45,6 +46,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         self._pending_files = collections.OrderedDict()
         self._last_status = 'Hashcat WPA ready'
         self._heartbeat_session = requests.Session()
+        self._last_heartbeat_ts = 0.0
 
     def _base_url(self):
         return (self.options.get('url') or '').rstrip('/')
@@ -57,13 +59,27 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         base = self._base_url()
         return f"{base}/api/pwnagotchi/heartbeat" if base else ''
 
+    def _device_hostname(self):
+        return (
+            self.options.get("hostname")
+            or self.options.get("device_name")
+            or socket.gethostname()
+            or "pwnagotchi"
+        )
+
+    def _should_send_heartbeat(self, interval_seconds=600):
+        now = time.time()
+        if now - self._last_heartbeat_ts < interval_seconds:
+            return False
+        return True
+
     def _send_heartbeat(self, event, message=None, hostname=None):
         if not self._is_configured():
             return None
         payload = {
             "event": event,
             "message": message,
-            "hostname": hostname or self.options.get("hostname"),
+            "hostname": hostname or self._device_hostname(),
             "plugin_version": self.__version__,
         }
         response = self._heartbeat_session.post(
@@ -73,6 +89,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
             timeout=15,
         )
         response.raise_for_status()
+        self._last_heartbeat_ts = time.time()
         return response
 
     def _is_placeholder_url(self):
@@ -302,6 +319,11 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         self._upload_pending_files(agent)
 
     def on_internet_available(self, agent):
+        if self.ready and self._should_send_heartbeat():
+            try:
+                self._send_heartbeat("online", "Internet connection available.")
+            except Exception as exc:
+                logging.debug("[HashcatWPAServer] Online heartbeat failed: %s", exc)
         self._upload_pending_files(agent)
 
     def _render_log_rows(self):
