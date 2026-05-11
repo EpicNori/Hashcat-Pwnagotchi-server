@@ -56,11 +56,16 @@ Change `100.x.x.x` to your hashcat server's LAN IP or Tailscale IP.
 
 ### How task mode is chosen
 
-The plugin only uploads the capture and credentials. The actual cracking mode and target devices are controlled by the server:
+The plugin uploads the capture, credentials, and a small heartbeat. The actual cracking mode and target devices are controlled by the server:
 
 - The server's **Admin Settings** page defines the default devices used for `Pwnagotchi/API` uploads.
 - The server's **Default Work Mode (for Pwnagotchi/API)** setting defines whether uploaded captures run in `Low`, `Fast`, or `Normal` mode.
 - In `Normal` mode, the server keeps working the full extended attack chain until the task is completed, cracked, or manually cancelled.
+
+### How you can verify it is working
+
+The plugin now sends a small heartbeat to the server when it loads and again when it uploads a capture.
+On the **Pwnagotchi Integration** page, the **Live Plugin Status** panel will turn green and show the last heartbeat, hostname, and upload count once the server has heard from your device.
 
 ## Step 4: Run
 

@@ -38,6 +38,39 @@ def backward_db_compatibility():
     db.session.commit()
 
 
+class PwnagotchiStatus(db.Model):
+    __tablename__ = "pwnagotchi_status"
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(64), unique=True, index=True, nullable=False)
+    hostname = db.Column(db.String(128))
+    plugin_version = db.Column(db.String(32))
+    last_event = db.Column(db.String(64))
+    last_message = db.Column(db.String(256))
+    last_seen = db.Column(db.DateTime, default=datetime.datetime.now, index=True)
+    last_upload_at = db.Column(db.DateTime)
+    last_upload_filename = db.Column(db.String(256))
+    upload_count = db.Column(db.Integer, default=0)
+
+    def mark_seen(self, *, event: str, message: str | None = None, hostname: str | None = None,
+                  plugin_version: str | None = None, upload_filename: str | None = None):
+        self.last_event = event
+        self.last_message = message
+        self.hostname = hostname or self.hostname
+        self.plugin_version = plugin_version or self.plugin_version
+        self.last_seen = datetime.datetime.now()
+        if upload_filename:
+            self.last_upload_at = self.last_seen
+            self.last_upload_filename = upload_filename
+            self.upload_count = (self.upload_count or 0) + 1
+
+    @property
+    def is_online(self):
+        if not self.last_seen:
+            return False
+        return (datetime.datetime.now() - self.last_seen) <= datetime.timedelta(minutes=15)
+
+
 class UploadedTask(db.Model):
     __tablename__ = "uploads"
     id = db.Column(db.Integer, primary_key=True)

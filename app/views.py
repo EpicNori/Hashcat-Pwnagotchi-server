@@ -19,7 +19,7 @@ from app.domain import TaskInfoStatus, Rule, InvalidFileError, Workload, Hashcat
 from app.logger import logger
 from app.login import LoginForm, RegistrationForm, User, RoleEnum, register_user, create_first_users, Role, \
     roles_required, user_has_roles
-from app.uploader import cap_uploads, UploadForm, UploadedTask, check_incomplete_tasks, backward_db_compatibility
+from app.uploader import cap_uploads, UploadForm, UploadedTask, PwnagotchiStatus, check_incomplete_tasks, backward_db_compatibility
 from app.utils.file_io import read_last_benchmark, bssid_essid_from_22000, build_rainbow_wordlist, read_hashcat_brain_password, decode_essid_hex, normalize_stored_capture_filename, resolve_existing_capture_path, extract_password_from_found_key
 from app.utils.utils import is_safe_url, hashcat_devices_info, date_formatted
 from app.word_magic import create_digits_wordlist, estimate_runtime_fmt, create_fast_wordlists
@@ -340,15 +340,59 @@ def submit_uploaded_capture(file_storage, user: User, form: UploadForm, wordlist
     db.session.commit()
     for file_essid, task in tasks.items():
         hashcat_worker.submit_capture(file_essid, uploaded_form=form, task=task)
+    upsert_pwnagotchi_status(
+        username=user.username,
+        event="upload",
+        message=f"Uploaded {filename} and scheduled {len(tasks)} task(s).",
+        upload_filename=filename,
+    )
 
     return {
         "filename": filename,
         "tasks": len(tasks),
     }
 
+
+def upsert_pwnagotchi_status(*, username: str, event: str, message: str | None = None,
+                             hostname: str | None = None, plugin_version: str | None = None,
+                             upload_filename: str | None = None):
+    status = PwnagotchiStatus.query.filter_by(username=username).first()
+    if status is None:
+        status = PwnagotchiStatus(username=username)
+        db.session.add(status)
+    status.mark_seen(
+        event=event,
+        message=message,
+        hostname=hostname,
+        plugin_version=plugin_version,
+        upload_filename=upload_filename,
+    )
+    db.session.commit()
+    return status
+
+
+def get_pwnagotchi_status_snapshot():
+    statuses = PwnagotchiStatus.query.order_by(PwnagotchiStatus.last_seen.desc().nullslast()).all()
+    return [{
+        "username": status.username,
+        "hostname": status.hostname or status.username,
+        "plugin_version": status.plugin_version or "unknown",
+        "last_event": status.last_event or "unknown",
+        "last_message": status.last_message or "",
+        "last_seen": status.last_seen,
+        "last_upload_at": status.last_upload_at,
+        "last_upload_filename": status.last_upload_filename or "",
+        "upload_count": status.upload_count or 0,
+        "online": status.is_online,
+    } for status in statuses]
+
+
 @app.route('/pwnagotchi')
 def pwnagotchi():
-    return render_template('pwnagotchi.html', title='Pwnagotchi Integration')
+    statuses = get_pwnagotchi_status_snapshot()
+    latest_status = statuses[0] if statuses else None
+    return render_template('pwnagotchi.html', title='Pwnagotchi Integration',
+                           pwnagotchi_statuses=statuses, latest_pwnagotchi_status=latest_status)
 
 @app.shell_context_processor
 def make_shell_context():
@@ -362,7 +406,6 @@ def upload():
     if form.validate_on_submit():
         if not user_has_roles(current_user, RoleEnum.USER):
             return flask.abort(HTTPStatus.FORBIDDEN, description="You do not have the permission to start jobs.")
-
         uploads = non_empty_uploads()
         uploaded = []
         failed = []
@@ -449,7 +492,6 @@ def api_upload():
     )
     if not form.validate():
         return flask.abort(HTTPStatus.BAD_REQUEST, description=str(form.errors))
-
     uploaded = []
     failed = []
     wordlist_started = False
@@ -470,6 +512,32 @@ def api_upload():
         "message": f"Uploaded {len(uploaded)} capture(s) with {sum(item['tasks'] for item in uploaded)} task(s) scheduled.",
         "uploaded": uploaded,
         "failed": failed,
+    })
+
+
+@app.route('/api/pwnagotchi/heartbeat', methods=['POST'])
+def api_pwnagotchi_heartbeat():
+    auth = request.authorization
+    if not auth or not auth.username or not auth.password:
+        return flask.abort(HTTPStatus.UNAUTHORIZED, description="Missing basic authentication")
+    user = User.query.filter_by(username=auth.username).first()
+    if not user or not user.verify_password(auth.password):
+        return flask.abort(HTTPStatus.UNAUTHORIZED, description="Invalid credentials")
+    if not user_has_roles(user, RoleEnum.USER):
+        return flask.abort(HTTPStatus.FORBIDDEN, description="Insufficient permissions")
+
+    payload = request.get_json(silent=True) or request.form or {}
+    status = upsert_pwnagotchi_status(
+        username=user.username,
+        event=payload.get("event", "heartbeat"),
+        message=payload.get("message"),
+        hostname=payload.get("hostname"),
+        plugin_version=payload.get("plugin_version"),
+    )
+    return jsonify({
+        "status": "success",
+        "online": status.is_online,
+        "last_seen": status.last_seen.isoformat() if status.last_seen else None,
     })
 
 

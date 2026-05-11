@@ -44,6 +44,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         self.ready = False
         self._pending_files = collections.OrderedDict()
         self._last_status = 'Hashcat WPA ready'
+        self._heartbeat_session = requests.Session()
 
     def _base_url(self):
         return (self.options.get('url') or '').rstrip('/')
@@ -51,6 +52,28 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
     def _upload_url(self):
         base = self._base_url()
         return f"{base}/api/upload" if base else ''
+
+    def _heartbeat_url(self):
+        base = self._base_url()
+        return f"{base}/api/pwnagotchi/heartbeat" if base else ''
+
+    def _send_heartbeat(self, event, message=None, hostname=None):
+        if not self._is_configured():
+            return None
+        payload = {
+            "event": event,
+            "message": message,
+            "hostname": hostname or self.options.get("hostname"),
+            "plugin_version": self.__version__,
+        }
+        response = self._heartbeat_session.post(
+            self._heartbeat_url(),
+            auth=(self.options.get('username', ''), self.options.get('password', '')),
+            json=payload,
+            timeout=15,
+        )
+        response.raise_for_status()
+        return response
 
     def _is_placeholder_url(self):
         return self._base_url() in ('', self._PLACEHOLDER_URL)
@@ -105,6 +128,10 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         try:
             if agent is not None:
                 self._set_status(agent, f"Wrapping {len(paths)} capture(s) for upload")
+            try:
+                self._send_heartbeat("uploading", f"Uploading {len(paths)} capture(s)")
+            except Exception as heartbeat_error:
+                logging.error("[HashcatWPAServer] Upload heartbeat failed: %s", heartbeat_error)
             for path in paths:
                 opened_files.append(('capture', (os.path.basename(path), open(path, 'rb'), 'application/octet-stream')))
 
@@ -125,14 +152,26 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
                 _log_event(True, f"Uploaded {len(paths)} capture(s): {basenames}. Server response: {response.text[:120]}")
                 if agent is not None:
                     self._set_status(agent, f"Upload complete: {len(paths)} capture(s)")
+                try:
+                    self._send_heartbeat("upload_success", f"Uploaded {len(paths)} capture(s)")
+                except Exception as heartbeat_error:
+                    logging.error("[HashcatWPAServer] Upload success heartbeat failed: %s", heartbeat_error)
             else:
                 _log_event(False, f"Upload batch failed: HTTP {response.status_code} - {response.text[:200]}")
                 if agent is not None:
                     self._set_status(agent, f"Upload failed: HTTP {response.status_code}")
+                try:
+                    self._send_heartbeat("upload_failed", f"HTTP {response.status_code}")
+                except Exception as heartbeat_error:
+                    logging.error("[HashcatWPAServer] Upload failure heartbeat failed: %s", heartbeat_error)
         except Exception as exc:
             _log_event(False, f"Upload batch raised exception: {exc}")
             if agent is not None:
                 self._set_status(agent, f"Upload failed: {exc}")
+            try:
+                self._send_heartbeat("upload_error", str(exc))
+            except Exception:
+                pass
         finally:
             for _, file_tuple in opened_files:
                 try:
@@ -241,6 +280,10 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         self.ready = self._is_configured()
         if self.ready:
             logging.info("[HashcatWPAServer] Plugin loaded. Upload target: %s", self._upload_url())
+            try:
+                self._send_heartbeat("loaded", "Plugin loaded and ready.")
+            except Exception as exc:
+                logging.info("[HashcatWPAServer] Loaded heartbeat failed: %s", exc)
         else:
             logging.warning(
                 "[HashcatWPAServer] Plugin installed. Set the server URL in %s or use the plugin web UI.",

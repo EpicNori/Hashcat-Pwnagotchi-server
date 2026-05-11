@@ -10,6 +10,37 @@
     <div class="row">
         <div class="col-md-8">
             <div class="panel panel-default">
+                <div class="panel-heading">Live Plugin Status</div>
+                <div class="panel-body">
+                    {% if latest_pwnagotchi_status %}
+                        <p>
+                            <span class="label {% if latest_pwnagotchi_status.online %}label-success{% else %}label-warning{% endif %}">
+                                {% if latest_pwnagotchi_status.online %}
+                                    Online
+                                {% elif latest_pwnagotchi_status.last_seen %}
+                                    Last seen {{ latest_pwnagotchi_status.last_seen.strftime('%Y-%m-%d %H:%M') }}
+                                {% else %}
+                                    No recent heartbeat
+                                {% endif %}
+                            </span>
+                            <span class="label label-info">User: {{ latest_pwnagotchi_status.username }}</span>
+                            <span class="label label-default">Plugin: {{ latest_pwnagotchi_status.plugin_version }}</span>
+                        </p>
+                        <p><b>Hostname:</b> {{ latest_pwnagotchi_status.hostname }}</p>
+                        <p><b>Last event:</b> {{ latest_pwnagotchi_status.last_event }}</p>
+                        <p><b>Last message:</b> {{ latest_pwnagotchi_status.last_message or "No message yet." }}</p>
+                        {% if latest_pwnagotchi_status.last_upload_at %}
+                        <p><b>Last upload:</b> {{ latest_pwnagotchi_status.last_upload_at.strftime('%Y-%m-%d %H:%M') }} from {{ latest_pwnagotchi_status.last_upload_filename }}</p>
+                        {% endif %}
+                        <p><b>Total uploads seen:</b> {{ latest_pwnagotchi_status.upload_count }}</p>
+                    {% else %}
+                        <p>No heartbeat has been received yet.</p>
+                        <p>Once the plugin starts on your Pwnagotchi, this panel will turn green and show the last time it checked in.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="panel panel-default">
                 <div class="panel-heading">1. Install the Plugin</div>
                 <div class="panel-body">
                     <p>On Jayofelony Pwnagotchi, add this repository URL to your existing custom plugin repos, update the plugin index, and install the plugin with the built-in plugin manager.</p>
@@ -28,10 +59,11 @@ sudo pwnagotchi plugins install pwnagotchi_hashcat_wpa</pre>
                     <p>Open the Pwnagotchi plugins page, click <code>pwnagotchi_hashcat_wpa</code>, replace <code>100.x.x.x</code> with your server IP or hostname, then press <b>Save config</b> and <b>Test connection</b>.</p>
                     <p>If you prefer editing <code>/etc/pwnagotchi/config.toml</code> by hand, the plugin creates this default block for you on first start:</p>
                     <pre style="word-wrap: break-word; white-space: pre-wrap;">
-main.plugins.pwnagotchi_hashcat_wpa.enabled = true
-main.plugins.pwnagotchi_hashcat_wpa.url = "http://100.x.x.x:9111"
-main.plugins.pwnagotchi_hashcat_wpa.username = "admin"
-main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"</pre>
+main.plugins.hashcatwpaserver.enabled = true
+main.plugins.hashcatwpaserver.url = "http://{{ network_ip }}:9111"
+main.plugins.hashcatwpaserver.username = "admin"
+main.plugins.hashcatwpaserver.password = "changeme"
+main.plugins.hashcatwpaserver.auto_upload = true</pre>
                     <p>Use a URL that matches the path you want: local LAN, Tailscale, or an HTTPS Cloudflare Tunnel hostname.</p>
                 </div>
             </div>
@@ -58,12 +90,43 @@ cloudflared tunnel run hashcat-wpa</pre>
                 <div class="panel-body">
                     <p>Once configured and restarted (<code>systemctl restart pwnagotchi</code>), your Pwnagotchi will:</p>
                     <ul>
+                        <li>Send a startup heartbeat so this page can show that the plugin loaded successfully.</li>
                         <li>Scan for new handshakes in the background.</li>
                         <li>Automatically upload them whenever it has an internet connection.</li>
-                        <li>You can check the <b>User Profile</b> on this dashboard to see real-time updates!</li>
+                        <li>You can check the <b>Live Plugin Status</b> panel above to confirm it is online and uploading.</li>
                     </ul>
                 </div>
             </div>
+
+            {% if pwnagotchi_statuses %}
+            <div class="panel panel-default">
+                <div class="panel-heading">Known Devices</div>
+                <div class="panel-body table-responsive">
+                    <table class="table table-striped">
+                        <tr>
+                            <th>User</th>
+                            <th>Hostname</th>
+                            <th>Status</th>
+                            <th>Last Seen</th>
+                            <th>Uploads</th>
+                        </tr>
+                        {% for status in pwnagotchi_statuses %}
+                        <tr>
+                            <td>{{ status.username }}</td>
+                            <td>{{ status.hostname }}</td>
+                            <td>
+                                <span class="label {% if status.online %}label-success{% else %}label-warning{% endif %}">
+                                    {{ "Online" if status.online else "Offline" }}
+                                </span>
+                            </td>
+                            <td>{{ status.last_seen.strftime('%Y-%m-%d %H:%M') if status.last_seen else "Never" }}</td>
+                            <td>{{ status.upload_count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+            </div>
+            {% endif %}
         </div>
         
         <div class="col-md-4">
