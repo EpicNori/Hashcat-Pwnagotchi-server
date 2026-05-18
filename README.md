@@ -161,6 +161,14 @@ sudo pwnagotchi plugins install pwnagotchi_hashcat_wpa
 
 The plugin installs enabled and creates safe placeholder settings. Open the Pwnagotchi plugins page, click `pwnagotchi_hashcat_wpa`, replace `100.x.x.x` with your server's LAN IP, Tailscale IP, or Cloudflare Tunnel hostname, then press **Save config** and **Test connection**.
 
+The plugin also prints a small status block on the Pwnagotchi face using the standard UI callbacks:
+
+- `on_ui_setup()` adds the element
+- `on_ui_update()` refreshes it while the device runs
+- `on_unload()` removes it cleanly
+
+That on-screen block shows the plugin name, upload state, and last message so the device gives immediate feedback even before you open the web UI.
+
 The first-start defaults are:
 
 ```toml

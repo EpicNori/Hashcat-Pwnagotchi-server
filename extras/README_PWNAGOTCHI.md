@@ -67,6 +67,17 @@ The plugin uploads the capture, credentials, and a small heartbeat. The actual c
 The plugin now sends a small heartbeat to the server when it loads and again when it uploads a capture.
 On the **Pwnagotchi Integration** page, the **Live Plugin Status** panel will turn green and show the last heartbeat, hostname, and upload count once the server has heard from your device.
 
+### What shows on the Pwnagotchi screen
+
+The plugin also prints a small on-device status block on the Pwnagotchi face itself.
+It uses the normal Pwnagotchi UI callbacks:
+
+- `on_ui_setup()` adds the display element
+- `on_ui_update()` refreshes the text live
+- `on_unload()` removes the element cleanly
+
+The text shows the plugin name, the current upload state, and the last status message so you can confirm the plugin is active even without opening the web UI.
+
 ## Step 4: Run
 
 Restart your Pwnagotchi to fully initialize the plugin:
