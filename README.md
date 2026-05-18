@@ -169,6 +169,8 @@ The plugin also prints a small status block on the Pwnagotchi face using the sta
 
 That on-screen block shows the plugin name, upload state, and last message so the device gives immediate feedback even before you open the web UI.
 
+For the exact display-debugging workflow used on the connected Jayofelony Pwnagotchi, including the working `/ui` screen capture method and confirmed `(8, 74)` display position, see [PWNAGOTCHI_DISPLAY_WORKFLOW.md](PWNAGOTCHI_DISPLAY_WORKFLOW.md).
+
 The first-start defaults are:
 
 ```toml
