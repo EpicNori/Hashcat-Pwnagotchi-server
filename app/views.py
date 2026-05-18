@@ -1,5 +1,6 @@
 import os
 import shlex
+import shutil
 import subprocess
 from http import HTTPStatus
 from pathlib import Path
@@ -183,6 +184,54 @@ def get_update_status():
             return "unknown", f"Could not read update log: {e}", "Log read failed."
 
     return status, summary, "No update log available yet."
+
+
+def get_tailscale_snapshot():
+    if not shutil.which("tailscale"):
+        return {
+            "status": "Not installed",
+            "running": False,
+            "ip": "",
+            "plugin_url": "",
+        }
+
+    ip = ""
+    try:
+        result = subprocess.run(
+            ["tailscale", "ip", "-4"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        ip = (result.stdout or "").strip().splitlines()[0] if result.returncode == 0 and result.stdout.strip() else ""
+    except Exception:
+        ip = ""
+
+    if ip:
+        return {
+            "status": f"Running ({ip})",
+            "running": True,
+            "ip": ip,
+            "plugin_url": f"http://{ip}:9111",
+        }
+
+    try:
+        result = subprocess.run(
+            ["tailscale", "status", "--self"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        detail = (result.stdout or result.stderr or "").strip()
+    except Exception as error:
+        detail = str(error)
+
+    return {
+        "status": "Installed, not connected" if not detail else f"Installed, not connected: {detail.splitlines()[0]}",
+        "running": False,
+        "ip": "",
+        "plugin_url": "",
+    }
 
 
 def get_runtime_logs_dir() -> Path:
@@ -393,7 +442,8 @@ def pwnagotchi():
     latest_status = statuses[0] if statuses else None
     return render_template('pwnagotchi.html', title='Pwnagotchi Integration',
                            pwnagotchi_statuses=statuses, latest_pwnagotchi_status=latest_status,
-                           api_upload_url=url_for('api_upload'), api_heartbeat_url=url_for('api_pwnagotchi_heartbeat'))
+                           api_upload_url=url_for('api_upload'), api_heartbeat_url=url_for('api_pwnagotchi_heartbeat'),
+                           tailscale_snapshot=get_tailscale_snapshot())
 
 @app.shell_context_processor
 def make_shell_context():
@@ -905,8 +955,8 @@ class SettingsForm(FlaskForm):
     submit = SubmitField('Save Performance Settings')
 
 class TailscaleForm(FlaskForm):
-    auth_key = StringField('Tailscale Auth Key', validators=[DataRequired()])
-    submit_tailscale = SubmitField('Connect Tailscale')
+    auth_key = StringField('Tailscale Auth Key (optional)', validators=[Optional()])
+    submit_tailscale = SubmitField('Install / Connect Tailscale')
 
 class NvidiaDriversForm(FlaskForm):
     submit_check_nvidia = SubmitField('Check NVIDIA Drivers')
@@ -1090,6 +1140,7 @@ def admin_settings():
     autostart_status = get_autostart_status()
     update_status, update_summary, update_log_excerpt = get_update_status()
     install_progress = get_install_progress()
+    tailscale_snapshot = get_tailscale_snapshot()
         
     return render_template('settings.html', title='Admin Settings', form=form, ts_form=ts_form, 
                            update_form=update_form, uninstall_form=uninstall_form,
@@ -1098,7 +1149,14 @@ def admin_settings():
                            nvidia_form=nvidia_form, gpu_visible=gpu_visible,
                            autostart_status=autostart_status, update_status=update_status,
                            update_summary=update_summary, update_log_excerpt=update_log_excerpt,
-                           install_progress=install_progress)
+                           install_progress=install_progress, tailscale_snapshot=tailscale_snapshot)
+
+
+@app.route('/tailscale_status')
+@login_required
+@roles_required(RoleEnum.ADMIN)
+def tailscale_status():
+    return jsonify(get_tailscale_snapshot())
 
 
 @app.route('/api/stats')

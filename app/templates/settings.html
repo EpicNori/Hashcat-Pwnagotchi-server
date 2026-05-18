@@ -121,8 +121,14 @@
             <div class="panel panel-success">
                 <div class="panel-heading">1. Tailscale</div>
                 <div class="panel-body">
-                    <p>Enter your Tailscale Auth Key below. If Tailscale is not yet installed on this server, the system will automatically download and install it before connecting.</p>
+                    <p>Enter a Tailscale auth key for first-time setup, or leave it blank to reconnect an already configured server. If Tailscale is not installed on this Linux server, the system will install it first.</p>
                     {{ wtf.quick_form(ts_form) }}
+                    <hr>
+                    <p><b>Server Tailscale IP:</b> <code id="tailscale-ip">{{ tailscale_snapshot.ip or "Not connected yet" }}</code></p>
+                    <p><b>Pwnagotchi plugin URL:</b> <code id="tailscale-plugin-url">{{ tailscale_snapshot.plugin_url or "Connect Tailscale first" }}</code></p>
+                    <button type="button" class="btn btn-default btn-sm" id="copy-tailscale-url" {% if not tailscale_snapshot.plugin_url %}disabled{% endif %}>Copy plugin URL</button>
+                    <pre id="tailscale-plugin-config" style="word-wrap: break-word; white-space: pre-wrap; margin-top: 12px;">main.plugins.pwnagotchi_hashcat_wpa.url = "{{ tailscale_snapshot.plugin_url or "http://100.x.x.x:9111" }}"</pre>
+                    <p class="help-block">Use this URL in the Pwnagotchi plugin setup page, then press Save config and Test connection.</p>
                 </div>
             </div>
         </div>
@@ -280,7 +286,11 @@ cloudflared tunnel run hashcat-wpa</pre>
             var status = data.status;
             var el = $("#tailscale-status");
             el.text(status);
-            if (status.includes("Running")) {
+            $("#tailscale-ip").text(data.ip || "Not connected yet");
+            $("#tailscale-plugin-url").text(data.plugin_url || "Connect Tailscale first");
+            $("#tailscale-plugin-config").text('main.plugins.pwnagotchi_hashcat_wpa.url = "' + (data.plugin_url || "http://100.x.x.x:9111") + '"');
+            $("#copy-tailscale-url").prop("disabled", !data.plugin_url);
+            if (data.running) {
                 el.addClass("label-success").removeClass("label-default");
             } else if (status.includes("starting")) {
                 el.addClass("label-warning").removeClass("label-default");
@@ -291,6 +301,19 @@ cloudflared tunnel run hashcat-wpa</pre>
     }
     setInterval(checkTailscale, 10000);
     checkTailscale();
+
+    $("#copy-tailscale-url").on("click", function() {
+        var pluginUrl = $("#tailscale-plugin-url").text();
+        if (!pluginUrl || pluginUrl === "Connect Tailscale first") {
+            return;
+        }
+        navigator.clipboard.writeText(pluginUrl).then(function() {
+            $("#copy-tailscale-url").text("Copied");
+            setTimeout(function() {
+                $("#copy-tailscale-url").text("Copy plugin URL");
+            }, 1500);
+        });
+    });
 
     function renderInstallerProgress(prefix, snapshot) {
         var bar = $("#" + prefix + "-progress-bar");

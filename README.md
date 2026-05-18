@@ -188,6 +188,8 @@ Recommended access choices:
 - `http://100.x.x.x:9111` for private uploads over Tailscale
 - `https://upload.example.com` for mobile uploads through Cloudflare Tunnel
 
+The Admin Settings page includes a Tailscale helper that can install/connect Tailscale on Linux deployments, show the detected server Tailscale IP, and provide the exact Pwnagotchi plugin URL to paste into the plugin setup page.
+
 ## Supported Formats
 
 The app accepts modern Hashcat and common capture formats:
