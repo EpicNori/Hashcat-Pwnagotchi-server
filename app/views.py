@@ -392,7 +392,8 @@ def pwnagotchi():
     statuses = get_pwnagotchi_status_snapshot()
     latest_status = statuses[0] if statuses else None
     return render_template('pwnagotchi.html', title='Pwnagotchi Integration',
-                           pwnagotchi_statuses=statuses, latest_pwnagotchi_status=latest_status)
+                           pwnagotchi_statuses=statuses, latest_pwnagotchi_status=latest_status,
+                           api_upload_url=url_for('api_upload'), api_heartbeat_url=url_for('api_pwnagotchi_heartbeat'))
 
 @app.shell_context_processor
 def make_shell_context():

@@ -357,12 +357,14 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
     def _render_page(self, notice=None):
         base_url = html.escape(self._base_url() or self._PLACEHOLDER_URL)
         upload_url = html.escape(self._upload_url() or f'{self._PLACEHOLDER_URL}/api/upload')
+        heartbeat_url = html.escape(self._heartbeat_url() or f'{self._PLACEHOLDER_URL}/api/pwnagotchi/heartbeat')
         username = html.escape(self.options.get('username') or 'admin')
         password = html.escape(self.options.get('password') or 'changeme')
         status_text, status_color = self._status()
         status_text = html.escape(status_text)
         notice_html = self._render_notice(notice)
         log_rows = self._render_log_rows()
+        pending_count = len(self._pending_files)
 
         return f"""<!doctype html>
 <html lang="en">
@@ -387,6 +389,12 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
       gap: 12px;
       margin-bottom: 12px;
     }}
+    .details {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }}
     section {{
       background: #ffffff;
       border: 1px solid #cfd8e3;
@@ -394,8 +402,15 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
       padding: 16px;
       box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
     }}
+    .card {{
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 14px;
+      background: #f8fbff;
+    }}
     h1 {{ margin: 0 0 6px; font-size: 1.45rem; line-height: 1.2; }}
     h2 {{ margin: 0 0 12px; font-size: 1rem; color: #334155; }}
+    h3 {{ margin: 0 0 10px; font-size: .92rem; color: #0f172a; }}
     p {{ margin: 0; color: #64748b; line-height: 1.45; }}
     label {{ display: block; margin: 11px 0 5px; font-weight: 700; font-size: .86rem; }}
     input {{
@@ -478,6 +493,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
     .empty {{ text-align: center; color: #64748b; padding: 18px; }}
     @media (max-width: 760px) {{
       .top {{ grid-template-columns: 1fr; }}
+      .details {{ grid-template-columns: 1fr; }}
       .kv {{ grid-template-columns: 1fr; gap: 3px; }}
       .button.secondary {{ margin-left: 0; }}
     }}
@@ -511,6 +527,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
       <h2>Current target</h2>
       <div class="kv"><span>Server</span><code>{base_url}</code></div>
       <div class="kv"><span>Upload API</span><code>{upload_url}</code></div>
+      <div class="kv"><span>Heartbeat API</span><code>{heartbeat_url}</code></div>
       <div class="kv"><span>Config file</span><code>{self._CONFIG_PATH}</code></div>
 
       <h2 style="margin-top:18px">Easy setup</h2>
@@ -518,6 +535,23 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         <div class="step"><div class="num">1</div><p>Install the plugin from the server page.</p></div>
         <div class="step"><div class="num">2</div><p>Replace the placeholder with your LAN IP, Tailscale IP, or HTTPS Cloudflare Tunnel hostname.</p></div>
         <div class="step"><div class="num">3</div><p>Use Tailscale for a private VPN path, or Cloudflare Tunnel if the Pwnagotchi only has normal internet through phone tethering.</p></div>
+      </div>
+
+      <div class="details">
+        <div class="card">
+          <h3>Plugin info</h3>
+          <div class="kv"><span>Name</span><code>pwnagotchi_hashcat_wpa</code></div>
+          <div class="kv"><span>Version</span><code>{self.__version__}</code></div>
+          <div class="kv"><span>Status</span><code>{status_text}</code></div>
+          <div class="kv"><span>Description</span><code>{html.escape(self.__description__)}</code></div>
+        </div>
+        <div class="card">
+          <h3>Upload info</h3>
+          <div class="kv"><span>Pending</span><code>{pending_count}</code></div>
+          <div class="kv"><span>Last status</span><code>{html.escape(self._last_status)}</code></div>
+          <div class="kv"><span>Upload API</span><code>{upload_url}</code></div>
+          <div class="kv"><span>Heartbeat</span><code>{heartbeat_url}</code></div>
+        </div>
       </div>
     </section>
   </div>

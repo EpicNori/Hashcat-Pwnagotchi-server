@@ -33,9 +33,38 @@
                         <p><b>Last upload:</b> {{ latest_pwnagotchi_status.last_upload_at.strftime('%Y-%m-%d %H:%M') }} from {{ latest_pwnagotchi_status.last_upload_filename }}</p>
                         {% endif %}
                         <p><b>Total uploads seen:</b> {{ latest_pwnagotchi_status.upload_count }}</p>
+                        <hr>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h4 style="margin-top: 0;">Plugin Info</h4>
+                                <p><b>Plugin:</b> pwnagotchi_hashcat_wpa</p>
+                                <p><b>Version:</b> {{ latest_pwnagotchi_status.plugin_version }}</p>
+                                <p><b>Purpose:</b> Sends captured WPA/WPA2 handshakes to this Hashcat server.</p>
+                            </div>
+                            <div class="col-md-6">
+                                <h4 style="margin-top: 0;">Upload Info</h4>
+                                <p><b>Upload API:</b> <code>{{ api_upload_url }}</code></p>
+                                <p><b>Heartbeat API:</b> <code>{{ api_heartbeat_url }}</code></p>
+                                <p><b>Last upload file:</b> {{ latest_pwnagotchi_status.last_upload_filename or "None yet" }}</p>
+                            </div>
+                        </div>
                     {% else %}
                         <p>No heartbeat has been received yet.</p>
                         <p>Once the plugin starts on your Pwnagotchi, this panel will turn green and show the last time it checked in.</p>
+                        <hr>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h4 style="margin-top: 0;">Plugin Info</h4>
+                                <p><b>Plugin:</b> pwnagotchi_hashcat_wpa</p>
+                                <p><b>Purpose:</b> Sends captured WPA/WPA2 handshakes to this Hashcat server.</p>
+                            </div>
+                            <div class="col-md-6">
+                                <h4 style="margin-top: 0;">Upload Info</h4>
+                                <p><b>Upload API:</b> <code>{{ api_upload_url }}</code></p>
+                                <p><b>Heartbeat API:</b> <code>{{ api_heartbeat_url }}</code></p>
+                                <p><b>Last upload file:</b> None yet</p>
+                            </div>
+                        </div>
                     {% endif %}
                 </div>
             </div>
@@ -59,11 +88,11 @@ sudo pwnagotchi plugins install pwnagotchi_hashcat_wpa</pre>
                     <p>Open the Pwnagotchi plugins page, click <code>pwnagotchi_hashcat_wpa</code>, replace <code>100.x.x.x</code> with your server IP or hostname, then press <b>Save config</b> and <b>Test connection</b>.</p>
                     <p>If you prefer editing <code>/etc/pwnagotchi/config.toml</code> by hand, the plugin creates this default block for you on first start:</p>
                     <pre style="word-wrap: break-word; white-space: pre-wrap;">
-main.plugins.hashcatwpaserver.enabled = true
-main.plugins.hashcatwpaserver.url = "http://{{ network_ip }}:9111"
-main.plugins.hashcatwpaserver.username = "admin"
-main.plugins.hashcatwpaserver.password = "changeme"
-main.plugins.hashcatwpaserver.auto_upload = true</pre>
+main.plugins.pwnagotchi_hashcat_wpa.enabled = true
+main.plugins.pwnagotchi_hashcat_wpa.url = "http://{{ network_ip }}:9111"
+main.plugins.pwnagotchi_hashcat_wpa.username = "admin"
+main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"
+main.plugins.pwnagotchi_hashcat_wpa.auto_upload = true</pre>
                     <p>Use a URL that matches the path you want: local LAN, Tailscale, or an HTTPS Cloudflare Tunnel hostname.</p>
                 </div>
             </div>
