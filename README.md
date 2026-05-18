@@ -1,6 +1,6 @@
 # Hashcat WPA/WPA2 Server
 
-[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/EpicNori/Hashcat-Pwnagotchi-server)
+[![Version](https://img.shields.io/badge/version-1.1.2--alpha-blue.svg)](https://github.com/EpicNori/Hashcat-Pwnagotchi-server)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-orange.svg)](https://github.com/EpicNori/Hashcat-Pwnagotchi-server)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
