@@ -8,6 +8,9 @@ import time
 
 import requests
 from pwnagotchi import plugins
+from pwnagotchi.ui.components import Text
+from pwnagotchi.ui.view import BLACK
+import pwnagotchi.ui.fonts as fonts
 
 
 _MAX_LOG = 40
@@ -44,6 +47,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         self.ready = False
         self._pending_files = collections.OrderedDict()
         self._last_status = 'Hashcat WPA ready'
+        self._display_key = 'hashcat_wpa_status'
 
     def _base_url(self):
         return (self.options.get('url') or '').rstrip('/')
@@ -84,6 +88,52 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
                 view.update(force=True)
         except Exception as exc:
             logging.debug("[HashcatWPAServer] Could not update Pwnagotchi status text: %s", exc)
+
+    def _display_text(self):
+        if not self._is_configured():
+            upload_state = 'configure server'
+        elif self._pending_files:
+            upload_state = f'queued {len(self._pending_files)}'
+        else:
+            upload_state = 'ready'
+
+        last = self._last_status or 'Hashcat WPA ready'
+        if len(last) > 48:
+            last = last[:45] + '...'
+
+        return (
+            f'Plugin: {self._PLUGIN_KEY}\n'
+            f'Upload: {upload_state}\n'
+            f'Last: {last}'
+        )
+
+    def on_ui_setup(self, ui):
+        try:
+            ui.add_element(
+                self._display_key,
+                Text(
+                    value=self._display_text(),
+                    position=(8, 74),
+                    font=fonts.Small,
+                    color=BLACK,
+                    wrap=True,
+                    max_length=34,
+                ),
+            )
+        except Exception as exc:
+            logging.debug("[HashcatWPAServer] Could not add Pwnagotchi display element: %s", exc)
+
+    def on_ui_update(self, ui):
+        try:
+            ui.set(self._display_key, self._display_text())
+        except Exception as exc:
+            logging.debug("[HashcatWPAServer] Could not update Pwnagotchi display element: %s", exc)
+
+    def on_unload(self, ui):
+        try:
+            ui.remove_element(self._display_key)
+        except Exception:
+            pass
 
     def _add_pending_file(self, filename):
         if not filename:
