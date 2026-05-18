@@ -20,7 +20,7 @@ Use this when continuing this type of work:
 ```text
 We are editing a Pwnagotchi plugin for Jayofelony Pwnagotchi. The connected device is reachable over USB at 10.12.194.1, with the Pwnagotchi web UI on http://10.12.194.1:8080 and the live display image at http://10.12.194.1:8080/ui. Before guessing, pull /ui and inspect the real rendered screen. Check /plugins to confirm the plugin is installed and enabled, then check /plugins/pwnagotchi_hashcat_wpa to see whether the device is running the expected plugin page.
 
-For display text, keep it simple and visible. Use pwnagotchi.ui.components.LabeledValue, pwnagotchi.ui.fonts, and BLACK from pwnagotchi.ui.view. Register the element in on_ui_setup(), update it in on_ui_update(), and remove it in on_unload(). On this firmware and layout, position (8, 74) appears in the lower-left blank area under BT:Trusted. A single line works better than a multi-line block. The confirmed display is: label "HWP", value "SET URL", "READY", or "QUEUED N".
+For display text, keep it simple and visible. Use pwnagotchi.ui.components.LabeledValue, pwnagotchi.ui.fonts, and BLACK from pwnagotchi.ui.view. Register the element in on_ui_setup(), update it in on_ui_update(), and remove it in on_unload(). On this firmware and layout, position (8, 84) appears in the lower-left band under BT:Trusted and above the bottom divider line. A single line works better than a multi-line block. The confirmed display is: label "HWP", value "SET URL", "READY", or "QUEUED N".
 
 If the device still shows old code after pressing Upgrade in the plugin manager, bump both __version__ in pwnagotchi_hashcat_wpa.py and version in pwnagotchi_hashcat_wpa.toml, push to GitHub, run the plugin upgrade from the web UI with the CSRF session cookie, then restart in AUTO mode. Verify again by fetching /ui.
 ```
@@ -79,7 +79,7 @@ def on_ui_setup(self, ui):
         LabeledValue(
             label='HWP',
             value=self._display_value(),
-            position=(8, 74),
+            position=(8, 84),
             label_font=fonts.Bold,
             text_font=fonts.Medium,
             color=BLACK,

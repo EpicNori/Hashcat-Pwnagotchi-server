@@ -29,7 +29,7 @@ def _log_event(ok, message):
 
 class PwnagotchiHashcatWPA(plugins.Plugin):
     __author__ = 'EpicNori (via Antigravity AI)'
-    __version__ = '1.4.1'
+    __version__ = '1.4.2'
     __license__ = 'GPL3'
     __description__ = 'Uploads captured WPA/WPA2 handshakes to a self-hosted Hashcat WPA Server.'
 
@@ -103,7 +103,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
                 LabeledValue(
                     label='HWP',
                     value=self._display_value(),
-                    position=(8, 74),
+                    position=(8, 84),
                     label_font=fonts.Bold,
                     text_font=fonts.Medium,
                     color=BLACK,
