@@ -8,7 +8,7 @@ import time
 
 import requests
 from pwnagotchi import plugins
-from pwnagotchi.ui.components import Text
+from pwnagotchi.ui.components import LabeledValue
 from pwnagotchi.ui.view import BLACK
 import pwnagotchi.ui.fonts as fonts
 
@@ -47,7 +47,11 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         self.ready = False
         self._pending_files = collections.OrderedDict()
         self._last_status = 'Hashcat WPA ready'
-        self._display_key = 'hashcat_wpa_status'
+        self._display_keys = {
+            'plugin': 'hashcat_wpa_plugin',
+            'upload': 'hashcat_wpa_upload',
+            'last': 'hashcat_wpa_last',
+        }
 
     def _base_url(self):
         return (self.options.get('url') or '').rstrip('/')
@@ -89,35 +93,58 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         except Exception as exc:
             logging.debug("[HashcatWPAServer] Could not update Pwnagotchi status text: %s", exc)
 
-    def _display_text(self):
+    def _display_values(self):
         if not self._is_configured():
-            upload_state = 'configure server'
+            upload_state = 'configure'
         elif self._pending_files:
             upload_state = f'queued {len(self._pending_files)}'
         else:
             upload_state = 'ready'
 
         last = self._last_status or 'Hashcat WPA ready'
-        if len(last) > 48:
-            last = last[:45] + '...'
+        if len(last) > 24:
+            last = last[:21] + '...'
 
-        return (
-            f'Plugin: {self._PLUGIN_KEY}\n'
-            f'Upload: {upload_state}\n'
-            f'Last: {last}'
-        )
+        return {
+            'plugin': self.__version__,
+            'upload': upload_state,
+            'last': last,
+        }
 
     def on_ui_setup(self, ui):
         try:
+            display_values = self._display_values()
             ui.add_element(
-                self._display_key,
-                Text(
-                    value=self._display_text(),
-                    position=(8, 74),
-                    font=fonts.Small,
+                self._display_keys['plugin'],
+                LabeledValue(
+                    label='HWP',
+                    value=display_values['plugin'],
+                    position=(8, 72),
+                    label_font=fonts.Bold,
+                    text_font=fonts.Medium,
                     color=BLACK,
-                    wrap=True,
-                    max_length=34,
+                ),
+            )
+            ui.add_element(
+                self._display_keys['upload'],
+                LabeledValue(
+                    label='UP',
+                    value=display_values['upload'],
+                    position=(8, 86),
+                    label_font=fonts.Bold,
+                    text_font=fonts.Medium,
+                    color=BLACK,
+                ),
+            )
+            ui.add_element(
+                self._display_keys['last'],
+                LabeledValue(
+                    label='MSG',
+                    value=display_values['last'],
+                    position=(8, 100),
+                    label_font=fonts.Bold,
+                    text_font=fonts.Medium,
+                    color=BLACK,
                 ),
             )
         except Exception as exc:
@@ -125,13 +152,18 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
 
     def on_ui_update(self, ui):
         try:
-            ui.set(self._display_key, self._display_text())
+            display_values = self._display_values()
+            ui.set(self._display_keys['plugin'], display_values['plugin'])
+            ui.set(self._display_keys['upload'], display_values['upload'])
+            ui.set(self._display_keys['last'], display_values['last'])
         except Exception as exc:
             logging.debug("[HashcatWPAServer] Could not update Pwnagotchi display element: %s", exc)
 
     def on_unload(self, ui):
         try:
-            ui.remove_element(self._display_key)
+            ui.remove_element(self._display_keys['plugin'])
+            ui.remove_element(self._display_keys['upload'])
+            ui.remove_element(self._display_keys['last'])
         except Exception:
             pass
 
