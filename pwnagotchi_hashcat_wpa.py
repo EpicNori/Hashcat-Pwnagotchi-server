@@ -29,7 +29,7 @@ def _log_event(ok, message):
 
 class PwnagotchiHashcatWPA(plugins.Plugin):
     __author__ = 'EpicNori (via Antigravity AI)'
-    __version__ = '1.4.3'
+    __version__ = '1.4.4'
     __license__ = 'GPL3'
     __description__ = 'Uploads captured WPA/WPA2 handshakes to a self-hosted Hashcat WPA Server.'
 
@@ -488,7 +488,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
 
       <form method="post" action="/plugins/pwnagotchi_hashcat_wpa/save">
         <label for="url">Server URL</label>
-        <input id="url" name="url" value="{base_url}" placeholder="http://100.x.x.x:9111 or https://upload.example.com">
+        <input id="url" name="url" value="{base_url}" placeholder="https://upload.example.com or http://192.168.x.x:9111">
 
         <label for="username">Username</label>
         <input id="username" name="username" value="{username}" autocomplete="username">
@@ -511,8 +511,8 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
       <h2 style="margin-top:18px">Easy setup</h2>
       <div class="steps">
         <div class="step"><div class="num">1</div><p>Install the plugin from the server page.</p></div>
-        <div class="step"><div class="num">2</div><p>Replace the placeholder with your LAN IP, Tailscale IP, or HTTPS Cloudflare Tunnel hostname.</p></div>
-        <div class="step"><div class="num">3</div><p>Use Tailscale for a private VPN path, or Cloudflare Tunnel if the Pwnagotchi only has normal internet through phone tethering.</p></div>
+        <div class="step"><div class="num">2</div><p>Replace the placeholder with your Public Website URL, LAN IP, or Tailscale IP.</p></div>
+        <div class="step"><div class="num">3</div><p>Use Public Website for normal tethered internet, or Tailscale for a private VPN path.</p></div>
       </div>
 
       <div class="details">
@@ -568,7 +568,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         if normalized_path == 'test':
             base_url = self._base_url()
             if self._is_placeholder_url():
-                notice = {'ok': False, 'label': 'Set the server URL first', 'message': 'Replace 100.x.x.x with the real LAN IP, Tailscale IP, or Cloudflare Tunnel hostname.'}
+                notice = {'ok': False, 'label': 'Set the server URL first', 'message': 'Replace 100.x.x.x with the Public Website URL, real LAN IP, or Tailscale IP.'}
             else:
                 try:
                     response = requests.get(base_url, timeout=10, allow_redirects=True)

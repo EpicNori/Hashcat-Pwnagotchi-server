@@ -107,19 +107,39 @@
         <div class="col-md-12">
             <hr>
             <h1>Remote Access</h1>
-            <p>Choose how operators reach this server remotely. Tailscale stays available for private VPN access, and Cloudflare Tunnel is now documented as an HTTPS upload path for Pwnagotchi units that only need normal internet access.</p>
+            <p>Choose how operators reach this server remotely. Public Website is the simplest path for Pwnagotchi uploads over normal internet access, while Tailscale stays available for private VPN access.</p>
         </div>
     </div>
     <div class="row" style="margin-bottom: 10px;">
         <div class="col-md-12">
-            <span id="tailscale-status" class="label label-default">Checking Tailscale…</span>
+            <span id="cloudflare-status" class="label label-default">Checking public website...</span>
+            <span id="tailscale-status" class="label label-default">Checking Tailscale...</span>
         </div>
     </div>
 
     <div class="row">
         <div class="col-md-6">
+            <div class="panel panel-info">
+                <div class="panel-heading">1. Public Website</div>
+                <div class="panel-body">
+                    <p>Create a Cloudflare Tunnel in the Cloudflare Zero Trust dashboard, point its public hostname to <code>http://localhost:9111</code>, then paste the connector token here. The server will install and start <code>cloudflared</code> for you.</p>
+                    <form method="POST">
+                        {{ public_form.hidden_tag() }}
+                        {{ wtf.form_field(public_form.public_hostname) }}
+                        {{ wtf.form_field(public_form.tunnel_token) }}
+                        {{ public_form.submit_public_website(class_="btn btn-info") }}
+                    </form>
+                    <hr>
+                    <p><b>Public plugin URL:</b> <code id="cloudflare-plugin-url">{{ cloudflare_snapshot.plugin_url or "Set up a public hostname first" }}</code></p>
+                    <button type="button" class="btn btn-default btn-sm" id="copy-cloudflare-url" {% if not cloudflare_snapshot.plugin_url %}disabled{% endif %}>Copy plugin URL</button>
+                    <pre id="cloudflare-plugin-config" style="word-wrap: break-word; white-space: pre-wrap; margin-top: 12px;">main.plugins.pwnagotchi_hashcat_wpa.url = "{{ cloudflare_snapshot.plugin_url or "https://upload.example.com" }}"</pre>
+                    <p class="help-block">Use a strong password for the Pwnagotchi upload user before exposing the endpoint through a public hostname.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
             <div class="panel panel-success">
-                <div class="panel-heading">1. Tailscale</div>
+                <div class="panel-heading">2. Private VPN</div>
                 <div class="panel-body">
                     <p>Enter a Tailscale auth key for first-time setup, or leave it blank to reconnect an already configured server. If Tailscale is not installed on this Linux server, the system will install it first.</p>
                     {{ wtf.quick_form(ts_form) }}
@@ -132,17 +152,10 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-12">
                 <div class="panel panel-info">
-                    <div class="panel-heading">2. Cloudflare Tunnel and Testing</div>
+                    <div class="panel-heading">Testing and Driver Checks</div>
                     <div class="panel-body">
-                        <p><b>Cloudflare Tunnel:</b> Run the tunnel on this server if you want the Pwnagotchi to upload over standard HTTPS without running Tailscale on the device.</p>
-                        <pre style="word-wrap: break-word; white-space: pre-wrap;">cloudflared tunnel login
-cloudflared tunnel create hashcat-wpa
-cloudflared tunnel route dns hashcat-wpa upload.example.com
-cloudflared tunnel run hashcat-wpa</pre>
-                        <p>Then set the plugin URL to <code>https://upload.example.com</code>. Keep using Tailscale if you prefer a private network path. Both options remain supported.</p>
-                        <hr>
                         <p>Download the bundled test files to verify upload, conversion, and cracking behavior.</p>
                         <p><a href="{{ url_for('static', filename='test_capture_hashcat_essid.22000') }}" download="test_capture_hashcat_essid.22000">Direct download link for the test file</a></p>
                         <p><a href="{{ url_for('download_test_capture_pcap') }}" download="test_capture_hashcat_essid.pcap">Direct download link for the sample PCAP</a></p>
@@ -301,6 +314,40 @@ cloudflared tunnel run hashcat-wpa</pre>
     }
     setInterval(checkTailscale, 10000);
     checkTailscale();
+
+    function checkCloudflare() {
+        $.get("/cloudflare_status", function(data) {
+            var status = data.status || "Unknown";
+            var el = $("#cloudflare-status");
+            el.text("Public website: " + status);
+            $("#cloudflare-plugin-url").text(data.plugin_url || "Set up a public hostname first");
+            $("#cloudflare-plugin-config").text('main.plugins.pwnagotchi_hashcat_wpa.url = "' + (data.plugin_url || "https://upload.example.com") + '"');
+            $("#copy-cloudflare-url").prop("disabled", !data.plugin_url);
+            el.removeClass("label-default label-success label-warning label-danger");
+            if (data.running) {
+                el.addClass("label-success");
+            } else if (data.installed) {
+                el.addClass("label-warning");
+            } else {
+                el.addClass("label-default");
+            }
+        });
+    }
+    setInterval(checkCloudflare, 10000);
+    checkCloudflare();
+
+    $("#copy-cloudflare-url").on("click", function() {
+        var pluginUrl = $("#cloudflare-plugin-url").text();
+        if (!pluginUrl || pluginUrl === "Set up a public hostname first") {
+            return;
+        }
+        navigator.clipboard.writeText(pluginUrl).then(function() {
+            $("#copy-cloudflare-url").text("Copied");
+            setTimeout(function() {
+                $("#copy-cloudflare-url").text("Copy plugin URL");
+            }, 1500);
+        });
+    });
 
     $("#copy-tailscale-url").on("click", function() {
         var pluginUrl = $("#tailscale-plugin-url").text();

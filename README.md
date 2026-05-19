@@ -137,8 +137,8 @@ If native hcxtools are not available, the app will still accept direct `.22000` 
 - Default device and work-mode policy for API and Pwnagotchi uploads
 - Built-in fallback wordlist installation from the dashboard
 - Optional user-provided wordlist generator scripts
-- Tailscale integration on Linux deployments
-- Cloudflare Tunnel guidance for HTTPS uploads without a VPN client on the Pwnagotchi
+- Public Website setup through Cloudflare Tunnel for HTTPS uploads without a VPN client on the Pwnagotchi
+- Tailscale integration for private VPN deployments
 
 ## Pwnagotchi Plugin Install
 
@@ -180,15 +180,15 @@ main.plugins.pwnagotchi_hashcat_wpa.username = "admin"
 main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"
 ```
 
-If you want the Pwnagotchi to upload through normal internet access without running a VPN client on the device, you can expose the server through Cloudflare Tunnel and point the plugin to an HTTPS hostname such as `https://upload.example.com`.
+If you want the Pwnagotchi to upload through normal internet access without running a VPN client on the device, open **Settings (Admin)**, create a Cloudflare Tunnel public hostname that points to `http://localhost:9111`, paste the tunnel connector token into **Public Website**, and use the generated HTTPS plugin URL such as `https://upload.example.com`.
 
 Recommended access choices:
 
 - `http://192.168.x.x:9111` for local LAN-only uploads
 - `http://100.x.x.x:9111` for private uploads over Tailscale
-- `https://upload.example.com` for mobile uploads through Cloudflare Tunnel
+- `https://upload.example.com` for the simplest mobile uploads through Public Website / Cloudflare Tunnel
 
-The Admin Settings page includes a Tailscale helper that can install/connect Tailscale on Linux deployments, show the detected server Tailscale IP, and provide the exact Pwnagotchi plugin URL to paste into the plugin setup page.
+The Admin Settings page includes a Public Website helper that installs/starts `cloudflared` from a Cloudflare Tunnel token and shows the exact Pwnagotchi plugin URL to paste into the plugin setup page. It also includes a Tailscale helper that can install/connect Tailscale on Linux deployments, show the detected server Tailscale IP, and provide the private plugin URL.
 
 ## Supported Formats
 

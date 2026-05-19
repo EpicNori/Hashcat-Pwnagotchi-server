@@ -75,17 +75,26 @@ def read_settings():
 def write_settings(device_intensities: dict, cpu_percent: int, gpu_temp_limit: int = 90, cpu_temp_limit: int = 90,
                    temp_resume_delta: int = 5, max_job_time_minutes: int = None, default_devices: list = None,
                    default_api_workload: str = Workload.Normal.value):
+    existing = read_settings()
+    existing.update({
+        "device_intensities": device_intensities,
+        "cpu_percent": cpu_percent,
+        "gpu_temp_limit": gpu_temp_limit,
+        "cpu_temp_limit": cpu_temp_limit,
+        "temp_resume_delta": temp_resume_delta,
+        "max_job_time_minutes": max_job_time_minutes,
+        "default_devices": default_devices or ["1"],
+        "default_api_workload": Workload.normalize(default_api_workload)
+    })
     with open(ADMIN_SETTINGS_PATH, "w") as f:
-        json.dump({
-            "device_intensities": device_intensities, 
-            "cpu_percent": cpu_percent,
-            "gpu_temp_limit": gpu_temp_limit,
-            "cpu_temp_limit": cpu_temp_limit,
-            "temp_resume_delta": temp_resume_delta,
-            "max_job_time_minutes": max_job_time_minutes,
-            "default_devices": default_devices or ["1"],
-            "default_api_workload": Workload.normalize(default_api_workload)
-        }, f)
+        json.dump(existing, f)
+
+
+def update_admin_setting(**values):
+    existing = read_settings()
+    existing.update(values)
+    with open(ADMIN_SETTINGS_PATH, "w") as f:
+        json.dump(existing, f)
 
 def apply_hashcat_limits(hashcat_args: list):
     """ Modifies the hashcat args based on configured settings. """

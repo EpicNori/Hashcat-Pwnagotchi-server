@@ -234,6 +234,59 @@ def get_tailscale_snapshot():
     }
 
 
+def get_cloudflare_snapshot():
+    settings = read_settings()
+    plugin_url = settings.get("public_plugin_url", "")
+    installed = bool(shutil.which("cloudflared"))
+    running = False
+    detail = "Not installed"
+
+    try:
+        if os.name == "nt":
+            result = subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-Command",
+                    "Get-Service cloudflared -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Status"
+                ],
+                capture_output=True,
+                text=True,
+                timeout=8,
+                check=False,
+            )
+            service_status = (result.stdout or "").strip()
+            if service_status:
+                installed = True
+                running = service_status.lower() == "running"
+                detail = f"Service {service_status}"
+            elif installed:
+                detail = "Installed, service not found"
+        else:
+            result = subprocess.run(
+                ["systemctl", "is-active", "cloudflared"],
+                capture_output=True,
+                text=True,
+                timeout=8,
+                check=False,
+            )
+            state = (result.stdout or "").strip()
+            if state:
+                running = state == "active"
+                detail = f"Service {state}"
+            elif installed:
+                detail = "Installed, service state unknown"
+    except Exception as error:
+        detail = str(error)
+
+    return {
+        "status": detail,
+        "installed": installed,
+        "running": running,
+        "plugin_url": plugin_url,
+    }
+
+
 def get_runtime_logs_dir() -> Path:
     if os.name == "nt":
         install_root = Path(os.environ.get("HASHCAT_WPA_INSTALL_ROOT", Path(app.root_path).parent))
@@ -933,8 +986,8 @@ def hashcat_potfile():
 
 from flask_wtf import FlaskForm
 from wtforms import IntegerField, SubmitField, PasswordField, StringField, RadioField
-from wtforms.validators import DataRequired, NumberRange, EqualTo, Optional
-from app.utils.settings import read_settings, write_settings
+from wtforms.validators import DataRequired, NumberRange, EqualTo, Optional, Regexp
+from app.utils.settings import read_settings, write_settings, update_admin_setting
 
 from wtforms import StringField
 
@@ -957,6 +1010,18 @@ class SettingsForm(FlaskForm):
 class TailscaleForm(FlaskForm):
     auth_key = StringField('Tailscale Auth Key (optional)', validators=[Optional()])
     submit_tailscale = SubmitField('Install / Connect Tailscale')
+
+class PublicWebsiteForm(FlaskForm):
+    public_hostname = StringField(
+        'Public hostname',
+        validators=[
+            DataRequired(),
+            Regexp(r'^[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]$', message='Use a hostname like upload.example.com.')
+        ],
+        description='The hostname you configured in Cloudflare Zero Trust.'
+    )
+    tunnel_token = PasswordField('Cloudflare Tunnel token', validators=[DataRequired()])
+    submit_public_website = SubmitField('Install / Start Public Website')
 
 class NvidiaDriversForm(FlaskForm):
     submit_check_nvidia = SubmitField('Check NVIDIA Drivers')
@@ -991,6 +1056,7 @@ class EditUserForm(FlaskForm):
 def admin_settings():
     form = SettingsForm()
     ts_form = TailscaleForm()
+    public_form = PublicWebsiteForm()
     nvidia_form = NvidiaDriversForm()
     update_form = UpdateAppForm()
     uninstall_form = UninstallAppForm()
@@ -1057,6 +1123,32 @@ def admin_settings():
                 flask.flash('Tailscale connection initiated in the background! Check your Tailscale admin console.', category='success')
             except Exception as e:
                 flask.flash(f'Failed to run Tailscale securely: {e}', category='error')
+        return redirect(url_for('admin_settings'))
+
+    if public_form.submit_public_website.data and public_form.validate():
+        public_url = f"https://{public_form.public_hostname.data.strip().lower()}"
+        token = (public_form.tunnel_token.data or "").strip()
+        try:
+            if os.name == "nt":
+                proc = subprocess.Popen(
+                    windows_management_command("install_cloudflare_tunnel.sh", public_form.public_hostname.data.strip().lower()),
+                    stdin=subprocess.PIPE,
+                    text=True,
+                )
+            else:
+                proc = subprocess.Popen(
+                    ["sudo", get_management_script_path("install_cloudflare_tunnel.sh"), public_form.public_hostname.data.strip().lower()],
+                    stdin=subprocess.PIPE,
+                    text=True,
+                )
+            proc.communicate(input=token, timeout=20)
+            update_admin_setting(public_plugin_url=public_url)
+            flask.flash('Public website connector started. Use the HTTPS plugin URL shown below after Cloudflare reports the tunnel healthy.', category='success')
+        except subprocess.TimeoutExpired:
+            update_admin_setting(public_plugin_url=public_url)
+            flask.flash('Public website connector is still starting in the background. Use the HTTPS plugin URL once Cloudflare shows the tunnel healthy.', category='info')
+        except Exception as e:
+            flask.flash(f'Failed to start public website connector: {e}', category='error')
         return redirect(url_for('admin_settings'))
 
     if nvidia_form.submit_check_nvidia.data and nvidia_form.validate():
@@ -1141,15 +1233,18 @@ def admin_settings():
     update_status, update_summary, update_log_excerpt = get_update_status()
     install_progress = get_install_progress()
     tailscale_snapshot = get_tailscale_snapshot()
+    cloudflare_snapshot = get_cloudflare_snapshot()
         
     return render_template('settings.html', title='Admin Settings', form=form, ts_form=ts_form, 
+                           public_form=public_form,
                            update_form=update_form, uninstall_form=uninstall_form,
                            devices=devices, device_intensities=device_intensities,
                            account_form=account_form, autostart_form=autostart_form,
                            nvidia_form=nvidia_form, gpu_visible=gpu_visible,
                            autostart_status=autostart_status, update_status=update_status,
                            update_summary=update_summary, update_log_excerpt=update_log_excerpt,
-                           install_progress=install_progress, tailscale_snapshot=tailscale_snapshot)
+                           install_progress=install_progress, tailscale_snapshot=tailscale_snapshot,
+                           cloudflare_snapshot=cloudflare_snapshot)
 
 
 @app.route('/tailscale_status')
@@ -1157,6 +1252,13 @@ def admin_settings():
 @roles_required(RoleEnum.ADMIN)
 def tailscale_status():
     return jsonify(get_tailscale_snapshot())
+
+
+@app.route('/cloudflare_status')
+@login_required
+@roles_required(RoleEnum.ADMIN)
+def cloudflare_status():
+    return jsonify(get_cloudflare_snapshot())
 
 
 @app.route('/api/stats')
