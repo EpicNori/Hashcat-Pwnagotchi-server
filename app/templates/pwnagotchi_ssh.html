@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block page_content %}
+<div class="container">
+    <h1>Pwnagotchi SSH Control</h1>
+    <p class="text-muted">Admin-only SSH tools for checking a Pwnagotchi, running maintenance commands, and uploading custom files over SFTP. Passwords are used for this request only and are not saved.</p>
+
+    <div class="row">
+        <div class="col-md-5">
+            <div class="panel panel-primary">
+                <div class="panel-heading">Connection</div>
+                <div class="panel-body">
+                    <form method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <div class="row">
+                            <div class="col-sm-8">
+                                <div class="form-group">
+                                    <label for="host">Host</label>
+                                    <input class="form-control" id="host" name="host" value="{{ defaults.host }}" placeholder="10.12.194.1">
+                                </div>
+                            </div>
+                            <div class="col-sm-4">
+                                <div class="form-group">
+                                    <label for="port">Port</label>
+                                    <input class="form-control" id="port" name="port" value="{{ defaults.port }}" inputmode="numeric">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="username">Username</label>
+                            <input class="form-control" id="username" name="username" value="{{ defaults.username }}" autocomplete="username">
+                        </div>
+                        <div class="form-group">
+                            <label for="password">Password</label>
+                            <input class="form-control" id="password" name="password" type="password" autocomplete="current-password">
+                        </div>
+                        <button class="btn btn-success" type="submit" name="test_connection" value="1">Test Connection</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-7">
+            <div class="panel panel-default">
+                <div class="panel-heading">Run Command</div>
+                <div class="panel-body">
+                    <form method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="host" value="{{ defaults.host }}">
+                        <input type="hidden" name="port" value="{{ defaults.port }}">
+                        <input type="hidden" name="username" value="{{ defaults.username }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <div class="form-group">
+                            <label for="password-command">Password</label>
+                            <input class="form-control" id="password-command" name="password" type="password" autocomplete="current-password">
+                        </div>
+                        <div class="form-group">
+                            <label for="command">Command</label>
+                            <textarea class="form-control" id="command" name="command" rows="5">{{ defaults.command }}</textarea>
+                        </div>
+                        <button class="btn btn-primary" type="submit" name="run_command" value="1">Run Command</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="panel panel-default">
+                <div class="panel-heading">Upload Custom File</div>
+                <div class="panel-body">
+                    <form method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="host" value="{{ defaults.host }}">
+                        <input type="hidden" name="port" value="{{ defaults.port }}">
+                        <input type="hidden" name="username" value="{{ defaults.username }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <div class="form-group">
+                            <label for="password-upload">Password</label>
+                            <input class="form-control" id="password-upload" name="password" type="password" autocomplete="current-password">
+                        </div>
+                        <div class="form-group">
+                            <label for="remote_path">Remote path</label>
+                            <input class="form-control" id="remote_path" name="remote_path" value="{{ defaults.remote_path }}" placeholder="/home/pi/">
+                            <p class="help-block">Use a directory ending in <code>/</code> to keep the local filename, or provide the full destination file path.</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="upload">File</label>
+                            <input id="upload" name="upload" type="file">
+                            <p class="help-block">Maximum upload size: 32 MB.</p>
+                        </div>
+                        <button class="btn btn-info" type="submit" name="upload_file" value="1">Upload File</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if result %}
+    <div class="panel {% if result.ok %}panel-success{% else %}panel-danger{% endif %}">
+        <div class="panel-heading">
+            Result{% if result.exit_status is not none %} - exit {{ result.exit_status }}{% endif %}
+        </div>
+        <div class="panel-body">
+            <p>{{ result.message }}</p>
+            {% if result.stdout %}
+            <h4>stdout</h4>
+            <pre style="white-space: pre-wrap; max-height: 320px; overflow-y: auto;">{{ result.stdout }}</pre>
+            {% endif %}
+            {% if result.stderr %}
+            <h4>stderr</h4>
+            <pre style="white-space: pre-wrap; max-height: 320px; overflow-y: auto;">{{ result.stderr }}</pre>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

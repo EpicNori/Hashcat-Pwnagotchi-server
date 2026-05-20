@@ -3,10 +3,13 @@ name = "pwnagotchi_hashcat_wpa"
 description = "Automatically upload captured WPA/WPA2 handshakes to a Hashcat WPA Server instance."
 author = "EpicNori (via Antigravity AI)"
 license = "GPL3"
-version = "1.4.4"
+version = "1.4.5"
 
 [config]
 enabled = true
 url = "http://100.x.x.x:9111"
 username = "admin"
 password = "changeme"
+handshake_dir = "/home/pi/handshakes"
+upload_existing = true
+batch_size = 8

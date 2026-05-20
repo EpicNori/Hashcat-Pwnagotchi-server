@@ -16,6 +16,9 @@ import pwnagotchi.ui.fonts as fonts
 _MAX_LOG = 40
 _upload_log = collections.deque(maxlen=_MAX_LOG)
 _SUPPORTED_SUFFIXES = ('.cap', '.pcap', '.pcapng', '.hccapx', '.pmkid', '.2500', '.2501', '.16800', '.16801', '.22000', '.22001')
+_DEFAULT_HANDSHAKE_DIR = '/home/pi/handshakes'
+_STATE_PATH = '/root/.pwnagotchi_hashcat_wpa_uploaded'
+_DEFAULT_BATCH_SIZE = 8
 
 
 def _log_event(ok, message):
@@ -29,7 +32,7 @@ def _log_event(ok, message):
 
 class PwnagotchiHashcatWPA(plugins.Plugin):
     __author__ = 'EpicNori (via Antigravity AI)'
-    __version__ = '1.4.4'
+    __version__ = '1.4.5'
     __license__ = 'GPL3'
     __description__ = 'Uploads captured WPA/WPA2 handshakes to a self-hosted Hashcat WPA Server.'
 
@@ -41,11 +44,15 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         'url': _PLACEHOLDER_URL,
         'username': 'admin',
         'password': 'changeme',
+        'handshake_dir': _DEFAULT_HANDSHAKE_DIR,
+        'upload_existing': True,
+        'batch_size': _DEFAULT_BATCH_SIZE,
     }
 
     def __init__(self):
         self.ready = False
         self._pending_files = collections.OrderedDict()
+        self._uploaded_fingerprints = set()
         self._last_status = 'Hashcat WPA ready'
         self._display_key = 'hashcat_wpa_status'
 
@@ -96,6 +103,61 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
             return f'QUEUED {len(self._pending_files)}'
         return 'READY'
 
+    def _option_bool(self, key, default=False):
+        value = self.options.get(key, default)
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+    def _option_int(self, key, default):
+        try:
+            return max(1, int(self.options.get(key, default)))
+        except (TypeError, ValueError):
+            return default
+
+    def _handshake_dir(self):
+        return self.options.get('handshake_dir') or _DEFAULT_HANDSHAKE_DIR
+
+    def _file_fingerprint(self, path):
+        try:
+            stat = os.stat(path)
+        except OSError:
+            return ''
+        return f"{os.path.abspath(path)}|{stat.st_size}|{int(stat.st_mtime)}"
+
+    def _load_uploaded_state(self):
+        self._uploaded_fingerprints = set()
+        try:
+            with open(_STATE_PATH, 'r', encoding='utf-8', errors='replace') as fh:
+                self._uploaded_fingerprints = {line.strip() for line in fh if line.strip()}
+        except FileNotFoundError:
+            pass
+        except Exception as exc:
+            logging.warning("[HashcatWPAServer] Could not read upload state: %s", exc)
+
+    def _remember_uploaded(self, paths):
+        new_items = []
+        for path in paths:
+            fingerprint = self._file_fingerprint(path)
+            if fingerprint and fingerprint not in self._uploaded_fingerprints:
+                self._uploaded_fingerprints.add(fingerprint)
+                new_items.append(fingerprint)
+        if not new_items:
+            return
+        try:
+            state_dir = os.path.dirname(_STATE_PATH)
+            if state_dir:
+                os.makedirs(state_dir, exist_ok=True)
+            with open(_STATE_PATH, 'a', encoding='utf-8') as fh:
+                for item in new_items:
+                    fh.write(item + '\n')
+        except Exception as exc:
+            logging.warning("[HashcatWPAServer] Could not write upload state: %s", exc)
+
+    def _already_uploaded(self, path):
+        fingerprint = self._file_fingerprint(path)
+        return bool(fingerprint and fingerprint in self._uploaded_fingerprints)
+
     def on_ui_setup(self, ui):
         try:
             ui.add_element(
@@ -132,7 +194,33 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
             return
         if not path.lower().endswith(_SUPPORTED_SUFFIXES):
             return
+        if self._already_uploaded(path):
+            return
         self._pending_files[path] = time.time()
+
+    def _scan_existing_handshakes(self, agent=None):
+        if not self.ready or not self._option_bool('upload_existing', True):
+            return
+        handshake_dir = self._handshake_dir()
+        if not os.path.isdir(handshake_dir):
+            _log_event(False, f"Existing handshake scan skipped: {handshake_dir} does not exist.")
+            return
+
+        before = len(self._pending_files)
+        candidates = []
+        for root, _, filenames in os.walk(handshake_dir):
+            for filename in filenames:
+                path = os.path.join(root, filename)
+                if path.lower().endswith(_SUPPORTED_SUFFIXES):
+                    candidates.append(path)
+        candidates.sort(key=lambda item: (os.path.getmtime(item), item))
+        for path in candidates:
+            self._add_pending_file(path)
+        added = len(self._pending_files) - before
+        if added:
+            _log_event(True, f"Queued {added} existing handshake file(s) from {handshake_dir}.")
+            if agent is not None:
+                self._set_status(agent, f"Queued {added} old handshake(s)")
 
     def _upload_pending_files(self, agent=None):
         if not self.ready:
@@ -140,7 +228,8 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         if not self._pending_files:
             return
 
-        paths = list(self._pending_files.keys())
+        batch_size = self._option_int('batch_size', _DEFAULT_BATCH_SIZE)
+        paths = list(self._pending_files.keys())[:batch_size]
         url = self._upload_url()
         username = self.options.get('username', '')
         password = self.options.get('password', '')
@@ -165,9 +254,12 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
             if response.status_code == 200:
                 for path in paths:
                     self._pending_files.pop(path, None)
+                self._remember_uploaded(paths)
                 _log_event(True, f"Uploaded {len(paths)} capture(s): {basenames}. Server response: {response.text[:120]}")
                 if agent is not None:
                     self._set_status(agent, f"Upload complete: {len(paths)} capture(s)")
+                if self._pending_files:
+                    self._upload_pending_files(agent)
             else:
                 _log_event(False, f"Upload batch failed: HTTP {response.status_code} - {response.text[:200]}")
                 if agent is not None:
@@ -280,10 +372,13 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
             logging.warning("[HashcatWPAServer] Could not add default config: %s", exc)
 
     def on_loaded(self):
+        self._load_uploaded_state()
         self._ensure_default_config()
         self.ready = self._is_configured()
         if self.ready:
             logging.info("[HashcatWPAServer] Plugin loaded. Upload target: %s", self._upload_url())
+            self._scan_existing_handshakes()
+            self._upload_pending_files()
         else:
             logging.warning(
                 "[HashcatWPAServer] Plugin installed. Set the server URL in %s or use the plugin web UI.",
@@ -302,6 +397,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         self._upload_pending_files(agent)
 
     def on_internet_available(self, agent):
+        self._scan_existing_handshakes(agent)
         self._upload_pending_files(agent)
 
     def _render_log_rows(self):
