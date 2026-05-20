@@ -12,6 +12,11 @@ from pwnagotchi.ui.components import LabeledValue
 from pwnagotchi.ui.view import BLACK
 import pwnagotchi.ui.fonts as fonts
 
+try:
+    from flask_wtf.csrf import generate_csrf
+except Exception:
+    generate_csrf = None
+
 
 _MAX_LOG = 40
 _upload_log = collections.deque(maxlen=_MAX_LOG)
@@ -32,7 +37,7 @@ def _log_event(ok, message):
 
 class PwnagotchiHashcatWPA(plugins.Plugin):
     __author__ = 'EpicNori (via Antigravity AI)'
-    __version__ = '1.4.5'
+    __version__ = '1.4.6'
     __license__ = 'GPL3'
     __description__ = 'Uploads captured WPA/WPA2 handshakes to a self-hosted Hashcat WPA Server.'
 
@@ -134,6 +139,19 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
             pass
         except Exception as exc:
             logging.warning("[HashcatWPAServer] Could not read upload state: %s", exc)
+
+    def _clear_uploaded_state(self):
+        count = len(self._uploaded_fingerprints)
+        self._uploaded_fingerprints = set()
+        try:
+            os.remove(_STATE_PATH)
+        except FileNotFoundError:
+            pass
+        except Exception as exc:
+            logging.warning("[HashcatWPAServer] Could not clear upload state: %s", exc)
+            raise
+        _log_event(True, f"Cleared upload history with {count} remembered file(s).")
+        return count
 
     def _remember_uploaded(self, paths):
         new_items = []
@@ -428,6 +446,16 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
             '</div>'
         )
 
+    def _csrf_input(self):
+        if generate_csrf is None:
+            return ''
+        try:
+            token = generate_csrf()
+        except Exception as exc:
+            logging.debug("[HashcatWPAServer] Could not generate CSRF token: %s", exc)
+            return ''
+        return f'<input type="hidden" name="csrf_token" value="{html.escape(token)}">'
+
     def _render_page(self, notice=None):
         base_url = html.escape(self._base_url() or self._PLACEHOLDER_URL)
         upload_url = html.escape(self._upload_url() or f'{self._PLACEHOLDER_URL}/api/upload')
@@ -437,8 +465,10 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         status_text, status_color = self._status()
         status_text = html.escape(status_text)
         notice_html = self._render_notice(notice)
+        csrf_input = self._csrf_input()
         log_rows = self._render_log_rows()
         pending_count = len(self._pending_files)
+        history_count = len(self._uploaded_fingerprints)
 
         return f"""<!doctype html>
 <html lang="en">
@@ -511,6 +541,8 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
       font-size: .92rem;
     }}
     .button.secondary {{ background: #475569; margin-left: 6px; }}
+    button.danger, .button.danger {{ background: #b91c1c; }}
+    .inline-action {{ margin-top: 12px; }}
     .status {{
       display: inline-flex;
       align-items: center;
@@ -583,6 +615,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
       {notice_html}
 
       <form method="post" action="/plugins/pwnagotchi_hashcat_wpa/save">
+        {csrf_input}
         <label for="url">Server URL</label>
         <input id="url" name="url" value="{base_url}" placeholder="https://upload.example.com or http://192.168.x.x:9111">
 
@@ -622,9 +655,15 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         <div class="card">
           <h3>Upload info</h3>
           <div class="kv"><span>Pending</span><code>{pending_count}</code></div>
+          <div class="kv"><span>History</span><code>{history_count}</code></div>
           <div class="kv"><span>Last status</span><code>{html.escape(self._last_status)}</code></div>
           <div class="kv"><span>Upload API</span><code>{upload_url}</code></div>
           <div class="kv"><span>Heartbeat</span><code>{heartbeat_url}</code></div>
+          <form class="inline-action" method="post" action="/plugins/pwnagotchi_hashcat_wpa/clear-history"
+                onsubmit="return confirm('Clear upload history and re-upload all handshake files?');">
+            {csrf_input}
+            <button class="danger" type="submit">Clear upload history and re-upload</button>
+          </form>
         </div>
       </div>
     </section>
@@ -660,6 +699,21 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
                     notice = {'ok': True, 'label': 'Config saved', 'message': 'The plugin is updated. Restart Pwnagotchi if Webcfg still shows old values.'}
                 except Exception as exc:
                     notice = {'ok': False, 'label': 'Could not save', 'message': str(exc)}
+
+        if normalized_path == 'clear-history' and getattr(request, 'method', 'GET') == 'POST':
+            try:
+                cleared = self._clear_uploaded_state()
+                before = len(self._pending_files)
+                self._scan_existing_handshakes()
+                queued = len(self._pending_files) - before
+                self._upload_pending_files()
+                notice = {
+                    'ok': True,
+                    'label': 'Upload history cleared',
+                    'message': f'Removed {cleared} remembered file(s) and queued {queued} existing handshake file(s) for upload.',
+                }
+            except Exception as exc:
+                notice = {'ok': False, 'label': 'Could not clear upload history', 'message': str(exc)}
 
         if normalized_path == 'test':
             base_url = self._base_url()
