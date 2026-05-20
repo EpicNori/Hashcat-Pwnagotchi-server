@@ -18,6 +18,7 @@ from werkzeug.datastructures import CombinedMultiDict
 from app import app, db, limiter
 from app.config import APP_UPDATE_PROGRESS_FILE, NVIDIA_INSTALL_PROGRESS_FILE
 from app.attack.convert import split_by_essid, convert_to_22000
+from app.attack.recovery import read_recovery_state
 from app.attack.worker import HashcatWorker
 from app.domain import TaskInfoStatus, Rule, InvalidFileError, Workload, HashcatMode
 from app.logger import logger
@@ -369,6 +370,55 @@ def split_hashcat_args(hashcat_args_text: str):
     if not hashcat_args_text:
         return []
     return shlex.split(hashcat_args_text)
+
+
+def form_for_stored_task(task: UploadedTask):
+    from types import SimpleNamespace
+
+    wordlist_info = find_wordlist_by_name(task.wordlist)
+    wordlist_path = wordlist_info.path if wordlist_info is not None else None
+    rule = Rule.from_data(task.rule)
+
+    base_hashcat_args = split_hashcat_args(task.hashcat_args)
+    filtered_hashcat_args = []
+    skip_next = False
+    for arg in base_hashcat_args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "-d":
+            skip_next = True
+            continue
+        if arg.startswith("--brain-password="):
+            continue
+        filtered_hashcat_args.append(arg)
+
+    if "--brain-client" in filtered_hashcat_args and not any(arg.startswith("--brain-password=") for arg in filtered_hashcat_args):
+        filtered_hashcat_args.append(f"--brain-password={read_hashcat_brain_password()}")
+
+    return SimpleNamespace(
+        timeout=SimpleNamespace(data=None),
+        workload=SimpleNamespace(data=Workload.Normal.value),
+        get_wordlist_path=lambda: wordlist_path,
+        get_rule=lambda: rule,
+        hashcat_args=lambda secret=False: list(filtered_hashcat_args),
+    )
+
+
+def resolve_task_attack_file(task: UploadedTask):
+    capture_path = resolve_capture_path(task.filename)
+    if not capture_path.exists():
+        raise FileNotFoundError(f"Original capture file not found: {capture_path}")
+
+    file_22000 = convert_to_22000(capture_path)
+    folder_split_by_essid = split_by_essid(file_22000)
+
+    for file_essid in iter_split_capture_files(folder_split_by_essid):
+        bssid, essid = decode_task_essid(file_essid)
+        if bssid == task.bssid and essid == task.essid:
+            return file_essid
+
+    raise InvalidFileError("Could not match the original ESSID/BSSID pair in the capture file.")
 
 
 def windows_management_command(script_name: str, *args: str):
@@ -952,8 +1002,6 @@ def cancel(task_id):
 @app.route("/requeue/<int:task_id>")
 @login_required
 def requeue(task_id):
-    from types import SimpleNamespace
-
     task = db.session.get(UploadedTask, task_id)
     if task is None:
         return flask.abort(HTTPStatus.NOT_FOUND)
@@ -964,54 +1012,7 @@ def requeue(task_id):
         flask.flash("This task is still running. Cancel it first if you want to restart it.", category="info")
         return redirect(url_for('user_profile'))
 
-    capture_path = resolve_capture_path(task.filename)
-    if not capture_path.exists():
-        flask.flash("The original capture file could not be found, so this task cannot be re-queued.", category="error")
-        return redirect(url_for('user_profile'))
-
     try:
-        file_22000 = convert_to_22000(capture_path)
-        folder_split_by_essid = split_by_essid(file_22000)
-
-        matched_file = None
-        for file_essid in iter_split_capture_files(folder_split_by_essid):
-            bssid, essid = decode_task_essid(file_essid)
-            if bssid == task.bssid and essid == task.essid:
-                matched_file = file_essid
-                break
-
-        if matched_file is None:
-            raise InvalidFileError("Could not match the original ESSID/BSSID pair in the capture file.")
-
-        wordlist_info = find_wordlist_by_name(task.wordlist)
-        wordlist_path = wordlist_info.path if wordlist_info is not None else None
-        rule = Rule.from_data(task.rule)
-
-        base_hashcat_args = split_hashcat_args(task.hashcat_args)
-        filtered_hashcat_args = []
-        skip_next = False
-        for arg in base_hashcat_args:
-            if skip_next:
-                skip_next = False
-                continue
-            if arg == "-d":
-                skip_next = True
-                continue
-            if arg.startswith("--brain-password="):
-                continue
-            filtered_hashcat_args.append(arg)
-
-        if "--brain-client" in filtered_hashcat_args and not any(arg.startswith("--brain-password=") for arg in filtered_hashcat_args):
-            filtered_hashcat_args.append(f"--brain-password={read_hashcat_brain_password()}")
-
-        requeue_form = SimpleNamespace(
-            timeout=SimpleNamespace(data=None),
-            workload=SimpleNamespace(data="2"),
-            get_wordlist_path=lambda: wordlist_path,
-            get_rule=lambda: rule,
-            hashcat_args=lambda secret=False: list(filtered_hashcat_args)
-        )
-
         new_task = UploadedTask(
             user_id=task.user_id,
             filename=task.filename,
@@ -1024,7 +1025,7 @@ def requeue(task_id):
         db.session.add(new_task)
         db.session.commit()
 
-        hashcat_worker.submit_capture(matched_file, uploaded_form=requeue_form, task=new_task)
+        hashcat_worker.submit_capture(resolve_task_attack_file(task), uploaded_form=form_for_stored_task(task), task=new_task)
         flask.flash(f"Task #{task.id} was re-queued as task #{new_task.id}.", category="success")
     except (FileNotFoundError, InvalidFileError, ValueError) as error:
         logger.exception(error)
@@ -1426,8 +1427,49 @@ def should_run_startup_maintenance():
     return executable in {"gunicorn", "flask", "waitress-serve"} or "flask" in argv
 
 
+def restore_interrupted_jobs():
+    interrupted = UploadedTask.query.filter_by(completed=False).order_by(UploadedTask.uploaded_time.asc()).all()
+    if not interrupted:
+        return
+
+    # A crashed/restarted web worker can leave hashcat running without an in-memory
+    # ProgressLock. Stop those orphaned processes first so restore/restart owns the
+    # task state again instead of duplicating work.
+    hashcat_worker.terminate()
+
+    restored = 0
+    restarted = 0
+    for task in interrupted:
+        state = read_recovery_state(task.id)
+        if state:
+            try:
+                hashcat_worker.submit_recovery(task, state)
+                restored += 1
+                continue
+            except Exception as error:
+                logger.exception("Could not restore task %s: %s", task.id, error)
+                task.status = TaskInfoStatus.ABORTED
+                task.completed = True
+                continue
+
+        try:
+            hashcat_worker.submit_capture(resolve_task_attack_file(task), uploaded_form=form_for_stored_task(task), task=task)
+            task.status = TaskInfoStatus.SCHEDULED
+            task.completed = False
+            restarted += 1
+        except Exception as error:
+            logger.exception("Could not restart queued task %s: %s", task.id, error)
+            task.status = TaskInfoStatus.ABORTED
+            task.completed = True
+
+    if restored or restarted:
+        db.session.commit()
+        logger.info("Queued %s interrupted hashcat job(s) for restore and %s queued job(s) for restart.", restored, restarted)
+
+
 if should_run_startup_maintenance():
     with app.app_context():
         create_first_users()
         check_incomplete_tasks()
         backward_db_compatibility()
+        restore_interrupted_jobs()

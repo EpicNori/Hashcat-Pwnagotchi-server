@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Union
 
 from app.config import HASHCAT_STATUS_TIMER
+from app.attack.recovery import clear_recovery_state, write_recovery_state
 from app.domain import HashcatMode, Mask, ProgressLock, Rule, TaskInfoStatus, WordList
 from app.logger import logger
 from app.utils.utils import resolve_hashcat_executable
@@ -158,25 +159,32 @@ def _stream_reader(pipe, output_queue: queue.Queue, stream_name: str):
         output_queue.put((stream_name, None))
 
 
-def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_minutes=None):
+def _hashcat_cwd():
+    hashcat_executable = resolve_hashcat_executable()
+    if hashcat_executable:
+        return str(Path(hashcat_executable).parent)
+    return None
+
+
+def _hashcat_restore_command(session: str):
+    hashcat_executable = resolve_hashcat_executable() or "hashcat"
+    return [hashcat_executable, "--restore", f"--session={session}"]
+
+
+def _run_hashcat_process(hashcat_cmd_list, lock: ProgressLock, timeout_minutes=None):
     if timeout_minutes is None:
         timeout_minutes = float('inf')
     timeout_seconds = timeout_minutes * 60
     start = time.time()
     from app.utils.settings import read_settings
     from app.utils.utils import get_live_usage
-    hashcat_cmd_list = hashcat_cmd.build()
-    hashcat_cwd = None
-    hashcat_executable = resolve_hashcat_executable()
-    if hashcat_executable:
-        hashcat_cwd = str(Path(hashcat_executable).parent)
     try:
         process = subprocess.Popen(
             hashcat_cmd_list,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             bufsize=1,
-            cwd=hashcat_cwd,
+            cwd=_hashcat_cwd(),
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -353,3 +361,24 @@ def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_
                 stderr_summary = stderr_summary.splitlines()[0]
                 stderr_summary = f": {stderr_summary}"
             raise RuntimeError(f"Hashcat exited with code {process.returncode}{stderr_summary}")
+
+
+def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_minutes=None, recovery_state=None):
+    hashcat_cmd_list = hashcat_cmd.build()
+    if recovery_state:
+        write_recovery_state(lock.task_id, {
+            **recovery_state,
+            "session": hashcat_cmd.session,
+            "command": hashcat_cmd_list,
+            "outfile": hashcat_cmd.outfile,
+            "hcap_file": getattr(hashcat_cmd, "hcap_file", ""),
+        })
+    try:
+        _run_hashcat_process(hashcat_cmd_list, lock, timeout_minutes=timeout_minutes)
+    finally:
+        if recovery_state:
+            clear_recovery_state(lock.task_id)
+
+
+def restore_with_status(session: str, lock: ProgressLock, timeout_minutes=None):
+    _run_hashcat_process(_hashcat_restore_command(session), lock, timeout_minutes=timeout_minutes)

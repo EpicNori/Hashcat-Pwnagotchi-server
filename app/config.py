@@ -30,6 +30,7 @@ MASKS_DIR = ROOT_PRIVATE_DIR / "masks"
 LOGS_DIR = ROOT_PRIVATE_DIR / "logs"
 
 DATABASE_DIR = HASHCAT_WPA_CACHE_DIR / "database"
+RECOVERY_DIR = HASHCAT_WPA_CACHE_DIR / "recovery"
 ESSID_TRIED = DATABASE_DIR / "essid_tried"
 DATABASE_PATH = DATABASE_DIR / "hashcat_wpa.db"
 
@@ -47,6 +48,7 @@ HASHCAT_WPA_CACHE_DIR.mkdir(exist_ok=True, parents=True)
 WORDLISTS_USER_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 DATABASE_DIR.mkdir(exist_ok=True)
+RECOVERY_DIR.mkdir(exist_ok=True)
 HASHCAT_BRAIN_PASSWORD_PATH.parent.mkdir(exist_ok=True)
 
 class Config:

@@ -139,7 +139,8 @@ def get_linux_pci_gpus():
                 "id": str(len(devices) + 1),
                 "name": name,
                 "memory": "Unknown",
-                "is_gpu": True
+                "is_gpu": True,
+                "hashcat_usable": False,
             })
         return devices
     except Exception as error:
@@ -433,6 +434,7 @@ def get_hashcat_devices():
         name = str(device.get("name", "")).strip()
         device_type = str(device.get("device_type", ""))
         device["is_gpu"] = infer_device_is_gpu(name, device_type)
+        device.setdefault("hashcat_usable", True)
         normalized_devices.append(device)
 
     gpu_devices = [device for device in normalized_devices if device.get("is_gpu")]

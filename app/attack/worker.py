@@ -8,7 +8,8 @@ import math
 
 from app import app, db, lock_app
 from app.attack.base_attack import BaseAttack
-from app.attack.hashcat_cmd import run_with_status, HashcatCmdCapture
+from app.attack.hashcat_cmd import restore_with_status, run_with_status, HashcatCmdCapture
+from app.attack.recovery import clear_recovery_state, read_recovery_state
 from app.config import BENCHMARK_FILE
 from app.domain import Rule, TaskInfoStatus, InvalidFileError, ProgressLock, Workload
 from app.logger import logger
@@ -18,6 +19,19 @@ from app.word_magic.wordlist import WordListDefault, iter_user_wordlist_scripts,
 
 
 class CapAttack(BaseAttack):
+    STAGE_ORDER = (
+        "rainbow",
+        "digits8",
+        "top1k",
+        "keyboard_walk",
+        "essid",
+        "names",
+        "main_wordlist",
+        "names_with_digits",
+        "default_wordlists",
+        "user_scripts",
+        "exhaustive",
+    )
 
     def __init__(self, file_22000, lock: ProgressLock, wordlist: Path = None, rule: Rule = None,
                  hashcat_args=(), timeout=None, work_mode=Workload.Normal.value):
@@ -30,11 +44,42 @@ class CapAttack(BaseAttack):
         self.wordlist = wordlist
         self.rule = rule
         self.work_mode = str(work_mode)
+        self._stage = None
         # Use run_with_status for ALL sub-attacks in BaseAttack
         self.runner = self._monitored_runner
 
     def _monitored_runner(self, cmd: HashcatCmdCapture):
-        run_with_status(cmd, lock=self.lock, timeout_minutes=self._remaining_timeout_minutes())
+        run_with_status(
+            cmd,
+            lock=self.lock,
+            timeout_minutes=self._remaining_timeout_minutes(),
+            recovery_state=self._recovery_state(),
+        )
+
+    def _recovery_state(self):
+        return {
+            "stage": self._stage,
+            "file_22000": str(self.file_22000),
+            "wordlist": str(self.wordlist) if self.wordlist is not None else "",
+            "rule": self.rule.value if self.rule is not None else "",
+            "hashcat_args": list(self.hashcat_args),
+            "timeout": self.timeout,
+            "work_mode": self.work_mode,
+        }
+
+    def _run_stage(self, stage: str, status: str, func):
+        self._stage = stage
+        with self.lock:
+            self.lock.set_status(status)
+        return func()
+
+    def _should_run_stage(self, stage: str, start_after: str | None = None):
+        if start_after is None:
+            return True
+        try:
+            return self.STAGE_ORDER.index(stage) > self.STAGE_ORDER.index(start_after)
+        except ValueError:
+            return True
 
     def _remaining_timeout_minutes(self):
         if self.deadline is None:
@@ -162,7 +207,7 @@ class CapAttack(BaseAttack):
         hashcat_cmd.add_wordlists(rainbow_wordlist)
         self.runner(hashcat_cmd)
 
-    def run_all(self):
+    def run_all(self, start_after: str | None = None):
         """
         Run all attacks.
         """
@@ -172,53 +217,46 @@ class CapAttack(BaseAttack):
                 task.status = TaskInfoStatus.RUNNING
                 db.session.commit()
 
-        with self.lock:
-            self.lock.set_status("Running rainbow reuse list...")
-        self.run_rainbow_attack()
+        if self._should_run_stage("rainbow", start_after):
+            self._run_stage("rainbow", "Running rainbow reuse list...", self.run_rainbow_attack)
 
         if self.work_mode == Workload.Rainbow.value:
             return
 
-        with self.lock:
-            self.lock.set_status("Running digits8...")
-        self.run_digits8()
+        if self._should_run_stage("digits8", start_after):
+            self._run_stage("digits8", "Running digits8...", self.run_digits8)
         
-        with self.lock:
-            self.lock.set_status("Running top1k with rules...")
-        self.run_top1k()
+        if self._should_run_stage("top1k", start_after):
+            self._run_stage("top1k", "Running top1k with rules...", self.run_top1k)
         
-        with self.lock:
-            self.lock.set_status("Running keyboard walk...")
-        self.run_keyboard_walk()
+        if self._should_run_stage("keyboard_walk", start_after):
+            self._run_stage("keyboard_walk", "Running keyboard walk...", self.run_keyboard_walk)
         
-        with self.lock:
-            self.lock.set_status("Running ESSID attack...")
-        self.run_essid_attack()
+        if self._should_run_stage("essid", start_after):
+            self._run_stage("essid", "Running ESSID attack...", self.run_essid_attack)
         
-        with self.lock:
-            self.lock.set_status("Running name mutations...")
-        self.run_names()
+        if self._should_run_stage("names", start_after):
+            self._run_stage("names", "Running name mutations...", self.run_names)
         
-        with self.lock:
-            self.lock.set_status("Running the main wordlist...")
-        self.run_main_wordlist()
+        if self._should_run_stage("main_wordlist", start_after):
+            self._run_stage("main_wordlist", "Running the main wordlist...", self.run_main_wordlist)
 
         if self.work_mode == Workload.Normal.value:
-            with self.lock:
-                self.lock.set_status("Running name mutations with digits...")
-            self.run_names_with_digits()
+            if self._should_run_stage("names_with_digits", start_after):
+                self._run_stage("names_with_digits", "Running name mutations with digits...", self.run_names_with_digits)
 
-            with self.lock:
-                self.lock.set_status("Running extended default wordlists...")
-            self.run_default_wordlist_chain()
+            if self._should_run_stage("default_wordlists", start_after):
+                self._run_stage("default_wordlists", "Running extended default wordlists...", self.run_default_wordlist_chain)
 
-            with self.lock:
-                self.lock.set_status("Running user wordlist scripts...")
-            self.run_user_script_wordlist_chain()
+            if self._should_run_stage("user_scripts", start_after):
+                self._run_stage("user_scripts", "Running user wordlist scripts...", self.run_user_script_wordlist_chain)
 
-            with self.lock:
-                self.lock.set_status("Running exhaustive WPA brute force (8-63)...")
-            self.run_exhaustive_bruteforce(min_length=8)
+            if self._should_run_stage("exhaustive", start_after):
+                self._run_stage(
+                    "exhaustive",
+                    "Running exhaustive WPA brute force (8-63)...",
+                    lambda: self.run_exhaustive_bruteforce(min_length=8),
+                )
 
 
 def _crack_async(attack: CapAttack):
@@ -233,6 +271,60 @@ def _crack_async(attack: CapAttack):
     for name, timer in attack.timers.items():
         elapsed = timer['elapsed'] / timer['count']
         logger.debug(f"Timer {name}: {elapsed:.2f} sec")
+
+
+def _attack_from_recovery_state(lock: ProgressLock, state: dict):
+    rule = Rule.from_data(state.get("rule") or None)
+    wordlist = Path(state["wordlist"]) if state.get("wordlist") else None
+    return CapAttack(
+        file_22000=state["file_22000"],
+        lock=lock,
+        wordlist=wordlist,
+        rule=rule,
+        hashcat_args=tuple(state.get("hashcat_args") or ()),
+        timeout=state.get("timeout"),
+        work_mode=state.get("work_mode", Workload.Normal.value),
+    )
+
+
+def _recover_async(lock: ProgressLock, state: dict):
+    """
+    Restore the hashcat session that was running during a server crash, then continue
+    the attack chain from the next stage. If hashcat has no restore data yet, rerun
+    the interrupted stage from scratch.
+    """
+    attack = _attack_from_recovery_state(lock, state)
+    restored_stage = state.get("stage")
+    session = state.get("session")
+    completed_ok = False
+    try:
+        if session:
+            with lock:
+                lock.set_status(f"Restoring interrupted hashcat session: {restored_stage or session}")
+            restore_with_status(session, lock=lock, timeout_minutes=attack._remaining_timeout_minutes())
+            attack.read_key()
+            if lock.found_key:
+                logger.info(f"Recovered cracked key for {attack.file_22000}")
+                completed_ok = True
+                return
+        attack.run_all(start_after=restored_stage)
+        attack.read_key()
+        completed_ok = True
+    except RuntimeError as error:
+        message = str(error).lower()
+        if "restore" not in message:
+            raise
+        logger.warning(f"Hashcat restore was unavailable for task {lock.task_id}; retrying stage {restored_stage}: {error}")
+        start_after = None
+        if restored_stage in CapAttack.STAGE_ORDER:
+            stage_index = CapAttack.STAGE_ORDER.index(restored_stage)
+            start_after = CapAttack.STAGE_ORDER[stage_index - 1] if stage_index > 0 else None
+        attack.run_all(start_after=start_after)
+        attack.read_key()
+        completed_ok = True
+    finally:
+        if completed_ok:
+            clear_recovery_state(lock.task_id)
 
 
 def _hashcat_benchmark_async():
@@ -297,6 +389,17 @@ class HashcatWorker:
             UploadedTask.query.filter_by(id=task_id).update(update_dict)
             db.session.commit()
         self.locks_onetime.append(lock)
+
+    def submit_recovery(self, task: UploadedTask, state: dict):
+        lock = ProgressLock(task_id=task.id)
+        future = self.executor.submit(_recover_async, lock=lock, state=state)
+        future.add_done_callback(self.callback_attack)
+        with lock:
+            lock.future = future
+            lock.set_status("Restoring interrupted job")
+        self.locks[id(future)] = lock
+        task.status = "Restoring interrupted job"
+        task.completed = False
 
     def submit_capture(self, file_22000, uploaded_form: UploadForm, task: UploadedTask):
         """

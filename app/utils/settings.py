@@ -99,18 +99,32 @@ def update_admin_setting(**values):
 def apply_hashcat_limits(hashcat_args: list):
     """ Modifies the hashcat args based on configured settings. """
     settings = read_settings()
+    filtered_input_args = []
+    skip_next = False
+    for arg in hashcat_args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "-d" or arg == "--backend-devices":
+            skip_next = True
+            continue
+        if arg.startswith("--backend-devices="):
+            continue
+        filtered_input_args.append(arg)
+    hashcat_args = filtered_input_args
+
     device_intensities = {str(k): int(v) for k, v in settings.get("device_intensities", {"1": 100}).items()}
     available_device_ids = {
         str(device.get("id"))
         for device in get_hashcat_devices()
-        if str(device.get("id", "")).isdigit()
+        if str(device.get("id", "")).isdigit() and device.get("hashcat_usable", True)
     }
     
     # identify enabled devices
     active_devices = [
         str(device_id)
         for device_id, val in device_intensities.items()
-        if int(val) > 0 and (not available_device_ids or str(device_id) in available_device_ids)
+        if int(val) > 0 and str(device_id) in available_device_ids
     ]
     
     if active_devices:

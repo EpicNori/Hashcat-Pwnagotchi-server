@@ -18,8 +18,8 @@ from app.word_magic.wordlist import estimate_runtime_fmt, wordlist_choices, find
 
 def check_incomplete_tasks():
     for task in UploadedTask.query.filter_by(completed=False):
-        task.status = TaskInfoStatus.ABORTED
-        task.completed = True
+        task.status = TaskInfoStatus.SCHEDULED
+        task.completed = False
     db.session.commit()
 
 
