@@ -1,9 +1,7 @@
 import os
-import hmac
 import shlex
 import shutil
 import subprocess
-import secrets
 import sys
 from http import HTTPStatus
 from pathlib import Path
@@ -25,7 +23,6 @@ from app.logger import logger
 from app.login import LoginForm, RegistrationForm, User, RoleEnum, register_user, create_first_users, Role, \
     roles_required, user_has_roles
 from app.uploader import cap_uploads, UploadForm, UploadedTask, PwnagotchiStatus, check_incomplete_tasks, backward_db_compatibility
-from app.pwnagotchi_ssh import run_command as pwnagotchi_run_command, upload_file as pwnagotchi_upload_file
 from app.utils.file_io import read_last_benchmark, bssid_essid_from_22000, build_rainbow_wordlist, read_hashcat_brain_password, decode_essid_hex, normalize_stored_capture_filename, resolve_existing_capture_path, extract_password_from_found_key
 from app.utils.utils import is_safe_url, hashcat_devices_info, date_formatted
 from app.word_magic import create_digits_wordlist, estimate_runtime_fmt, create_fast_wordlists
@@ -552,67 +549,6 @@ def pwnagotchi():
                            api_upload_url=url_for('api_upload'), api_heartbeat_url=url_for('api_pwnagotchi_heartbeat'),
                            tailscale_snapshot=get_tailscale_snapshot())
 
-
-@app.route('/admin/pwnagotchi_ssh', methods=['GET', 'POST'])
-@login_required
-@roles_required(RoleEnum.ADMIN)
-def pwnagotchi_ssh():
-    result = None
-    csrf_token = flask.session.setdefault("pwnagotchi_ssh_csrf", secrets.token_urlsafe(32))
-    defaults = {
-        "host": request.form.get("host", "desquerteur.local"),
-        "port": request.form.get("port", "22"),
-        "username": request.form.get("username", "pi"),
-        "command": request.form.get("command", "uname -a && systemctl is-active pwnagotchi || true"),
-        "remote_path": request.form.get("remote_path", "/home/pi/"),
-    }
-
-    if request.method == "POST":
-        password = request.form.get("password", "")
-        try:
-            submitted_token = request.form.get("csrf_token", "")
-            if not hmac.compare_digest(csrf_token, submitted_token):
-                return flask.abort(HTTPStatus.BAD_REQUEST, description="Invalid request token.")
-
-            port = int(defaults["port"])
-            if port < 1 or port > 65535:
-                raise ValueError("SSH port must be between 1 and 65535.")
-
-            if "test_connection" in request.form:
-                result = pwnagotchi_run_command(
-                    defaults["host"], defaults["username"], password,
-                    "hostname && whoami && systemctl is-active pwnagotchi || true",
-                    port=port,
-                )
-            elif "run_command" in request.form:
-                result = pwnagotchi_run_command(
-                    defaults["host"], defaults["username"], password,
-                    defaults["command"],
-                    port=port,
-                )
-            elif "upload_file" in request.form:
-                result = pwnagotchi_upload_file(
-                    defaults["host"], defaults["username"], password,
-                    request.files.get("upload"),
-                    defaults["remote_path"],
-                    port=port,
-                )
-        except Exception as error:
-            result = {
-                "ok": False,
-                "message": str(error),
-                "stdout": "",
-                "stderr": "",
-                "exit_status": None,
-            }
-
-    return render_template(
-        "pwnagotchi_ssh.html",
-        title="Pwnagotchi SSH Control",
-        result=result,
-        defaults=defaults,
-        csrf_token=csrf_token,
-    )
 
 @app.shell_context_processor
 def make_shell_context():

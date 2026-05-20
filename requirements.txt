@@ -17,4 +17,3 @@ wordninja==2.0.0
 tqdm
 psutil==5.9.5
 Flask-Limiter
-paramiko>=3.4.0
