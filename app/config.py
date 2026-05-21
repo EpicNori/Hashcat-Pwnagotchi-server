@@ -9,13 +9,7 @@ def _default_cache_dir() -> Path:
     try:
         return Path.home() / ".hashcat" / "wpa-server"
     except RuntimeError:
-        fallback_base = (
-            os.environ.get("USERPROFILE")
-            or os.environ.get("LOCALAPPDATA")
-            or os.environ.get("APPDATA")
-            or r"C:\Users\Public"
-        )
-        return Path(fallback_base) / ".hashcat" / "wpa-server"
+        return Path("/var/lib/hashcat-wpa-server")
 
 
 HASHCAT_WPA_CACHE_DIR = Path(

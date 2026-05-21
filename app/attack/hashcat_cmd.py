@@ -213,7 +213,7 @@ def _run_hashcat_process(hashcat_cmd_list, lock: ProgressLock, timeout_minutes=N
     is_paused_for_temp = False
     paused_status_context = None
     base_status_context = TaskInfoStatus.RUNNING
-    supports_suspend = os.name != "nt" and hasattr(signal, "SIGSTOP") and hasattr(signal, "SIGCONT")
+    supports_suspend = hasattr(signal, "SIGSTOP") and hasattr(signal, "SIGCONT")
 
     while True:
         current_time = time.time()
@@ -259,7 +259,7 @@ def _run_hashcat_process(hashcat_cmd_list, lock: ProgressLock, timeout_minutes=N
                 if not supports_suspend:
                     process.terminate()
                     raise RuntimeError(
-                        f"{pause_message}. Automatic pause/resume is unavailable on Windows, so the job was stopped to protect hardware."
+                        f"{pause_message}. Automatic pause/resume is unavailable, so the job was stopped to protect hardware."
                     )
                 if not is_paused_for_temp:
                     paused_status_context = base_status_context

@@ -32,10 +32,7 @@ def iter_capture_roots():
         add_root(install_root_path / "captures")
         add_root(install_root_path / "current" / "captures")
 
-    if os.name != "nt":
-        add_root("/var/lib/hashcat-wpa-server/captures")
-    else:
-        add_root(r"C:\ProgramData\HashcatWPAServer\data\captures")
+    add_root("/var/lib/hashcat-wpa-server/captures")
 
     return tuple(roots)
 

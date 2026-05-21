@@ -572,10 +572,7 @@ class HashcatWorker:
             with lock:
                 lock.cancel()
                 self.release_devices(lock.task_id)
-        if os.name == "nt":
-            subprocess_call(["taskkill", "/IM", "hashcat.exe", "/F"])
-        else:
-            subprocess_call(["pkill", "hashcat"])
+        subprocess_call(["pkill", "hashcat"])
         self.locks.clear()
 
     def cancel(self, task_id: int):

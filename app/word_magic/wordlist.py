@@ -1,6 +1,5 @@
 import datetime
 import gzip
-import os
 import re
 import shutil
 import subprocess
@@ -97,11 +96,10 @@ class WordListInfo:
             raise
 
     def _download_archive(self, gzip_file: Path):
-        if os.name != "nt":
-            try:
-                subprocess_call(['wget', '-q', self.url, '-O', gzip_file])
-            except FileNotFoundError:
-                logger.warning("wget is not available; falling back to urllib download")
+        try:
+            subprocess_call(['wget', '-q', self.url, '-O', gzip_file])
+        except FileNotFoundError:
+            logger.warning("wget is not available; falling back to urllib download")
 
         if calculate_md5(gzip_file) == self.checksum:
             return
@@ -132,7 +130,7 @@ class WordListInfo:
             shutil.copyfileobj(source, target_file)
 
 
-SCRIPT_SUFFIXES = {".sh", ".bash", ".py", ".ps1", ".cmd", ".bat"}
+SCRIPT_SUFFIXES = {".sh", ".bash", ".py"}
 
 
 def is_wordlist_script(path: Path) -> bool:
@@ -146,13 +144,12 @@ def count_wordlist(wordlist_path):
     if st_size_mb < 150:
         wordlist_path = Path(wordlist_path)
         try:
-            if os.name != "nt":
-                out, err = subprocess_call(['wc', '-l', str(wordlist_path)])
-                out = out.rstrip('\n')
-                counter = 0
-                if re.fullmatch(r"\d+\s+.*", out):
-                    counter = out.split()[0]
-                return int(counter)
+            out, err = subprocess_call(['wc', '-l', str(wordlist_path)])
+            out = out.rstrip('\n')
+            counter = 0
+            if re.fullmatch(r"\d+\s+.*", out):
+                counter = out.split()[0]
+            return int(counter)
         except Exception:
             logger.warning(f"wc line count failed for {wordlist_path}, falling back to Python counting")
 
@@ -334,20 +331,8 @@ def materialize_wordlist_source(wordlist_path: Path) -> Path:
     suffix = wordlist_path.suffix.lower()
     if suffix == ".py":
         command = [sys.executable, str(wordlist_path)]
-    elif suffix == ".ps1":
-        command = [
-            "powershell.exe",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(wordlist_path)
-        ]
-    elif suffix in {".cmd", ".bat"}:
-        command = ["cmd.exe", "/c", str(wordlist_path)]
     else:
-        shell = "bash" if os.name == "nt" else "/bin/bash"
-        command = [shell, str(wordlist_path)]
+        command = ["/bin/bash", str(wordlist_path)]
 
     try:
         completed = subprocess.run(

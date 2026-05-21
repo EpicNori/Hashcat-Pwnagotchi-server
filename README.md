@@ -1,10 +1,10 @@
 # Hashcat WPA/WPA2 Server
 
 [![Version](https://img.shields.io/badge/version-1.1.2--alpha-blue.svg)](https://github.com/EpicNori/Hashcat-Pwnagotchi-server)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-orange.svg)](https://github.com/EpicNori/Hashcat-Pwnagotchi-server)
+[![Platform](https://img.shields.io/badge/platform-Linux-orange.svg)](https://github.com/EpicNori/Hashcat-Pwnagotchi-server)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-A production-grade WPA/WPA2 cracking dashboard built around Hashcat. It gives you a web UI for uploads, task routing, device monitoring, result review, and safe in-place updates while keeping user data separate from application code.
+A Linux WPA/WPA2 cracking dashboard built around Hashcat. It gives you a web UI for uploads, task routing, device monitoring, result review, Pwnagotchi uploads, and safe in-place updates while keeping user data separate from application code.
 
 ## Acknowledgement
 
@@ -12,53 +12,26 @@ Special thanks to **Danylo Ulianych** and the upstream project [dizcza/hashcat-w
 
 ## Quick Start
 
-### Linux one-liner
-
 For Debian, Ubuntu, and Kali:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/install.sh | sudo bash
 ```
 
-On Linux, the installer now also attempts to auto-install NVIDIA drivers when compatible NVIDIA GPU hardware is detected on supported Debian-family systems.
-
-### Windows one-liner
-
-Open an Administrator PowerShell window (`Run as administrator`), then run this directly in that same window:
-
-```powershell
-irm https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/install.ps1 | iex
-```
+The installer also attempts to auto-install NVIDIA drivers when compatible NVIDIA GPU hardware is detected on supported Debian-family systems.
 
 After installation, the dashboard is available at `http://127.0.0.1:9111`.
 
 ## Update Workflow
 
-Both platforms now follow the same high-level workflow:
-
-- Install with a one-liner.
-- Keep application code separate from persistent data.
-- Update safely without deleting users, captures, or databases.
-- Run the dashboard automatically in the background after install and after reboot.
-
-### Linux update
-
 ```bash
 crackserver update
 ```
 
-### Windows update
-
-```powershell
-crackserver update
-```
-
-The Windows installer also drops a machine-wide `crackserver` wrapper into PATH.
+Updates keep persistent users, captures, databases, wordlists, and settings under `/var/lib/hashcat-wpa-server/`.
 
 ## Global CLI
 
-### Linux
-
 - `crackserver start`
 - `crackserver stop`
 - `crackserver restart`
@@ -66,72 +39,23 @@ The Windows installer also drops a machine-wide `crackserver` wrapper into PATH.
 - `crackserver update`
 - `crackserver dashboard`
 - `crackserver logs`
-
-### Windows
-
-- `crackserver start`
-- `crackserver stop`
-- `crackserver restart`
-- `crackserver status`
-- `crackserver update`
-- `crackserver dashboard`
-- `crackserver logs`
-- `crackserver enable-autostart`
-- `crackserver disable-autostart`
-- `crackserver uninstall`
-
-If the installed `crackserver` command is broken, you can run the repo-local uninstall wrapper instead from the project root:
-
-- `.\uninstall.ps1`
-- `.\uninstall.cmd`
-
-## Windows Layout
-
-The Windows installer uses a production-style split under `C:\ProgramData\HashcatWPAServer`:
-
-- `current` - current application code
-- `venv` - Python virtual environment
-- `data` - persistent application state
-- `logs` - dashboard and updater logs
-- `bin` - `crackserver` command wrapper
-
-Autostart is handled with a Scheduled Task so the dashboard comes back after reboot.
 
 ## Data Persistence
 
 User data is intentionally kept separate from application code:
 
-- Linux app code: `/opt/hashcat-wpa-server`
-- Linux user data: `/var/lib/hashcat-wpa-server/`
-- Windows app code: `C:\ProgramData\HashcatWPAServer\current`
-- Windows user data: `C:\ProgramData\HashcatWPAServer\data`
+- App code: `/opt/hashcat-wpa-server`
+- User data: `/var/lib/hashcat-wpa-server/`
+- Runtime logs: `/var/log/hashcat-wpa-server/`
 
 Safe updates replace the application layer only.
-
-## Important Windows Notes
-
-The Windows installer automates the dashboard, virtual environment, autostart, CLI wrapper, and update path. For cracking workloads:
-
-- if an NVIDIA GPU is detected, the Windows installer now first tries Windows Update for an actual NVIDIA display driver and then falls back to NVIDIA's helper app if needed
-- `hashcat.exe` is still required and should be available system-wide or bundled under `windows/tools/hashcat/`
-- direct `.22000` uploads work on Windows even if `hcxhashtool.exe` is missing, because the server can fall back to built-in ESSID splitting
-- raw `.cap`, `.pcap`, and `.pcapng` conversion still prefers `hcxpcapngtool.exe`, either bundled under `windows/tools/hcxtools/`, installed system-wide, or available through WSL
-- `hcxmactool.exe` is still needed for legacy `.hccapx` or `.pmkid` conversion support unless you provide an equivalent Linux-side path
-
-If a Windows install becomes unusable, the repo-local uninstall wrapper can still stop services, disable autostart, and remove `C:\ProgramData\HashcatWPAServer` without relying on the installed `current` tree.
-
-Recommended optional bundle layout:
-
-- `windows/tools/hashcat/hashcat.exe`
-- `windows/tools/hcxtools/hcxpcapngtool.exe`
-- `windows/tools/hcxtools/hcxhashtool.exe`
-
-If native hcxtools are not available, the app will still accept direct `.22000` uploads on Windows. If WSL is installed, the server can also try Linux-side hcxtools for raw capture conversion.
 
 ## Key Features
 
 - Auto-detects CPUs and GPUs for task routing
 - Per-device targeting and intensity controls
+- Optional spare-device queue scheduling
+- Queue reordering controls for scheduled handshakes
 - Safe update flow that preserves user data
 - Web UI for uploads, cracking progress, results, and user management
 - Default device and work-mode policy for API and Pwnagotchi uploads
@@ -142,7 +66,7 @@ If native hcxtools are not available, the app will still accept direct `.22000` 
 
 ## Pwnagotchi Plugin Install
 
-The repository now exposes the Pwnagotchi uploader plugin at the repo root so Jayofelony Pwnagotchi can install it through the built-in plugin manager.
+The repository exposes the Pwnagotchi uploader plugin at the repo root so Jayofelony Pwnagotchi can install it through the built-in plugin manager.
 
 Add this repository URL to your existing `main.custom_plugin_repos` list in `/etc/pwnagotchi/config.toml`:
 
@@ -161,16 +85,6 @@ sudo pwnagotchi plugins install pwnagotchi_hashcat_wpa
 
 The plugin installs enabled and creates safe placeholder settings. Open the Pwnagotchi plugins page, click `pwnagotchi_hashcat_wpa`, replace `100.x.x.x` with your server's LAN IP, Tailscale IP, or Cloudflare Tunnel hostname, then press **Save config** and **Test connection**.
 
-The plugin also prints a small status block on the Pwnagotchi face using the standard UI callbacks:
-
-- `on_ui_setup()` adds the element
-- `on_ui_update()` refreshes it while the device runs
-- `on_unload()` removes it cleanly
-
-That on-screen block shows the plugin name, upload state, and last message so the device gives immediate feedback even before you open the web UI.
-
-For the exact display-debugging workflow used on the connected Jayofelony Pwnagotchi, including the working `/ui` screen capture method and confirmed `(8, 74)` display position, see [PWNAGOTCHI_DISPLAY_WORKFLOW.md](PWNAGOTCHI_DISPLAY_WORKFLOW.md).
-
 The first-start defaults are:
 
 ```toml
@@ -180,35 +94,37 @@ main.plugins.pwnagotchi_hashcat_wpa.username = "admin"
 main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"
 ```
 
-If you want the Pwnagotchi to upload through normal internet access without running a VPN client on the device, open **Settings (Admin)**, create a Cloudflare Tunnel public hostname that points to `http://localhost:9111`, paste the tunnel connector token into **Public Website**, and use the generated HTTPS plugin URL such as `https://upload.example.com`.
-
 Recommended access choices:
 
 - `http://192.168.x.x:9111` for local LAN-only uploads
 - `http://100.x.x.x:9111` for private uploads over Tailscale
-- `https://upload.example.com` for the simplest mobile uploads through Public Website / Cloudflare Tunnel
+- `https://upload.example.com` for mobile uploads through Public Website / Cloudflare Tunnel
 
-The Admin Settings page includes a Public Website helper that installs/starts `cloudflared` from a Cloudflare Tunnel token and shows the exact Pwnagotchi plugin URL to paste into the plugin setup page. It also includes a Tailscale helper that can install/connect Tailscale on Linux deployments, show the detected server Tailscale IP, and provide the private plugin URL.
+The Admin Settings page includes a Public Website helper that installs/starts `cloudflared` from a Cloudflare Tunnel token and shows the exact Pwnagotchi plugin URL to paste into the plugin setup page. It also includes a Tailscale helper that can install/connect Tailscale, show the detected server Tailscale IP, and provide the private plugin URL.
+
+For the exact display-debugging workflow used on the connected Jayofelony Pwnagotchi, see [PWNAGOTCHI_DISPLAY_WORKFLOW.md](ai%20information/PWNAGOTCHI_DISPLAY_WORKFLOW.md).
 
 ## Supported Formats
 
 The app accepts modern Hashcat and common capture formats:
 
 - `.22000`
+- `.22001`
 - `.pcapng`
 - `.cap`
 - `.pcap`
 - `.hccapx`
 - `.2500`
+- `.2501`
 - `.pmkid`
 - `.16800`
+- `.16801`
 
-Uploads are converted to `.22000` when the required conversion tools are available.
+Uploads are converted to `.22000` when the required Linux conversion tools are available.
 
 ## Upload Modes
 
-- `Low` - conservative chain for lighter systems
-- `Fast` - short optimized chain that respects runtime limits
+- `Rainbow` - replays the reused-password list built from previously cracked keys
 - `Normal` - extended attack chain that continues until the task is completed, cracked, or cancelled
 
 ## Wordlists
@@ -216,15 +132,15 @@ Uploads are converted to `.22000` when the required conversion tools are availab
 - Built-in fallback wordlists can be installed directly from the upload page
 - User wordlists live under `~/.hashcat/wpa-server/wordlists`
 - User generator scripts are supported
-- Supported generator extensions now include `.sh`, `.bash`, `.py`, `.ps1`, `.cmd`, and `.bat`
+- Supported generator extensions are `.sh`, `.bash`, and `.py`
 
 ## Development
 
-For local development:
+For local development on Linux:
 
 ```bash
 pip install -r requirements.txt
 python -m flask --app app.run run --debug
 ```
 
-On Windows, the production installer serves the app with `waitress`. On Linux, the packaged deployment continues to use `gunicorn`.
+Production deployments use `gunicorn`.

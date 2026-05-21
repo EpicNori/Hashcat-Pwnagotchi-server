@@ -4,8 +4,8 @@ This note records the exact workflow used to make the Hashcat WPA plugin show on
 
 ## Working Device Details
 
-- USB network adapter on Windows: `Raspberry Pi USB Remote NDIS Network Device #2`
-- Windows host USB IP: `10.0.0.1` and `10.12.194.3`
+- USB tethered network link to the Pwnagotchi
+- Host USB IPs observed during testing: `10.0.0.1` and `10.12.194.3`
 - Pwnagotchi device IP that responded: `10.12.194.1`
 - Pwnagotchi web UI: `http://10.12.194.1:8080`
 - Bettercap web UI: `http://10.12.194.1`
@@ -29,41 +29,37 @@ If the device still shows old code after pressing Upgrade in the plugin manager,
 
 Find the device:
 
-```powershell
-Test-NetConnection 10.12.194.1 -Port 22
-Test-NetConnection 10.12.194.1 -Port 8080
-Test-NetConnection 10.12.194.1 -Port 80
+```bash
+nc -vz 10.12.194.1 22
+nc -vz 10.12.194.1 8080
+nc -vz 10.12.194.1 80
 ```
 
 Fetch the live display:
 
-```powershell
-Invoke-WebRequest -UseBasicParsing -Uri "http://10.12.194.1:8080/ui?x=$(Get-Random)" -OutFile "$env:TEMP\pwnagotchi-ui.png" -TimeoutSec 15
+```bash
+curl -fsS "http://10.12.194.1:8080/ui?x=$(date +%s)" -o /tmp/pwnagotchi-ui.png
 ```
 
 Upgrade the plugin through the Pwnagotchi web UI:
 
-```powershell
-$session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-$page = Invoke-WebRequest -UseBasicParsing -Uri http://10.12.194.1:8080/plugins -WebSession $session -TimeoutSec 10
-$token = [regex]::Match($page.Content, 'name="csrf_token" value="([^"]+)"').Groups[1].Value
-Invoke-WebRequest -UseBasicParsing -Uri http://10.12.194.1:8080/plugins/upgrade -Method POST -WebSession $session -Body @{
-    plugin = 'pwnagotchi_hashcat_wpa'
-    upgrade = 'Upgrade'
-    csrf_token = $token
-} -TimeoutSec 90
+```bash
+cookie=/tmp/pwnagotchi-cookies.txt
+token=$(curl -fsS -c "$cookie" http://10.12.194.1:8080/plugins | sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' | head -n1)
+curl -fsS -b "$cookie" -c "$cookie" -X POST http://10.12.194.1:8080/plugins/upgrade \
+  -d "plugin=pwnagotchi_hashcat_wpa" \
+  -d "upgrade=Upgrade" \
+  -d "csrf_token=$token"
 ```
 
 Restart Pwnagotchi in AUTO mode:
 
-```powershell
-$session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-$page = Invoke-WebRequest -UseBasicParsing -Uri http://10.12.194.1:8080/ -WebSession $session -TimeoutSec 10
-$token = [regex]::Match($page.Content, 'name="csrf_token" value="([^"]+)"').Groups[1].Value
-Invoke-WebRequest -UseBasicParsing -Uri http://10.12.194.1:8080/restart -Method POST -WebSession $session -Body @{
-    mode = 'AUTO'
-    csrf_token = $token
-} -TimeoutSec 30
+```bash
+cookie=/tmp/pwnagotchi-cookies.txt
+token=$(curl -fsS -c "$cookie" http://10.12.194.1:8080/ | sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' | head -n1)
+curl -fsS -b "$cookie" -c "$cookie" -X POST http://10.12.194.1:8080/restart \
+  -d "mode=AUTO" \
+  -d "csrf_token=$token"
 ```
 
 ## Confirmed Display Code Pattern

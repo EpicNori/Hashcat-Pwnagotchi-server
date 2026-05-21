@@ -94,15 +94,6 @@ def get_version():
 
 
 def get_management_script_path(script_name: str) -> str:
-    if os.name == "nt":
-        requested = Path(script_name)
-        windows_name = requested.name if requested.suffix.lower() == ".ps1" else f"{requested.stem}.ps1"
-        install_root = Path(os.environ.get("HASHCAT_WPA_INSTALL_ROOT", Path(app.root_path).parent))
-        installed_path = install_root / "current" / "windows" / windows_name
-        if installed_path.exists():
-            return str(installed_path)
-        return str(Path(app.root_path).parent / "windows" / windows_name)
-
     installed_path = Path("/opt/hashcat-wpa-server/bash") / script_name
     if installed_path.exists():
         return str(installed_path)
@@ -111,30 +102,13 @@ def get_management_script_path(script_name: str) -> str:
 
 def get_autostart_status():
     try:
-        if os.name == "nt":
-            result = subprocess.run(
-                [
-                    "powershell.exe",
-                    "-NoProfile",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-File",
-                    get_management_script_path("autostart_service.sh"),
-                    "status"
-                ],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                check=False
-            )
-        else:
-            result = subprocess.run(
-                ["sudo", get_management_script_path("autostart_service.sh"), "status"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                check=False
-            )
+        result = subprocess.run(
+            ["sudo", get_management_script_path("autostart_service.sh"), "status"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False
+        )
         status = (result.stdout or result.stderr or "").strip()
         return status or "unknown"
     except Exception:
@@ -142,46 +116,22 @@ def get_autostart_status():
 
 
 def get_update_status():
-    if os.name == "nt":
-        install_root = Path(os.environ.get("HASHCAT_WPA_INSTALL_ROOT", Path(app.root_path).parent))
-        update_log = install_root / "logs" / "updater.log"
-    else:
-        update_log = Path("/var/log/hashcat-wpa-server/updater.log")
+    update_log = Path("/var/log/hashcat-wpa-server/updater.log")
     status = "idle"
     summary = "No update log available yet."
 
     try:
-        if os.name == "nt":
-            result = subprocess.run(
-                [
-                    "powershell.exe",
-                    "-NoProfile",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-File",
-                    get_management_script_path("update_app.sh"),
-                    "status"
-                ],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                check=False
-            )
-            if (result.stdout or "").strip().lower() == "running":
-                status = "running"
-                summary = "Update is currently running in the background."
-        else:
-            result = subprocess.run(
-                ["systemctl", "is-active", "hashcat-server-updater.service"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                check=False
-            )
-            service_state = (result.stdout or "").strip()
-            if service_state == "active":
-                status = "running"
-                summary = "Update is currently running in the background."
+        result = subprocess.run(
+            ["systemctl", "is-active", "hashcat-server-updater.service"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False
+        )
+        service_state = (result.stdout or "").strip()
+        if service_state == "active":
+            status = "running"
+            summary = "Update is currently running in the background."
     except Exception:
         pass
 
@@ -262,40 +212,19 @@ def get_cloudflare_snapshot():
     detail = "Not installed"
 
     try:
-        if os.name == "nt":
-            result = subprocess.run(
-                [
-                    "powershell.exe",
-                    "-NoProfile",
-                    "-Command",
-                    "Get-Service cloudflared -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Status"
-                ],
-                capture_output=True,
-                text=True,
-                timeout=8,
-                check=False,
-            )
-            service_status = (result.stdout or "").strip()
-            if service_status:
-                installed = True
-                running = service_status.lower() == "running"
-                detail = f"Service {service_status}"
-            elif installed:
-                detail = "Installed, service not found"
-        else:
-            result = subprocess.run(
-                ["systemctl", "is-active", "cloudflared"],
-                capture_output=True,
-                text=True,
-                timeout=8,
-                check=False,
-            )
-            state = (result.stdout or "").strip()
-            if state:
-                running = state == "active"
-                detail = f"Service {state}"
-            elif installed:
-                detail = "Installed, service state unknown"
+        result = subprocess.run(
+            ["systemctl", "is-active", "cloudflared"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+        )
+        state = (result.stdout or "").strip()
+        if state:
+            running = state == "active"
+            detail = f"Service {state}"
+        elif installed:
+            detail = "Installed, service state unknown"
     except Exception as error:
         detail = str(error)
 
@@ -308,9 +237,6 @@ def get_cloudflare_snapshot():
 
 
 def get_runtime_logs_dir() -> Path:
-    if os.name == "nt":
-        install_root = Path(os.environ.get("HASHCAT_WPA_INSTALL_ROOT", Path(app.root_path).parent))
-        return install_root / "logs"
     return Path("/var/log/hashcat-wpa-server")
 
 
@@ -434,18 +360,6 @@ def resolve_task_attack_file(task: UploadedTask):
             return file_essid
 
     raise InvalidFileError("Could not match the original ESSID/BSSID pair in the capture file.")
-
-
-def windows_management_command(script_name: str, *args: str):
-    return [
-        "powershell.exe",
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        get_management_script_path(script_name),
-        *args,
-    ]
 
 
 def decode_task_essid(file_22000: Path):
@@ -1191,33 +1105,23 @@ def admin_settings():
     form.use_spare_devices_for_queue.data = bool(settings.get("use_spare_devices_for_queue", False))
         
     if ts_form.submit_tailscale.data and ts_form.validate():
-        if os.name == "nt":
-            flask.flash('Tailscale one-click installation is currently only automated for Linux deployments.', category='info')
-        else:
-            try:
-                proc = subprocess.Popen(["sudo", get_management_script_path("install_tailscale.sh")], stdin=subprocess.PIPE)
-                proc.communicate(input=ts_form.auth_key.data.encode())
-                flask.flash('Tailscale connection initiated in the background! Check your Tailscale admin console.', category='success')
-            except Exception as e:
-                flask.flash(f'Failed to run Tailscale securely: {e}', category='error')
+        try:
+            proc = subprocess.Popen(["sudo", get_management_script_path("install_tailscale.sh")], stdin=subprocess.PIPE)
+            proc.communicate(input=ts_form.auth_key.data.encode())
+            flask.flash('Tailscale connection initiated in the background! Check your Tailscale admin console.', category='success')
+        except Exception as e:
+            flask.flash(f'Failed to run Tailscale securely: {e}', category='error')
         return redirect(url_for('admin_settings'))
 
     if public_form.submit_public_website.data and public_form.validate():
         public_url = f"https://{public_form.public_hostname.data.strip().lower()}"
         token = (public_form.tunnel_token.data or "").strip()
         try:
-            if os.name == "nt":
-                proc = subprocess.Popen(
-                    windows_management_command("install_cloudflare_tunnel.sh", public_form.public_hostname.data.strip().lower()),
-                    stdin=subprocess.PIPE,
-                    text=True,
-                )
-            else:
-                proc = subprocess.Popen(
-                    ["sudo", get_management_script_path("install_cloudflare_tunnel.sh"), public_form.public_hostname.data.strip().lower()],
-                    stdin=subprocess.PIPE,
-                    text=True,
-                )
+            proc = subprocess.Popen(
+                ["sudo", get_management_script_path("install_cloudflare_tunnel.sh"), public_form.public_hostname.data.strip().lower()],
+                stdin=subprocess.PIPE,
+                text=True,
+            )
             proc.communicate(input=token, timeout=20)
             update_admin_setting(public_plugin_url=public_url)
             flask.flash('Public website connector started. Use the HTTPS plugin URL shown below after Cloudflare reports the tunnel healthy.', category='success')
@@ -1233,10 +1137,7 @@ def admin_settings():
             flask.flash('A GPU is already visible in settings, so NVIDIA driver installation was skipped.', category='info')
         else:
             try:
-                if os.name == "nt":
-                    subprocess.Popen(windows_management_command("install_nvidia_drivers.sh"))
-                else:
-                    subprocess.Popen(["sudo", get_management_script_path("install_nvidia_drivers.sh")])
+                subprocess.Popen(["sudo", get_management_script_path("install_nvidia_drivers.sh")])
                 flask.flash('NVIDIA driver check started in the background. If drivers are missing, the installer will try to add them. A reboot may still be required before the GPU appears.', category='success')
             except Exception as e:
                 flask.flash(f'Failed to start NVIDIA driver check: {e}', category='error')
@@ -1244,10 +1145,7 @@ def admin_settings():
 
     if update_form.submit_update.data and update_form.validate():
         try:
-            if os.name == "nt":
-                subprocess.Popen(windows_management_command("update_app.sh"))
-            else:
-                subprocess.Popen(["sudo", get_management_script_path("update_app.sh")])
+            subprocess.Popen(["sudo", get_management_script_path("update_app.sh")])
             flask.flash('🚀 Update initiated! The system is now downloading the latest version and rebuilding the package in the background. The server will automatically restart and be back online in roughly 60 seconds.', category='success')
         except Exception as e:
             flask.flash(f'Failed to start update script: {e}', category='error')
@@ -1255,10 +1153,7 @@ def admin_settings():
 
     if uninstall_form.submit_uninstall.data and uninstall_form.validate():
         try:
-            if os.name == "nt":
-                subprocess.Popen(windows_management_command("uninstall_app.sh"))
-            else:
-                subprocess.Popen(["sudo", get_management_script_path("uninstall_app.sh")])
+            subprocess.Popen(["sudo", get_management_script_path("uninstall_app.sh")])
             flask.flash('App uninstallation process started! The web server will be permanently deleted and go offline in 5 seconds.', category='danger')
         except Exception as e:
             flask.flash(f'Failed to start uninstall script: {e}', category='error')
@@ -1266,10 +1161,7 @@ def admin_settings():
 
     if autostart_form.submit_enable_autostart.data and autostart_form.validate():
         try:
-            if os.name == "nt":
-                command = windows_management_command("autostart_service.sh", "enable")
-            else:
-                command = ["sudo", get_management_script_path("autostart_service.sh"), "enable"]
+            command = ["sudo", get_management_script_path("autostart_service.sh"), "enable"]
             subprocess.run(command, capture_output=True, text=True, timeout=15, check=True)
             flask.flash('Autostart enabled. The server will now start automatically on boot.', category='success')
         except subprocess.CalledProcessError as e:
@@ -1281,10 +1173,7 @@ def admin_settings():
 
     if autostart_form.submit_disable_autostart.data and autostart_form.validate():
         try:
-            if os.name == "nt":
-                command = windows_management_command("autostart_service.sh", "disable")
-            else:
-                command = ["sudo", get_management_script_path("autostart_service.sh"), "disable"]
+            command = ["sudo", get_management_script_path("autostart_service.sh"), "disable"]
             subprocess.run(command, capture_output=True, text=True, timeout=15, check=True)
             flask.flash('Autostart disabled. The server will no longer start automatically on boot.', category='success')
         except subprocess.CalledProcessError as e:
@@ -1435,7 +1324,7 @@ def should_run_startup_maintenance():
         return False
     executable = Path(sys.argv[0]).name.lower()
     argv = " ".join(sys.argv).lower()
-    return executable in {"gunicorn", "flask", "waitress-serve"} or "flask" in argv
+    return executable in {"gunicorn", "flask"} or "flask" in argv
 
 
 def restore_interrupted_jobs():

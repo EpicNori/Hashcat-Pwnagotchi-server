@@ -1,7 +1,5 @@
-import os
 from pathlib import Path
 import re
-import shutil
 
 from app.logger import logger
 from app.domain import InvalidFileError
@@ -33,42 +31,14 @@ def _split_by_essid_fallback(file_22000: Path, to_folder: Path, output_suffix: s
         output_path.write_text('\n'.join(lines) + '\n')
 
 
-def _windows_path_to_wsl(path: Path) -> str:
-    path = Path(path).resolve()
-    drive = path.drive.rstrip(':').lower()
-    rest = path.as_posix().split(':', 1)[-1]
-    return f"/mnt/{drive}{rest}"
-
-
-def _quote_bash(arg: str) -> str:
-    return "'" + arg.replace("'", "'\"'\"'") + "'"
-
-
 def run_hcx_command(args, working_directory: Path | None = None):
     try:
-        return subprocess_call(args)
+        return subprocess_call(args, cwd=str(working_directory) if working_directory is not None else None)
     except FileNotFoundError as e:
-        if os.name != "nt" or not shutil.which("wsl.exe"):
-            executable = args[0] if args else "unknown"
-            raise FileNotFoundError(
-                f"Missing dependency: '{executable}'. Please install 'hcxtools' and 'hashcat'."
-            ) from e
-
-        distro = os.environ.get("HASHCAT_WPA_WSL_DISTRO", "Ubuntu")
-        translated_args = []
-        for arg in args:
-            text = str(arg)
-            if re.match(r"^[A-Za-z]:[\\/]", text):
-                translated_args.append(_windows_path_to_wsl(Path(text)))
-            else:
-                translated_args.append(text)
-
-        if working_directory is not None:
-            wsl_cwd = _windows_path_to_wsl(Path(working_directory))
-            bash_cmd = f"cd {_quote_bash(wsl_cwd)} && {' '.join(_quote_bash(arg) for arg in translated_args)}"
-            return subprocess_call(["wsl.exe", "-d", distro, "--", "bash", "-lc", bash_cmd])
-
-        return subprocess_call(["wsl.exe", "-d", distro, "--", *translated_args])
+        executable = args[0] if args else "unknown"
+        raise FileNotFoundError(
+            f"Missing dependency: '{executable}'. Please install 'hcxtools' and 'hashcat'."
+        ) from e
 
 
 def convert_to_22000(capture_path):

@@ -148,75 +148,19 @@ def get_linux_pci_gpus():
         return []
 
 
-def get_windows_video_adapters():
-    try:
-        completed = subprocess.run(
-            [
-                "powershell.exe",
-                "-NoProfile",
-                "-Command",
-                "Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | Format-List",
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        if completed.returncode != 0 or not completed.stdout.strip():
-            return []
-
-        devices = []
-        current = {}
-        for raw_line in completed.stdout.splitlines():
-            line = raw_line.strip()
-            if not line:
-                if current.get("name"):
-                    devices.append(current)
-                current = {}
-                continue
-            if ":" not in line:
-                continue
-            key, value = [part.strip() for part in line.split(":", 1)]
-            key = key.lower()
-            if key == "name":
-                current["name"] = value
-            elif key == "adapternram":
-                try:
-                    current["memory"] = f"{int(value) // (1024 * 1024)} MB"
-                except Exception:
-                    current["memory"] = "Unknown"
-        if current.get("name"):
-            devices.append(current)
-
-        normalized = []
-        for index, device in enumerate(devices, start=1):
-            normalized.append({
-                "id": str(index),
-                "name": device.get("name", f"Video Adapter {index}"),
-                "memory": device.get("memory", "Unknown"),
-                "is_gpu": infer_device_is_gpu(device.get("name", "")),
-            })
-        return normalized
-    except Exception as error:
-        logger.debug(f"Windows video adapter detection failed: {error}")
-        return []
-
-
-def subprocess_call(args: List[str]):
+def subprocess_call(args: List[str], cwd=None):
     """
     :param args: shell args
     """
     args = list(map(str, args))
-    cwd = None
+    process_cwd = cwd
     if args:
         executable = Path(args[0]).name.lower()
-        if executable in {"hashcat", "hashcat.exe"}:
+        if executable == "hashcat":
             resolved_hashcat = resolve_hashcat_executable()
             if resolved_hashcat:
                 args[0] = resolved_hashcat
-                cwd = str(Path(resolved_hashcat).parent)
+                process_cwd = str(Path(resolved_hashcat).parent)
     logger.debug(">>> {}".format(' '.join(args)))
     if not all(args):
         raise ValueError(f"Empty arg in {args}")
@@ -225,7 +169,7 @@ def subprocess_call(args: List[str]):
             args,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            cwd=cwd,
+            cwd=process_cwd,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -244,15 +188,8 @@ def resolve_hashcat_executable():
     install_root = os.environ.get("HASHCAT_WPA_INSTALL_ROOT")
     if install_root:
         install_root_path = Path(install_root)
-        current_root = Path(__file__).resolve().parents[2]
         candidates = [
-            install_root_path / "tools" / "hashcat" / "hashcat.exe",
-            install_root_path / "tools" / "hashcat.exe",
             install_root_path / "tools" / "hashcat" / "hashcat",
-            install_root_path / "current" / "windows" / "tools" / "hashcat" / "hashcat.exe",
-            install_root_path / "current" / "windows" / "tools" / "hashcat.exe",
-            current_root / "windows" / "tools" / "hashcat" / "hashcat.exe",
-            current_root / "windows" / "tools" / "hashcat.exe",
         ]
         for candidate in candidates:
             if candidate.exists():
@@ -264,10 +201,9 @@ def resolve_hashcat_executable():
         if override_path.exists():
             return str(override_path)
 
-    for command_name in ("hashcat.exe", "hashcat"):
-        resolved = which(command_name)
-        if resolved:
-            return resolved
+    resolved = which("hashcat")
+    if resolved:
+        return resolved
 
     return None
 
@@ -400,18 +336,12 @@ def get_hashcat_devices():
     except Exception:
         pass
 
-    # 3. Windows fallback: query adapters directly so the UI can still show the
-    # real GPU name when hashcat device discovery is incomplete.
-    if os.name == "nt" and not any(device.get("is_gpu") for device in devices):
-        for device in get_windows_video_adapters():
-            upsert_device(device)
-
-    # 4. Linux fallback: enumerate PCI display adapters if no GPU was discovered.
+    # 3. Linux fallback: enumerate PCI display adapters if no GPU was discovered.
     if not any(device.get("is_gpu") for device in devices):
         for device in get_linux_pci_gpus():
             upsert_device(device)
 
-    # 5. Last Resort: CPU
+    # 4. Last Resort: CPU
     if not devices:
         import psutil
         devices.append({
