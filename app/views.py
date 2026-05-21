@@ -994,7 +994,7 @@ def hashcat_potfile():
     return jsonify("Empty hashcat.potfile")
 
 from flask_wtf import FlaskForm
-from wtforms import IntegerField, SubmitField, PasswordField, StringField, RadioField
+from wtforms import BooleanField, IntegerField, SubmitField, PasswordField, StringField, RadioField
 from wtforms.validators import DataRequired, NumberRange, EqualTo, Optional, Regexp
 from app.utils.settings import read_settings, write_settings, update_admin_setting
 
@@ -1014,6 +1014,10 @@ class SettingsForm(FlaskForm):
     max_job_time_minutes = IntegerField('Max Job Time (minutes, optional)', validators=[Optional(), NumberRange(min=1)], description="Stop any cracking job that runs longer than this limit.")
     default_devices = MultiCheckboxField('Default Devices (for Pwnagotchi/API)', choices=[])
     default_api_workload = RadioField('Default Work Mode (for Pwnagotchi/API)', choices=Workload.to_form(), default=Workload.Normal.value)
+    use_spare_devices_for_queue = BooleanField(
+        'Use spare devices for queued handshakes',
+        description='Run the first active handshake on the default devices, then use other enabled devices for additional queued handshakes.'
+    )
     submit = SubmitField('Save Performance Settings')
 
 class TailscaleForm(FlaskForm):
@@ -1108,7 +1112,8 @@ def admin_settings():
             temp_resume_delta=form.temp_resume_delta.data,
             max_job_time_minutes=form.max_job_time_minutes.data,
             default_devices=form.default_devices.data,
-            default_api_workload=form.default_api_workload.data
+            default_api_workload=form.default_api_workload.data,
+            use_spare_devices_for_queue=form.use_spare_devices_for_queue.data
         )
         flask.flash('Performance settings updated successfully!')
         return redirect(url_for('admin_settings'))
@@ -1121,6 +1126,7 @@ def admin_settings():
     form.max_job_time_minutes.data = settings.get("max_job_time_minutes")
     form.default_devices.data = settings.get("default_devices", ["1"])
     form.default_api_workload.data = Workload.normalize(settings.get("default_api_workload", Workload.Normal.value))
+    form.use_spare_devices_for_queue.data = bool(settings.get("use_spare_devices_for_queue", False))
         
     if ts_form.submit_tailscale.data and ts_form.validate():
         if os.name == "nt":
@@ -1236,6 +1242,7 @@ def admin_settings():
         form.cpu_percent.data = settings.get('cpu_percent', 100)
         form.temp_resume_delta.data = settings.get('temp_resume_delta', 5)
         form.max_job_time_minutes.data = settings.get('max_job_time_minutes')
+        form.use_spare_devices_for_queue.data = bool(settings.get('use_spare_devices_for_queue', False))
         account_form.new_username.data = current_user.username
 
     autostart_status = get_autostart_status()

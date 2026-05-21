@@ -66,6 +66,7 @@
                         </div>
                         {{ wtf.form_field(form.default_devices) }}
                         {{ wtf.form_field(form.default_api_workload) }}
+                        {{ wtf.form_field(form.use_spare_devices_for_queue) }}
                         <hr>
                         {{ wtf.form_field(form.submit, class="btn btn-primary btn-lg btn-block") }}
                     </div>
@@ -98,6 +99,7 @@
                                 <li><b>Every Number</b>: To try every possible 8-digit number, simply select the <code>digits_8.txt</code> wordlist on the upload page.</li>
                             </ul>
                         </li>
+                        <li><b>Spare Device Queue</b>: When enabled, the first active handshake uses the default devices. Other queued handshakes may run on remaining enabled devices instead of waiting.</li>
                     </ul>
                 </div>
             </div>

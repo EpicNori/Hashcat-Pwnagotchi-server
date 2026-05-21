@@ -1,6 +1,7 @@
 import concurrent.futures
 import os
 import re
+import threading
 import time
 from asyncio import CancelledError
 from pathlib import Path
@@ -259,11 +260,13 @@ class CapAttack(BaseAttack):
                 )
 
 
-def _crack_async(attack: CapAttack):
+def _crack_async(worker, attack: CapAttack, raw_hashcat_args, requested_device_ids):
     """
     Called in background process.
     :param attack: hashcat attack to crack uploaded capture
     """
+    assigned_devices = worker.claim_devices(requested_device_ids, task_id=attack.lock.task_id)
+    attack.hashcat_args = tuple(worker.apply_device_limits(raw_hashcat_args, assigned_devices))
     with attack.lock:
         attack.lock.mark_started()
     attack.check_not_empty()
@@ -289,13 +292,15 @@ def _attack_from_recovery_state(lock: ProgressLock, state: dict):
     )
 
 
-def _recover_async(lock: ProgressLock, state: dict):
+def _recover_async(worker, lock: ProgressLock, state: dict):
     """
     Restore the hashcat session that was running during a server crash, then continue
     the attack chain from the next stage. If hashcat has no restore data yet, rerun
     the interrupted stage from scratch.
     """
     attack = _attack_from_recovery_state(lock, state)
+    assigned_devices = worker.claim_devices(worker.requested_devices_from_args(attack.hashcat_args), task_id=lock.task_id)
+    attack.hashcat_args = tuple(worker.apply_device_limits(list(attack.hashcat_args), assigned_devices))
     restored_stage = state.get("stage")
     session = state.get("session")
     completed_ok = False
@@ -360,13 +365,64 @@ class HashcatWorker:
         Called in main process.
         :param app: flask app
         """
-        # we don't need more than 1 thread since hashcat utilizes all devices at once
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=8)
         self.app = app
         self.locks = {}
         self.locks_onetime = []
+        self._device_condition = threading.Condition()
+        self._devices_by_task = {}
         if not BENCHMARK_FILE.exists():
             self.benchmark()
+
+    def requested_devices_from_args(self, hashcat_args):
+        from app.utils.settings import split_hashcat_device_args
+        _, requested_devices = split_hashcat_device_args(list(hashcat_args))
+        return requested_devices
+
+    def apply_device_limits(self, hashcat_args, device_ids):
+        from app.utils.settings import apply_hashcat_limits
+        return apply_hashcat_limits(list(hashcat_args), device_ids=device_ids)
+
+    def _claimable_devices(self, requested_device_ids):
+        from app.utils.settings import default_hashcat_device_ids, enabled_hashcat_device_ids, read_settings
+        settings = read_settings()
+        enabled_devices = enabled_hashcat_device_ids(settings)
+        requested = [str(device_id) for device_id in requested_device_ids if str(device_id) in enabled_devices]
+        allowed_devices = requested or enabled_devices
+        default_devices = [device_id for device_id in default_hashcat_device_ids(settings, enabled_devices) if device_id in allowed_devices]
+        if not default_devices and allowed_devices:
+            default_devices = [allowed_devices[0]]
+        spare_devices = [device_id for device_id in allowed_devices if device_id not in default_devices]
+        return settings, allowed_devices, default_devices, spare_devices
+
+    def claim_devices(self, requested_device_ids, task_id=None):
+        requested_device_ids = [str(device_id) for device_id in requested_device_ids or []]
+        task_id = task_id or threading.get_ident()
+        with self._device_condition:
+            while True:
+                settings, allowed_devices, default_devices, spare_devices = self._claimable_devices(requested_device_ids)
+                if not allowed_devices:
+                    return []
+                assigned = set().union(*self._devices_by_task.values()) if self._devices_by_task else set()
+                if not settings.get("use_spare_devices_for_queue", False):
+                    desired = list(allowed_devices)
+                    if all(device_id not in assigned for device_id in desired):
+                        self._devices_by_task[task_id] = set(desired)
+                        return desired
+                else:
+                    if default_devices and all(device_id not in assigned for device_id in default_devices):
+                        self._devices_by_task[task_id] = set(default_devices)
+                        return list(default_devices)
+                    for device_id in spare_devices:
+                        if device_id not in assigned:
+                            self._devices_by_task[task_id] = {device_id}
+                            return [device_id]
+                self._device_condition.wait(timeout=2)
+
+    def release_devices(self, task_id):
+        with self._device_condition:
+            self._devices_by_task.pop(task_id, None)
+            self._device_condition.notify_all()
 
     def callback_attack(self, future: concurrent.futures.Future):
         # called when the future is done or cancelled
@@ -381,6 +437,7 @@ class HashcatWorker:
         if lock is None:
             logger.error("Could not find lock for job {}".format(job_id))
             return
+        self.release_devices(lock.task_id)
         with lock:
             if future.cancelled():
                 lock.set_status(TaskInfoStatus.CANCELLED)
@@ -403,7 +460,7 @@ class HashcatWorker:
 
     def submit_recovery(self, task: UploadedTask, state: dict):
         lock = ProgressLock(task_id=task.id)
-        future = self.executor.submit(_recover_async, lock=lock, state=state)
+        future = self.executor.submit(_recover_async, worker=self, lock=lock, state=state)
         future.add_done_callback(self.callback_attack)
         with lock:
             lock.future = future
@@ -423,8 +480,9 @@ class HashcatWorker:
             raise FileNotFoundError(f"Capture file not found: {file_22000}")
         lock = ProgressLock(task_id=task.id)
         from app.utils.settings import apply_hashcat_limits, read_settings
-        hashcat_args = uploaded_form.hashcat_args(secret=True)
-        hashcat_args = apply_hashcat_limits(hashcat_args)
+        raw_hashcat_args = uploaded_form.hashcat_args(secret=True)
+        requested_device_ids = self.requested_devices_from_args(raw_hashcat_args)
+        hashcat_args = apply_hashcat_limits(raw_hashcat_args)
         settings = read_settings()
         configured_max_time = settings.get("max_job_time_minutes")
         requested_timeout = uploaded_form.timeout.data
@@ -443,7 +501,13 @@ class HashcatWorker:
                            hashcat_args=hashcat_args,
                            timeout=effective_timeout,
                            work_mode=work_mode)
-        future = self.executor.submit(_crack_async, attack=attack)
+        future = self.executor.submit(
+            _crack_async,
+            worker=self,
+            attack=attack,
+            raw_hashcat_args=raw_hashcat_args,
+            requested_device_ids=requested_device_ids,
+        )
         future.add_done_callback(self.callback_attack)
         with lock:
             lock.future = future
@@ -459,6 +523,7 @@ class HashcatWorker:
         for lock in tuple(self.locks.values()):
             with lock:
                 lock.cancel()
+                self.release_devices(lock.task_id)
         if os.name == "nt":
             subprocess_call(["taskkill", "/IM", "hashcat.exe", "/F"])
         else:
@@ -473,4 +538,5 @@ class HashcatWorker:
         return False
 
     def __del__(self):
-        self.executor.shutdown(wait=False)
+        if hasattr(self, "executor"):
+            self.executor.shutdown(wait=False)

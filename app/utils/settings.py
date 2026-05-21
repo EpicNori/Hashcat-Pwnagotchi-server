@@ -38,7 +38,8 @@ def read_settings():
             "temp_resume_delta": 5,
             "max_job_time_minutes": None,
             "default_devices": ["1"],
-            "default_api_workload": Workload.Normal.value
+            "default_api_workload": Workload.Normal.value,
+            "use_spare_devices_for_queue": False
         }
     try:
         with open(ADMIN_SETTINGS_PATH, "r") as f:
@@ -55,6 +56,7 @@ def read_settings():
             if "temp_resume_delta" not in data: data["temp_resume_delta"] = 5
             if "max_job_time_minutes" not in data: data["max_job_time_minutes"] = None
             if "default_devices" not in data: data["default_devices"] = ["1"]
+            if "use_spare_devices_for_queue" not in data: data["use_spare_devices_for_queue"] = False
             data["default_api_workload"] = Workload.normalize(data.get("default_api_workload", Workload.Normal.value))
             
             return data
@@ -69,12 +71,13 @@ def read_settings():
             "temp_resume_delta": 5,
             "max_job_time_minutes": None,
             "default_devices": ["1"],
-            "default_api_workload": Workload.Normal.value
+            "default_api_workload": Workload.Normal.value,
+            "use_spare_devices_for_queue": False
         }
 
 def write_settings(device_intensities: dict, cpu_percent: int, gpu_temp_limit: int = 90, cpu_temp_limit: int = 90,
                    temp_resume_delta: int = 5, max_job_time_minutes: int = None, default_devices: list = None,
-                   default_api_workload: str = Workload.Normal.value):
+                   default_api_workload: str = Workload.Normal.value, use_spare_devices_for_queue: bool = False):
     existing = read_settings()
     existing.update({
         "device_intensities": device_intensities,
@@ -84,7 +87,8 @@ def write_settings(device_intensities: dict, cpu_percent: int, gpu_temp_limit: i
         "temp_resume_delta": temp_resume_delta,
         "max_job_time_minutes": max_job_time_minutes,
         "default_devices": default_devices or ["1"],
-        "default_api_workload": Workload.normalize(default_api_workload)
+        "default_api_workload": Workload.normalize(default_api_workload),
+        "use_spare_devices_for_queue": bool(use_spare_devices_for_queue)
     })
     with open(ADMIN_SETTINGS_PATH, "w") as f:
         json.dump(existing, f)
@@ -96,23 +100,28 @@ def update_admin_setting(**values):
     with open(ADMIN_SETTINGS_PATH, "w") as f:
         json.dump(existing, f)
 
-def apply_hashcat_limits(hashcat_args: list):
-    """ Modifies the hashcat args based on configured settings. """
-    settings = read_settings()
+def split_hashcat_device_args(hashcat_args: list):
     filtered_input_args = []
+    requested_devices = []
     skip_next = False
     for arg in hashcat_args:
         if skip_next:
+            requested_devices.extend(str(arg).split(","))
             skip_next = False
             continue
         if arg == "-d" or arg == "--backend-devices":
             skip_next = True
             continue
         if arg.startswith("--backend-devices="):
+            requested_devices.extend(arg.split("=", 1)[1].split(","))
             continue
         filtered_input_args.append(arg)
-    hashcat_args = filtered_input_args
+    requested_devices = [device.strip() for device in requested_devices if device.strip().isdigit()]
+    return filtered_input_args, requested_devices
 
+
+def enabled_hashcat_device_ids(settings=None):
+    settings = settings or read_settings()
     device_intensities = {str(k): int(v) for k, v in settings.get("device_intensities", {"1": 100}).items()}
     available_device_ids = {
         str(device.get("id"))
@@ -126,14 +135,37 @@ def apply_hashcat_limits(hashcat_args: list):
         for device_id, val in device_intensities.items()
         if int(val) > 0 and str(device_id) in available_device_ids
     ]
-    
+    return active_devices
+
+
+def default_hashcat_device_ids(settings=None, enabled_devices=None):
+    settings = settings or read_settings()
+    enabled_devices = enabled_devices or enabled_hashcat_device_ids(settings)
+    defaults = [str(device_id) for device_id in settings.get("default_devices", [])]
+    selected = [device_id for device_id in defaults if device_id in enabled_devices]
+    return selected or list(enabled_devices[:1])
+
+
+def apply_hashcat_limits(hashcat_args: list, device_ids: list = None):
+    """Modifies hashcat args based on configured settings and selected devices."""
+    settings = read_settings()
+    hashcat_args, requested_devices = split_hashcat_device_args(hashcat_args)
+    enabled_devices = enabled_hashcat_device_ids(settings)
+    if device_ids is not None:
+        active_devices = [str(device_id) for device_id in device_ids if str(device_id) in enabled_devices]
+    elif requested_devices:
+        active_devices = [device_id for device_id in requested_devices if device_id in enabled_devices]
+    else:
+        active_devices = enabled_devices
+
     if active_devices:
         hashcat_args.append("-d")
         hashcat_args.append(",".join(active_devices))
 
         # Use the highest enabled device intensity to pick a stable hashcat
         # tuning profile rather than pause/resume throttling.
-        max_val = max(device_intensities.values()) if device_intensities else 100
+        device_intensities = {str(k): int(v) for k, v in settings.get("device_intensities", {"1": 100}).items()}
+        max_val = max((device_intensities.get(device_id, 100) for device_id in active_devices), default=100)
         tuning = hashcat_tuning_for_intensity(max_val)
 
         filtered_args = []
