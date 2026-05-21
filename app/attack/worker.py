@@ -105,16 +105,22 @@ class CapAttack(BaseAttack):
                 raise CancelledError(TaskInfoStatus.CANCELLED)
 
     def read_key(self):
-        # Use a clean hashcat call for --show to avoid conflicting flags
+        key_password = read_plain_key(self.key_file)
+        if not key_password:
+            key_password = self._read_key_from_hashcat_show()
+        if not key_password:
+            return
+        with self.lock:
+            self.lock.found_key = key_password
+            self.lock.set_status(TaskInfoStatus.CRACKED)
+
+    def _read_key_from_hashcat_show(self):
+        # Use a clean hashcat call for --show to avoid conflicting flags.
         from app.domain import HashcatMode
         cmd = ["hashcat", "-m", HashcatMode.from_suffix(self.file_22000.suffix), 
                "--show", "--outfile", str(self.key_file), str(self.file_22000), "--force"]
         subprocess_call(cmd)
-        key_password = read_plain_key(self.key_file)
-        with self.lock:
-            self.lock.found_key = key_password
-            if key_password:
-                self.lock.set_status(TaskInfoStatus.CRACKED)
+        return read_plain_key(self.key_file)
 
     def check_not_empty(self):
         """

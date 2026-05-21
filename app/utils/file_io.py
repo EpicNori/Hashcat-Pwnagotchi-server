@@ -131,13 +131,20 @@ def read_plain_key(key_path):
             lines = f.read().splitlines()
     except FileNotFoundError:
         return None
-    found_keys = set()
+    found_keys = []
+    seen_keys = set()
     for line in lines:
-        parts = line.split(':')
-        if len(parts) < 2:
+        key_parts = line.split(':', 1)
+        if len(key_parts) != 2:
             continue
-        essid, key = parts[-2:]
-        found_keys.add("{essid}:{key}".format(essid=essid, key=key))
+        hash_value, key = key_parts
+        if not hash_value or not key:
+            continue
+        found_key = "{hash_value}:{key}".format(hash_value=hash_value, key=key)
+        if found_key in seen_keys:
+            continue
+        seen_keys.add(found_key)
+        found_keys.append(found_key)
     if not found_keys:
         return None
     return ', '.join(found_keys)
@@ -203,7 +210,7 @@ def calculate_md5(fpath, chunk_size=1024 * 1024):
 def extract_password_from_found_key(found_key):
     if not found_key:
         return None
-    return str(found_key).rsplit(':', 1)[-1].strip() or None
+    return str(found_key).split(':', 1)[-1].strip() or None
 
 
 def build_rainbow_wordlist():
