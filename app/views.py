@@ -38,7 +38,10 @@ def active_task_filter():
 
 
 def queued_task_filter():
-    return (UploadedTask.completed == False) & (UploadedTask.status == TaskInfoStatus.SCHEDULED)
+    return (UploadedTask.completed == False) & (
+        (UploadedTask.status == TaskInfoStatus.SCHEDULED) |
+        UploadedTask.status.startswith("Waiting")
+    )
 
 
 def next_queue_position():
@@ -972,7 +975,7 @@ def move_queue_task(task_id, direction):
     task = db.session.get(UploadedTask, task_id)
     if task is None:
         return flask.abort(HTTPStatus.NOT_FOUND)
-    if task.completed or task.status != TaskInfoStatus.SCHEDULED:
+    if task.completed or task.status not in {TaskInfoStatus.SCHEDULED, "Waiting for queue position", "Waiting for device"}:
         flask.flash("Only scheduled handshakes can be moved in the queue.", category="info")
         return redirect(url_for('user_profile'))
 

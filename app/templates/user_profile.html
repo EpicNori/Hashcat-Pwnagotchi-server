@@ -79,7 +79,7 @@ danger
                 <td>{{ task.rule }}</td>
                 <td class="status">{{ task.status }}</td>
                 <td class="queue-position">
-                    {% if not task.completed and task.status == "Scheduled" %}
+                    {% if not task.completed and (task.status == "Scheduled" or task.status.startswith("Waiting")) %}
                         <span>#{{ task.queue_position }}</span>
                         {% if can_reorder_queue %}
                             <div class="btn-group btn-group-xs" style="margin-left: 4px;">

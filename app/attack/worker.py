@@ -19,6 +19,10 @@ from app.utils import read_plain_key, date_formatted, subprocess_call, read_hash
 from app.word_magic.wordlist import WordListDefault, iter_user_wordlist_scripts, materialize_wordlist_source
 
 
+class KeyFound(Exception):
+    pass
+
+
 class CapAttack(BaseAttack):
     STAGE_ORDER = (
         "rainbow",
@@ -72,7 +76,12 @@ class CapAttack(BaseAttack):
         self._stage = stage
         with self.lock:
             self.lock.set_status(status)
-        return func()
+        result = func()
+        self.read_key()
+        with self.lock:
+            if self.lock.found_key:
+                raise KeyFound()
+        return result
 
     def _should_run_stage(self, stage: str, start_after: str | None = None):
         if start_after is None:
@@ -222,6 +231,7 @@ class CapAttack(BaseAttack):
             self._run_stage("rainbow", "Running rainbow reuse list...", self.run_rainbow_attack)
 
         if self.work_mode == Workload.Rainbow.value:
+            self.read_key()
             return
 
         if self._should_run_stage("digits8", start_after):
@@ -270,8 +280,11 @@ def _crack_async(worker, attack: CapAttack, raw_hashcat_args, requested_device_i
     with attack.lock:
         attack.lock.mark_started()
     attack.check_not_empty()
-    attack.run_all()
-    attack.read_key()
+    try:
+        attack.run_all()
+        attack.read_key()
+    except KeyFound:
+        logger.info(f"Cracked key for {attack.file_22000}")
     logger.info(f"Finished cracking {attack.file_22000}")
     for name, timer in attack.timers.items():
         elapsed = timer['elapsed'] / timer['count']
@@ -323,8 +336,11 @@ def _recover_async(worker, lock: ProgressLock, state: dict):
                 logger.info(f"Recovered cracked key for {attack.file_22000}")
                 completed_ok = True
                 return
-        attack.run_all(start_after=restored_stage)
-        attack.read_key()
+        try:
+            attack.run_all(start_after=restored_stage)
+            attack.read_key()
+        except KeyFound:
+            logger.info(f"Recovered cracked key for {attack.file_22000}")
         completed_ok = True
     except RuntimeError as error:
         message = str(error).lower()
@@ -335,8 +351,11 @@ def _recover_async(worker, lock: ProgressLock, state: dict):
         if restored_stage in CapAttack.STAGE_ORDER:
             stage_index = CapAttack.STAGE_ORDER.index(restored_stage)
             start_after = CapAttack.STAGE_ORDER[stage_index - 1] if stage_index > 0 else None
-        attack.run_all(start_after=start_after)
-        attack.read_key()
+        try:
+            attack.run_all(start_after=start_after)
+            attack.read_key()
+        except KeyFound:
+            logger.info(f"Recovered cracked key for {attack.file_22000}")
         completed_ok = True
     finally:
         if completed_ok:
@@ -399,7 +418,8 @@ class HashcatWorker:
         with app.app_context():
             waiting = UploadedTask.query.filter(
                 UploadedTask.completed == False,
-                UploadedTask.status == TaskInfoStatus.SCHEDULED,
+                (UploadedTask.status == TaskInfoStatus.SCHEDULED) |
+                UploadedTask.status.startswith("Waiting"),
             ).order_by(
                 UploadedTask.queue_position.asc(),
                 UploadedTask.uploaded_time.asc(),
@@ -417,6 +437,7 @@ class HashcatWorker:
                     return []
                 assigned = set().union(*self._devices_by_task.values()) if self._devices_by_task else set()
                 if not self._is_first_waiting_task(task_id):
+                    self._set_task_status(task_id, "Waiting for queue position")
                     self._device_condition.wait(timeout=2)
                     continue
                 if not settings.get("use_spare_devices_for_queue", False):
@@ -432,11 +453,19 @@ class HashcatWorker:
                         if device_id not in assigned:
                             self._devices_by_task[task_id] = {device_id}
                             return [device_id]
+                self._set_task_status(task_id, "Waiting for device")
                 self._device_condition.wait(timeout=2)
 
     def notify_queue_changed(self):
         with self._device_condition:
             self._device_condition.notify_all()
+
+    def _set_task_status(self, task_id, status):
+        with app.app_context():
+            task = db.session.get(UploadedTask, task_id)
+            if task is not None and not task.completed and task.status != status:
+                task.status = status
+                db.session.commit()
 
     def release_devices(self, task_id):
         with self._device_condition:
