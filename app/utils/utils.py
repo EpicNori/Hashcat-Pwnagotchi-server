@@ -101,7 +101,7 @@ def parse_hashcat_devices_output(output: str):
         elif normalized_key in ("device type", "type"):
             current["device_type"] = value
             current["is_gpu"] = infer_device_is_gpu(current.get("name", ""), value)
-        elif normalized_key.startswith("memory total") or normalized_key == "global memory":
+        elif normalized_key.startswith("memorytotal") or normalized_key == "globalmemory":
             current["memory"] = value
 
     if current:
@@ -228,21 +228,41 @@ def hashcat_devices_info():
     except Exception:
         return Markup("Hashcat device information is unavailable. Install hashcat or add it to PATH.")
 
+
+def _host_memory_mb():
+    try:
+        import psutil
+        return psutil.virtual_memory().total // (1024 * 1024)
+    except Exception:
+        pass
+
+    try:
+        page_size = os.sysconf("SC_PAGE_SIZE")
+        page_count = os.sysconf("SC_PHYS_PAGES")
+        return (page_size * page_count) // (1024 * 1024)
+    except Exception:
+        return 0
+
+
 def get_live_usage():
     """ Returns real-time system usage (CPU, RAM, and GPU if possible) """
-    import psutil
-    import subprocess
-    
     stats = {
-        "cpu_usage": psutil.cpu_percent(),
-        "ram_usage": psutil.virtual_memory().percent,
+        "cpu_usage": 0,
+        "ram_usage": 0,
         "cpu_temp": 0,
         "gpus": []
     }
+
+    try:
+        import psutil
+        stats["cpu_usage"] = psutil.cpu_percent()
+        stats["ram_usage"] = psutil.virtual_memory().percent
+    except Exception:
+        psutil = None
     
     # Try to get CPU temperature
     try:
-        temps = psutil.sensors_temperatures()
+        temps = psutil.sensors_temperatures() if psutil is not None else {}
         if 'coretemp' in temps:
             stats["cpu_temp"] = temps['coretemp'][0].current
         elif 'cpu_thermal' in temps:
@@ -263,7 +283,7 @@ def get_live_usage():
     try:
         out = subprocess.check_output(['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu', '--format=csv,noheader,nounits'], 
                                       text=True, encoding="utf-8", errors="replace")
-        for line in out.strip().split('\n'):
+        for i, line in enumerate(out.strip().split('\n')):
             # Use maxsplit=1 to handle GPU names that contain commas
             parts = line.split(',', 1)
             if len(parts) != 2:
@@ -343,19 +363,17 @@ def get_hashcat_devices():
 
     # 4. Last Resort: CPU
     if not devices:
-        import psutil
         devices.append({
             "id": "cpu",
             "name": "Host CPU (Fallback)",
-            "memory": f"{psutil.virtual_memory().total // (1024*1024)} MB",
+            "memory": f"{_host_memory_mb()} MB",
             "is_gpu": False
         })
     elif not any(not device.get("is_gpu") for device in devices):
-        import psutil
         devices.append({
             "id": "cpu",
             "name": "Host CPU",
-            "memory": f"{psutil.virtual_memory().total // (1024*1024)} MB",
+            "memory": f"{_host_memory_mb()} MB",
             "is_gpu": False
         })
 
