@@ -61,6 +61,7 @@ danger
                 <th>Wordlist</th>
                 <th>Rule</th>
                 <th>Status</th>
+                <th>Queue</th>
                 <th>Files</th>
                 <th>Progress</th>
                 <th>Found Key</th>
@@ -77,6 +78,19 @@ danger
                 <td>{{ task.wordlist }}</td>
                 <td>{{ task.rule }}</td>
                 <td class="status">{{ task.status }}</td>
+                <td class="queue-position">
+                    {% if not task.completed and task.status == "Scheduled" %}
+                        <span>#{{ task.queue_position }}</span>
+                        {% if can_reorder_queue %}
+                            <div class="btn-group btn-group-xs" style="margin-left: 4px;">
+                                <a href="{{ url_for('move_queue_task', task_id=task.id, direction='up') }}" class="btn btn-default" title="Move up">Up</a>
+                                <a href="{{ url_for('move_queue_task', task_id=task.id, direction='down') }}" class="btn btn-default" title="Move down">Down</a>
+                            </div>
+                        {% endif %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
                 <td>
                     <div class="btn-group">
                         <a href="{{ url_for('download', task_id=task.id, file_type='capture') }}" class="btn btn-default btn-xs" title="Download Capture">Capture</a>
@@ -146,7 +160,7 @@ danger
             tdFile = tr[i].getElementsByTagName("td")[1];
             tdBSSID = tr[i].getElementsByTagName("td")[4];
             tdESSID = tr[i].getElementsByTagName("td")[5];
-            tdKey = tr[i].getElementsByTagName("td")[11];
+            tdKey = tr[i].getElementsByTagName("td")[12];
             
             if (tdFile || tdESSID || tdBSSID || tdKey) {
                 var txtFile = tdFile.textContent || tdFile.innerText;

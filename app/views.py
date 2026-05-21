@@ -22,7 +22,7 @@ from app.domain import TaskInfoStatus, Rule, InvalidFileError, Workload, Hashcat
 from app.logger import logger
 from app.login import LoginForm, RegistrationForm, User, RoleEnum, register_user, create_first_users, Role, \
     roles_required, user_has_roles
-from app.uploader import cap_uploads, UploadForm, UploadedTask, PwnagotchiStatus, check_incomplete_tasks, backward_db_compatibility
+from app.uploader import cap_uploads, UploadForm, UploadedTask, PwnagotchiStatus, check_incomplete_tasks, backward_db_compatibility, ensure_upload_queue_position_column
 from app.utils.file_io import read_last_benchmark, bssid_essid_from_22000, build_rainbow_wordlist, read_hashcat_brain_password, decode_essid_hex, normalize_stored_capture_filename, resolve_existing_capture_path, extract_password_from_found_key
 from app.utils.utils import is_safe_url, hashcat_devices_info, date_formatted
 from app.word_magic import create_digits_wordlist, estimate_runtime_fmt, create_fast_wordlists
@@ -35,6 +35,15 @@ def active_task_filter():
     return (
         UploadedTask.status == TaskInfoStatus.RUNNING
     ) | UploadedTask.status.startswith("Restoring")
+
+
+def queued_task_filter():
+    return (UploadedTask.completed == False) & (UploadedTask.status == TaskInfoStatus.SCHEDULED)
+
+
+def next_queue_position():
+    highest = db.session.query(db.func.max(UploadedTask.queue_position)).scalar()
+    return (highest or 0) + 1
 
 
 def proceed_login(user: User, remember=False):
@@ -483,14 +492,17 @@ def submit_uploaded_capture(file_storage, user: User, form: UploadForm, wordlist
         Thread(target=download_wordlist, args=(form.get_wordlist_path(),)).start()
 
     tasks = {}
+    queue_position = next_queue_position()
     hashcat_args = ' '.join(form.hashcat_args())
     for file_essid in iter_split_capture_files(folder_split_by_essid):
         bssid_essid = next(bssid_essid_from_22000(file_essid))
         bssid, essid = bssid_essid.split(':')
         essid = decode_essid_hex(essid)
         new_task = UploadedTask(user_id=user.id, filename=filename, wordlist=form.get_wordlist_name(),
-                                rule=form.rule.data, bssid=bssid, essid=essid, hashcat_args=hashcat_args)
+                                rule=form.rule.data, bssid=bssid, essid=essid, hashcat_args=hashcat_args,
+                                queue_position=queue_position)
         tasks[file_essid] = new_task
+        queue_position += 1
 
     if not tasks:
         raise InvalidFileError(f"No crackable WPA data was found in {file_storage.filename}.")
@@ -718,10 +730,19 @@ def estimate_runtime():
 def user_profile():
     from app.uploader import UploadedTask
     if user_has_roles(current_user, RoleEnum.ADMIN):
-        tasks = UploadedTask.query.order_by(UploadedTask.uploaded_time.desc()).all()
+        tasks = UploadedTask.query.order_by(
+            UploadedTask.completed.asc(),
+            UploadedTask.queue_position.asc(),
+            UploadedTask.uploaded_time.desc(),
+        ).all()
     else:
-        tasks = current_user.uploads[::-1]
+        tasks = UploadedTask.query.filter_by(user_id=current_user.id).order_by(
+            UploadedTask.completed.asc(),
+            UploadedTask.queue_position.asc(),
+            UploadedTask.uploaded_time.desc(),
+        ).all()
     return render_template('user_profile.html', title='Home', tasks=tasks,
+                           can_reorder_queue=user_has_roles(current_user, RoleEnum.ADMIN),
                            benchmark=read_last_benchmark(), devices=hashcat_devices_info(), progress=progress())
 
 
@@ -941,6 +962,43 @@ def cancel(task_id):
         return jsonify("Cancelling...")
 
 
+@app.route("/queue/<int:task_id>/<string:direction>")
+@login_required
+@roles_required(RoleEnum.ADMIN)
+def move_queue_task(task_id, direction):
+    if direction not in {"up", "down"}:
+        return flask.abort(HTTPStatus.BAD_REQUEST, description="Queue direction must be up or down.")
+
+    task = db.session.get(UploadedTask, task_id)
+    if task is None:
+        return flask.abort(HTTPStatus.NOT_FOUND)
+    if task.completed or task.status != TaskInfoStatus.SCHEDULED:
+        flask.flash("Only scheduled handshakes can be moved in the queue.", category="info")
+        return redirect(url_for('user_profile'))
+
+    queued_tasks = UploadedTask.query.filter(queued_task_filter()).order_by(
+        UploadedTask.queue_position.asc(),
+        UploadedTask.uploaded_time.asc(),
+        UploadedTask.id.asc(),
+    ).all()
+    index = next((idx for idx, queued in enumerate(queued_tasks) if queued.id == task.id), None)
+    if index is None:
+        flask.flash("That handshake is not currently waiting in the queue.", category="info")
+        return redirect(url_for('user_profile'))
+
+    swap_index = index - 1 if direction == "up" else index + 1
+    if swap_index < 0 or swap_index >= len(queued_tasks):
+        flask.flash("That handshake is already at the edge of the queue.", category="info")
+        return redirect(url_for('user_profile'))
+
+    other = queued_tasks[swap_index]
+    task.queue_position, other.queue_position = other.queue_position, task.queue_position
+    db.session.commit()
+    hashcat_worker.notify_queue_changed()
+    flask.flash(f"Moved task #{task.id} {direction} in the queue.", category="success")
+    return redirect(url_for('user_profile'))
+
+
 @app.route("/requeue/<int:task_id>")
 @login_required
 def requeue(task_id):
@@ -962,7 +1020,8 @@ def requeue(task_id):
             rule=task.rule,
             bssid=task.bssid,
             essid=task.essid,
-            hashcat_args=' '.join(split_hashcat_args(task.hashcat_args))
+            hashcat_args=' '.join(split_hashcat_args(task.hashcat_args)),
+            queue_position=next_queue_position()
         )
         db.session.add(new_task)
         db.session.commit()
@@ -1419,6 +1478,7 @@ def restore_interrupted_jobs():
 if should_run_startup_maintenance():
     with app.app_context():
         create_first_users()
+        ensure_upload_queue_position_column()
         check_incomplete_tasks()
         backward_db_compatibility()
         restore_interrupted_jobs()

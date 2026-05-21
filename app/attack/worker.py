@@ -395,6 +395,18 @@ class HashcatWorker:
         spare_devices = [device_id for device_id in allowed_devices if device_id not in default_devices]
         return settings, allowed_devices, default_devices, spare_devices
 
+    def _is_first_waiting_task(self, task_id):
+        with app.app_context():
+            waiting = UploadedTask.query.filter(
+                UploadedTask.completed == False,
+                UploadedTask.status == TaskInfoStatus.SCHEDULED,
+            ).order_by(
+                UploadedTask.queue_position.asc(),
+                UploadedTask.uploaded_time.asc(),
+                UploadedTask.id.asc(),
+            ).first()
+            return waiting is None or waiting.id == task_id
+
     def claim_devices(self, requested_device_ids, task_id=None):
         requested_device_ids = [str(device_id) for device_id in requested_device_ids or []]
         task_id = task_id or threading.get_ident()
@@ -404,6 +416,9 @@ class HashcatWorker:
                 if not allowed_devices:
                     return []
                 assigned = set().union(*self._devices_by_task.values()) if self._devices_by_task else set()
+                if not self._is_first_waiting_task(task_id):
+                    self._device_condition.wait(timeout=2)
+                    continue
                 if not settings.get("use_spare_devices_for_queue", False):
                     desired = list(allowed_devices)
                     if all(device_id not in assigned for device_id in desired):
@@ -418,6 +433,10 @@ class HashcatWorker:
                             self._devices_by_task[task_id] = {device_id}
                             return [device_id]
                 self._device_condition.wait(timeout=2)
+
+    def notify_queue_changed(self):
+        with self._device_condition:
+            self._device_condition.notify_all()
 
     def release_devices(self, task_id):
         with self._device_condition:

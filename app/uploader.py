@@ -9,11 +9,20 @@ from wtforms.fields import MultipleFileField
 from wtforms.validators import StopValidation
 from wtforms.fields import RadioField, SubmitField, BooleanField, IntegerField
 from wtforms.validators import Optional, ValidationError, NumberRange
+from sqlalchemy import inspect, text
 
 from app import app, db
 from app.domain import Rule, NONE_STR, TaskInfoStatus, Workload, HashcatMode, BrainClientFeature
 from app.utils import read_hashcat_brain_password, normalize_stored_capture_filename, resolve_existing_capture_path
 from app.word_magic.wordlist import estimate_runtime_fmt, wordlist_choices, find_wordlist_by_path
+
+
+def ensure_upload_queue_position_column():
+    inspector = inspect(db.engine)
+    columns = {column["name"] for column in inspector.get_columns(UploadedTask.__tablename__)}
+    if "queue_position" not in columns:
+        db.session.execute(text("ALTER TABLE uploads ADD COLUMN queue_position INTEGER"))
+        db.session.commit()
 
 
 def check_incomplete_tasks():
@@ -24,6 +33,13 @@ def check_incomplete_tasks():
 
 
 def backward_db_compatibility():
+    next_position = 1
+    ordered_tasks = UploadedTask.query.order_by(UploadedTask.uploaded_time.asc(), UploadedTask.id.asc()).all()
+    for task in ordered_tasks:
+        if task.queue_position is None:
+            task.queue_position = next_position
+        next_position = max(next_position, (task.queue_position or 0) + 1)
+
     for task in UploadedTask.query.filter(UploadedTask.status.startswith("InterruptedError('Cancelled'")):
         task.status = TaskInfoStatus.CANCELLED
     for task in UploadedTask.query.filter(UploadedTask.filename.is_not(None)):
@@ -81,6 +97,7 @@ class UploadedTask(db.Model):
     hashcat_args = db.Column(db.String(1024), default='')
     uploaded_time = db.Column(db.DateTime, index=True, default=datetime.datetime.now)
     duration = db.Column(db.Interval, default=datetime.timedelta)
+    queue_position = db.Column(db.Integer, index=True)
     status = db.Column(db.String(256), default=TaskInfoStatus.SCHEDULED)
     found_key = db.Column(db.String(256))
     completed = db.Column(db.Boolean, default=False)
