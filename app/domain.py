@@ -177,7 +177,11 @@ class ProgressLock:
         self.found_key = None
         self.cancelled = False  # needed in hashcat_cmd.run_with_status()
         self.completed = False  # checked in /progress
-        self._start_time = time.time()
+        self._start_time = None
+
+    def mark_started(self):
+        if self._start_time is None:
+            self._start_time = time.time()
 
     def set_status(self, status):
         self.status = status
@@ -199,6 +203,8 @@ class ProgressLock:
 
     @property
     def duration(self):
+        if self._start_time is None:
+            return datetime.timedelta()
         duration = int(time.time() - self._start_time)
         duration = datetime.timedelta(seconds=duration)
         return duration

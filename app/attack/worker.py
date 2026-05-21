@@ -264,6 +264,8 @@ def _crack_async(attack: CapAttack):
     Called in background process.
     :param attack: hashcat attack to crack uploaded capture
     """
+    with attack.lock:
+        attack.lock.mark_started()
     attack.check_not_empty()
     attack.run_all()
     attack.read_key()
@@ -297,6 +299,15 @@ def _recover_async(lock: ProgressLock, state: dict):
     restored_stage = state.get("stage")
     session = state.get("session")
     completed_ok = False
+    with lock:
+        lock.mark_started()
+    with lock_app:
+        with app.app_context():
+            task = db.session.get(UploadedTask, lock.task_id)
+            if task is not None:
+                task.status = "Restoring interrupted job"
+                task.completed = False
+                db.session.commit()
     try:
         if session:
             with lock:
@@ -396,9 +407,8 @@ class HashcatWorker:
         future.add_done_callback(self.callback_attack)
         with lock:
             lock.future = future
-            lock.set_status("Restoring interrupted job")
         self.locks[id(future)] = lock
-        task.status = "Restoring interrupted job"
+        task.status = TaskInfoStatus.SCHEDULED
         task.completed = False
 
     def submit_capture(self, file_22000, uploaded_form: UploadForm, task: UploadedTask):

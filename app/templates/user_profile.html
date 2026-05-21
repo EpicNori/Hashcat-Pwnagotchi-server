@@ -6,7 +6,7 @@
 success
 {% elif task.status == "Completed" %}
 info
-{% elif task.status == "Running" %}
+{% elif task.status.startswith("Running") or task.status.startswith("Restoring") %}
 warning
 {% elif "Error" in task.status or "Exception" in task.status or task.status == "Aborted" %}
 danger
@@ -122,6 +122,16 @@ danger
             task_row.find("td.status").text(task_progress.status);
             task_row.find("td.duration").text(task_progress.duration);
             task_row.find("td.found_key").text(task_progress.found_key ?? "");
+            task_row.removeClass("success info warning danger");
+            if (task_progress.found_key) {
+                task_row.addClass("success");
+            } else if (task_progress.status === "Completed") {
+                task_row.addClass("info");
+            } else if (task_progress.status.startsWith("Running") || task_progress.status.startsWith("Restoring")) {
+                task_row.addClass("warning");
+            } else if (task_progress.status.includes("Error") || task_progress.status.includes("Exception") || task_progress.status === "Aborted") {
+                task_row.addClass("danger");
+            }
         }
     }
 

@@ -31,6 +31,12 @@ from app.word_magic.wordlist import download_wordlist, find_wordlist_by_name, Wo
 hashcat_worker = HashcatWorker(app)
 
 
+def active_task_filter():
+    return (
+        UploadedTask.status == TaskInfoStatus.RUNNING
+    ) | UploadedTask.status.startswith("Restoring")
+
+
 def proceed_login(user: User, remember=False):
     login_user(user, remember=remember)
     next_page = request.args.get('next')
@@ -56,7 +62,7 @@ def index():
         'total_handshakes': UploadedTask.query.count(),
         'total_cracked': UploadedTask.query.filter(UploadedTask.found_key.is_not(None)).count(),
         'total_failed': UploadedTask.query.filter(UploadedTask.completed == True, UploadedTask.found_key.is_(None)).count(),
-        'total_active': UploadedTask.query.filter(UploadedTask.status.in_(['Running', 'Scheduled'])).count(),
+        'total_active': UploadedTask.query.filter(active_task_filter()).count(),
         'total_users': User.query.count(),
         'cpu_limit': settings.get('cpu_percent', 100)
     }
@@ -1281,7 +1287,7 @@ def api_stats():
         'total_handshakes': UploadedTask.query.count(),
         'total_cracked': UploadedTask.query.filter(UploadedTask.found_key.is_not(None)).count(),
         'total_failed': UploadedTask.query.filter(UploadedTask.completed == True, UploadedTask.found_key.is_(None)).count(),
-        'total_active': UploadedTask.query.filter(UploadedTask.completed == False).count(),
+        'total_active': UploadedTask.query.filter(active_task_filter()).count(),
         'total_users': User.query.count(),
         'cpu_limit': settings.get('cpu_percent', 100),
         'devices': devices,
