@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import time
+from urllib.parse import urlparse
 
 import requests
 from pwnagotchi import plugins
@@ -496,6 +497,28 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
             '</div>'
         )
 
+    def _connection_help_message(self, base_url, exc):
+        parsed = urlparse(base_url)
+        host = parsed.hostname or base_url
+        scheme = parsed.scheme or 'http'
+        port = parsed.port or (443 if scheme == 'https' else 80)
+        error_text = str(exc)
+        hints = [
+            f'Could not reach {base_url}. Error: {error_text}',
+            f'Check from the Pwnagotchi shell: ping {host}',
+            f'Then test HTTP: curl -v {base_url}',
+        ]
+        if scheme == 'http' and host.startswith(('192.168.', '10.', '172.')):
+            hints.append(f'LAN URL detected. Make sure the Pwnagotchi is on the same network and the server listens on 0.0.0.0:{port}.')
+            hints.append(f'On the server, check firewall/router access to TCP port {port}.')
+        elif scheme == 'http' and host.startswith('100.'):
+            hints.append('Tailscale URL detected. Make sure Tailscale is running on both devices and they can see each other.')
+        elif scheme == 'https':
+            hints.append('HTTPS URL detected. Check that the tunnel/DNS is online and that the hostname opens from another device.')
+        else:
+            hints.append('If this is a local URL, confirm the IP did not change after reboot or Wi-Fi reconnect.')
+        return ' '.join(hints)
+
     def _csrf_input(self):
         if generate_csrf is None:
             return ''
@@ -778,6 +801,10 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
                         'message': f'HTTP {response.status_code} from {base_url}',
                     }
                 except Exception as exc:
-                    notice = {'ok': False, 'label': 'Unreachable', 'message': f'Could not reach {base_url}: {exc}'}
+                    notice = {
+                        'ok': False,
+                        'label': 'Server not reachable',
+                        'message': self._connection_help_message(base_url, exc),
+                    }
 
         return self._render_page(notice=notice)
