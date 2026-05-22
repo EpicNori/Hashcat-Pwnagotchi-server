@@ -12,7 +12,7 @@ from app.attack.base_attack import BaseAttack
 from app.attack.hashcat_cmd import restore_with_status, run_with_status, HashcatCmdCapture
 from app.attack.recovery import clear_recovery_state, read_recovery_state
 from app.config import BENCHMARK_FILE
-from app.domain import Rule, TaskInfoStatus, InvalidFileError, ProgressLock, Workload
+from app.domain import Rule, TaskInfoStatus, InvalidFileError, ProgressLock, Workload, WordList
 from app.logger import logger
 from app.uploader import UploadForm, UploadedTask
 from app.utils import read_plain_key, date_formatted, subprocess_call, read_hashcat_brain_password, build_rainbow_wordlist
@@ -152,6 +152,14 @@ class CapAttack(BaseAttack):
             self.lock.set_status("Running top1k with rules")
         super().run_top1k()
 
+    def run_arm_top1k_plain(self):
+        self.cancel_if_needed()
+        with self.lock:
+            self.lock.set_status("Running ARM-safe top1k")
+        hashcat_cmd = self.new_cmd()
+        hashcat_cmd.add_wordlists(WordList.TOP1K)
+        self.runner(hashcat_cmd)
+
     def run_digits8(self):
         self.cancel_if_needed()
         with self.lock:
@@ -246,6 +254,17 @@ class CapAttack(BaseAttack):
 
         arm_safe_mode = self._arm_safe_mode()
 
+        if arm_safe_mode:
+            if self._should_run_stage("top1k", start_after):
+                self._run_stage("top1k", "Running ARM-safe top1k...", self.run_arm_top1k_plain)
+
+            if self._should_run_stage("main_wordlist", start_after):
+                self._run_stage("main_wordlist", "Running the main wordlist...", self.run_main_wordlist)
+
+            with self.lock:
+                self.lock.set_status("Completed ARM-safe quick attack chain")
+            return
+
         if not arm_safe_mode and self._should_run_stage("digits8", start_after):
             self._run_stage("digits8", "Running digits8...", self.run_digits8)
         
@@ -264,7 +283,7 @@ class CapAttack(BaseAttack):
         if self._should_run_stage("main_wordlist", start_after):
             self._run_stage("main_wordlist", "Running the main wordlist...", self.run_main_wordlist)
 
-        if self.work_mode == Workload.Normal.value and not arm_safe_mode:
+        if self.work_mode == Workload.Normal.value:
             if self._should_run_stage("names_with_digits", start_after):
                 self._run_stage("names_with_digits", "Running name mutations with digits...", self.run_names_with_digits)
 
@@ -280,9 +299,6 @@ class CapAttack(BaseAttack):
                     "Running exhaustive WPA brute force (8-63)...",
                     lambda: self.run_exhaustive_bruteforce(min_length=8),
                 )
-        elif arm_safe_mode:
-            with self.lock:
-                self.lock.set_status("Completed ARM-safe quick attack chain")
 
 
 def _crack_async(worker, attack: CapAttack, raw_hashcat_args, requested_device_ids):
