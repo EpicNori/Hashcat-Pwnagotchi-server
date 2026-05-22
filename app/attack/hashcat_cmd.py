@@ -29,6 +29,10 @@ TRANSIENT_STATUS_PREFIXES = (
     "Paused for CPU usage cap",
     "Resumed after limit cooldown",
 )
+HASHCAT_EXIT_HINTS = {
+    -11: "Hashcat self-test failed. This is usually a GPU/OpenCL/CUDA driver or backend tuning issue.",
+    11: "Hashcat exited with code 11. This often points to a GPU/OpenCL/CUDA backend crash or self-test problem.",
+}
 
 
 def is_transient_status(status: str) -> bool:
@@ -360,6 +364,9 @@ def _run_hashcat_process(hashcat_cmd_list, lock: ProgressLock, timeout_minutes=N
                 stderr_summary = err.strip() or warn.strip() or stderr.strip()
                 stderr_summary = stderr_summary.splitlines()[0]
                 stderr_summary = f": {stderr_summary}"
+            hint = HASHCAT_EXIT_HINTS.get(process.returncode)
+            if hint:
+                stderr_summary = f"{stderr_summary}. {hint}" if stderr_summary else f": {hint}"
             raise RuntimeError(f"Hashcat exited with code {process.returncode}{stderr_summary}")
 
 

@@ -8,25 +8,18 @@ def hashcat_tuning_for_intensity(intensity: int):
     """
     Map the UI percentage to steady hashcat tuning knobs.
 
-    This keeps the GPU running continuously with a lighter kernel configuration
-    instead of pulse-throttling the whole process on and off.
+    Keep the GPU running continuously with a lighter workload profile instead
+    of forcing backend-specific kernel parameters. Hashcat's self-test is
+    sensitive to hand-picked accel/loop values on some OpenCL/CUDA stacks.
     """
     intensity = max(0, min(100, int(intensity)))
-    if intensity == 0:
-        return {"workload_profile": "1", "kernel_accel": 8, "kernel_loops": 64}
-    if intensity <= 20:
-        return {"workload_profile": "1", "kernel_accel": 8, "kernel_loops": 64}
     if intensity <= 35:
-        return {"workload_profile": "1", "kernel_accel": 16, "kernel_loops": 128}
-    if intensity <= 50:
-        return {"workload_profile": "2", "kernel_accel": 24, "kernel_loops": 128}
+        return {"workload_profile": "1"}
     if intensity <= 65:
-        return {"workload_profile": "2", "kernel_accel": 32, "kernel_loops": 256}
-    if intensity <= 80:
-        return {"workload_profile": "3", "kernel_accel": 48, "kernel_loops": 256}
+        return {"workload_profile": "2"}
     if intensity <= 90:
-        return {"workload_profile": "3", "kernel_accel": 64, "kernel_loops": 512}
-    return {"workload_profile": "4", "kernel_accel": 96, "kernel_loops": 1024}
+        return {"workload_profile": "3"}
+    return {"workload_profile": "4"}
 
 def read_settings():
     if not ADMIN_SETTINGS_PATH.exists():
@@ -163,7 +156,8 @@ def apply_hashcat_limits(hashcat_args: list, device_ids: list = None):
         hashcat_args.append(",".join(active_devices))
 
         # Use the highest enabled device intensity to pick a stable hashcat
-        # tuning profile rather than pause/resume throttling.
+        # workload profile. Strip older forced kernel settings because they can
+        # trigger hashcat self-test failures on specific driver/backend combos.
         device_intensities = {str(k): int(v) for k, v in settings.get("device_intensities", {"1": 100}).items()}
         max_val = max((device_intensities.get(device_id, 100) for device_id in active_devices), default=100)
         tuning = hashcat_tuning_for_intensity(max_val)
@@ -182,8 +176,6 @@ def apply_hashcat_limits(hashcat_args: list, device_ids: list = None):
             filtered_args.append(arg)
 
         filtered_args.append(f"--workload-profile={tuning['workload_profile']}")
-        filtered_args.append(f"--kernel-accel={tuning['kernel_accel']}")
-        filtered_args.append(f"--kernel-loops={tuning['kernel_loops']}")
         hashcat_args = filtered_args
         
     return hashcat_args
