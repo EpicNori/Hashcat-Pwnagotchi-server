@@ -124,7 +124,7 @@ Uploads are converted to `.22000` when the required Linux conversion tools are a
 
 ## Upload Modes
 
-- `Rainbow` - replays the reused-password list built from previously cracked keys
+- `Rainbow` - builds an ESSID-specific WPA PMK cache from previously cracked keys and checks it with Hashcat mode 22001
 - `Normal` - extended attack chain that continues until the task is completed, cracked, or cancelled
 
 ## Wordlists

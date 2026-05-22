@@ -15,7 +15,8 @@ from app.config import BENCHMARK_FILE
 from app.domain import Rule, TaskInfoStatus, InvalidFileError, ProgressLock, Workload, WordList
 from app.logger import logger
 from app.uploader import UploadForm, UploadedTask
-from app.utils import read_plain_key, date_formatted, subprocess_call, read_hashcat_brain_password, build_rainbow_wordlist
+from app.utils import read_plain_key, date_formatted, subprocess_call, read_hashcat_brain_password, \
+    build_rainbow_wordlist, build_pmk_rainbow_cache, resolve_pmk_rainbow_password, bssid_essid_from_22000, decode_essid_hex
 from app.word_magic.wordlist import WordListDefault, iter_user_wordlist_scripts, materialize_wordlist_source
 
 
@@ -214,7 +215,7 @@ class CapAttack(BaseAttack):
 
     def run_rainbow_attack(self):
         """
-        Reuse previously found passwords before the regular attack chain.
+        Run an ESSID-specific WPA PMK rainbow cache.
         """
         self.cancel_if_needed()
 
@@ -222,18 +223,37 @@ class CapAttack(BaseAttack):
             with app.app_context():
                 rainbow_wordlist = build_rainbow_wordlist()
         except OSError as error:
-            logger.warning(f"Skipping rainbow reuse list: {error}")
+            logger.warning(f"Skipping rainbow PMK cache: {error}")
             return
 
         if rainbow_wordlist is None or not rainbow_wordlist.exists():
             return
 
+        try:
+            bssid_essid = next(bssid_essid_from_22000(self.file_22000))
+            _, essid_hex = bssid_essid.split(':', 1)
+            essid = decode_essid_hex(essid_hex)
+        except Exception as error:
+            logger.warning(f"Skipping rainbow PMK cache; could not read ESSID: {error}")
+            return
+
         with self.lock:
-            self.lock.set_status("Running rainbow reuse list")
+            self.lock.set_status(f"Building PMK rainbow cache for {essid}")
+
+        pmk_wordlist, pmk_map = build_pmk_rainbow_cache(essid, rainbow_wordlist)
+        if pmk_wordlist is None or pmk_map is None:
+            return
 
         hashcat_cmd = self.new_cmd()
-        hashcat_cmd.add_wordlists(rainbow_wordlist)
+        hashcat_cmd.mode = "22001"
+        hashcat_cmd.add_wordlists(pmk_wordlist)
         self.runner(hashcat_cmd)
+
+        found_key = read_plain_key(self.key_file)
+        password = resolve_pmk_rainbow_password(found_key, pmk_map)
+        if password:
+            hash_value = str(found_key).split(':', 1)[0]
+            self.key_file.write_text(f"{hash_value}:{password}\n", encoding="utf-8")
 
     def run_all(self, start_after: str | None = None):
         """

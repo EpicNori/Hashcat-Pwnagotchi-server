@@ -141,7 +141,7 @@ class UploadForm(FlaskForm):
     rule = RadioField('Rule', choices=Rule.to_form(), default=NONE_STR)
     timeout = IntegerField('Timeout in minutes, optional', validators=[Optional(), NumberRange(min=1)])
     workload = RadioField("Work Mode", choices=Workload.to_form(), default=Workload.Normal.value,
-                          description="Normal runs the full cracking chain. Rainbow runs only the reused-password list.")
+                          description="Normal runs the full cracking chain. Rainbow builds an ESSID-specific WPA PMK cache from previously cracked passwords.")
     brain = BooleanField("Hashcat Brain", default=False, description="Hashcat Brain skips already tried password candidates")
     brain_client_feature = RadioField("Brain client features", choices=BrainClientFeature.to_form(),
                                       default=BrainClientFeature.POSITIONS.value)

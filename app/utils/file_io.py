@@ -259,3 +259,84 @@ def build_rainbow_wordlist():
         return None
 
     return rainbow_wordlist
+
+
+def _rainbow_cache_key(essid: str, source_wordlist: Path):
+    try:
+        stat = source_wordlist.stat()
+        fingerprint = f"{source_wordlist.resolve()}|{stat.st_size}|{int(stat.st_mtime)}"
+    except OSError:
+        fingerprint = str(source_wordlist)
+    raw_key = f"{essid}\0{fingerprint}".encode("utf-8", errors="replace")
+    return hashlib.sha256(raw_key).hexdigest()[:24]
+
+
+def build_pmk_rainbow_cache(essid: str, source_wordlist: Path):
+    """
+    Build an ESSID-specific WPA PMK cache for hashcat mode 22001.
+
+    WPA uses the ESSID as PBKDF2 salt, so a real rainbow cache is only reusable
+    for captures from the same network name.
+    """
+    source_wordlist = Path(source_wordlist)
+    if not essid or not source_wordlist.exists():
+        return None, None
+
+    cache_key = _rainbow_cache_key(essid, source_wordlist)
+    cache_dir = WORDLISTS_USER_DIR / "rainbow_pmk" / cache_key
+    pmk_path = cache_dir / "pmk_candidates.22001"
+    map_path = cache_dir / "pmk_to_password.tsv"
+    meta_path = cache_dir / "meta.txt"
+
+    if pmk_path.exists() and map_path.exists():
+        return pmk_path, map_path
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    essid_bytes = essid.encode("utf-8", errors="replace")
+    seen_pmks = set()
+    written = 0
+
+    tmp_pmk_path = pmk_path.with_suffix(".tmp")
+    tmp_map_path = map_path.with_suffix(".tmp")
+    with source_wordlist.open("r", encoding="utf-8", errors="ignore") as src, \
+            tmp_pmk_path.open("w", encoding="ascii") as pmk_out, \
+            tmp_map_path.open("w", encoding="utf-8") as map_out:
+        for raw_line in src:
+            password = raw_line.rstrip("\r\n")
+            if not password:
+                continue
+            password_bytes = password.encode("utf-8", errors="ignore")
+            if len(password_bytes) < 8 or len(password_bytes) > 63:
+                continue
+            pmk = hashlib.pbkdf2_hmac("sha1", password_bytes, essid_bytes, 4096, 32).hex()
+            if pmk in seen_pmks:
+                continue
+            seen_pmks.add(pmk)
+            pmk_out.write(pmk + "\n")
+            map_out.write(f"{pmk}\t{password}\n")
+            written += 1
+
+    if written == 0:
+        tmp_pmk_path.unlink(missing_ok=True)
+        tmp_map_path.unlink(missing_ok=True)
+        return None, None
+
+    os.replace(tmp_pmk_path, pmk_path)
+    os.replace(tmp_map_path, map_path)
+    meta_path.write_text(f"essid={essid}\nsource={source_wordlist}\nentries={written}\n", encoding="utf-8")
+    return pmk_path, map_path
+
+
+def resolve_pmk_rainbow_password(found_key: str, map_path: Path):
+    if not found_key or not map_path or not Path(map_path).exists():
+        return None
+    found_pmk = extract_password_from_found_key(found_key)
+    if not found_pmk:
+        return None
+    found_pmk = found_pmk.lower()
+    with Path(map_path).open("r", encoding="utf-8", errors="ignore") as fh:
+        for line in fh:
+            pmk, _, password = line.rstrip("\n").partition("\t")
+            if pmk.lower() == found_pmk:
+                return password or None
+    return None
