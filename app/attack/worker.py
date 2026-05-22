@@ -99,6 +99,10 @@ class CapAttack(BaseAttack):
             raise TimeoutError("Timed out before starting the next attack step")
         return max(1, math.ceil(remaining_seconds / 60))
 
+    def _arm_safe_mode(self):
+        from app.utils.settings import is_arm_host
+        return is_arm_host()
+
     def cancel_if_needed(self):
         with self.lock:
             if self.lock.cancelled:
@@ -240,7 +244,9 @@ class CapAttack(BaseAttack):
             self.read_key()
             return
 
-        if self._should_run_stage("digits8", start_after):
+        arm_safe_mode = self._arm_safe_mode()
+
+        if not arm_safe_mode and self._should_run_stage("digits8", start_after):
             self._run_stage("digits8", "Running digits8...", self.run_digits8)
         
         if self._should_run_stage("top1k", start_after):
@@ -258,7 +264,7 @@ class CapAttack(BaseAttack):
         if self._should_run_stage("main_wordlist", start_after):
             self._run_stage("main_wordlist", "Running the main wordlist...", self.run_main_wordlist)
 
-        if self.work_mode == Workload.Normal.value:
+        if self.work_mode == Workload.Normal.value and not arm_safe_mode:
             if self._should_run_stage("names_with_digits", start_after):
                 self._run_stage("names_with_digits", "Running name mutations with digits...", self.run_names_with_digits)
 
@@ -274,6 +280,9 @@ class CapAttack(BaseAttack):
                     "Running exhaustive WPA brute force (8-63)...",
                     lambda: self.run_exhaustive_bruteforce(min_length=8),
                 )
+        elif arm_safe_mode:
+            with self.lock:
+                self.lock.set_status("Completed ARM-safe quick attack chain")
 
 
 def _crack_async(worker, attack: CapAttack, raw_hashcat_args, requested_device_ids):
