@@ -49,6 +49,21 @@ os_id_like_contains() {
     [[ " ${ID_LIKE:-} " == *" ${needle} "* ]]
 }
 
+detect_machine_arch() {
+    local machine
+    machine="$(uname -m 2>/dev/null || true)"
+    case "$machine" in
+        x86_64|amd64) echo "amd64" ;;
+        aarch64|arm64) echo "arm64" ;;
+        armv7l|armhf) echo "arm" ;;
+        *) echo "$machine" ;;
+    esac
+}
+
+supports_debian_nvidia_autoinstall() {
+    [ "$(detect_machine_arch)" = "amd64" ]
+}
+
 has_nvidia_gpu() {
     if ! command -v lspci >/dev/null 2>&1; then
         return 1
@@ -72,6 +87,14 @@ install_nvidia_drivers_if_needed() {
 
     echo "[*] NVIDIA GPU detected. Attempting automatic driver installation..."
     write_nvidia_progress running 10 "Detecting the Linux distribution"
+
+    if ! supports_debian_nvidia_autoinstall; then
+        echo "[!] NVIDIA GPU detected, but automatic driver installation is only supported on amd64 Debian/Ubuntu hosts."
+        echo "[!] ARM systems need a vendor-specific GPU stack. The server will use ARM CPU-safe Hashcat mode instead."
+        NVIDIA_DRIVER_STATUS="manual-required"
+        write_nvidia_progress not-applicable 100 "NVIDIA auto-install is not supported on this architecture"
+        return 0
+    fi
 
     if [ -r /etc/os-release ]; then
         # shellcheck disable=SC1091
@@ -132,6 +155,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 echo "[*] Ensuring package manager is in a clean state (Waiting for locks)..."
+echo "[*] Detected machine architecture: $(detect_machine_arch) ($(uname -m))"
 write_progress running 5 "Preparing the Linux package manager"
 while fuser /var/lib/dpkg/lock >/dev/null 2>&1 ; do
     echo "[*] Waiting for other software managers to finish..."

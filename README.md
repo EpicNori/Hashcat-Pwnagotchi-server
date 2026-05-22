@@ -19,6 +19,7 @@ curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/ma
 ```
 
 The installer also attempts to auto-install NVIDIA drivers when compatible NVIDIA GPU hardware is detected on supported Debian-family systems.
+The same installer/update scripts support both `amd64` and `arm64`; ARM hosts use the built-in CPU-safe Hashcat mode while NVIDIA driver auto-install remains limited to regular `amd64` Debian/Ubuntu systems.
 
 After installation, the dashboard is available at `http://127.0.0.1:9111`.
 
@@ -47,6 +48,8 @@ User data is intentionally kept separate from application code:
 - App code: `/opt/hashcat-wpa-server`
 - User data: `/var/lib/hashcat-wpa-server/`
 - Runtime logs: `/var/log/hashcat-wpa-server/`
+
+Run `crackserver doctor` after installation to verify architecture, Hashcat backend visibility, and the active ARM/amd64 runtime path.
 
 Safe updates replace the application layer only.
 

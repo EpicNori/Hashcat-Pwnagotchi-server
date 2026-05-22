@@ -17,6 +17,7 @@ function show_help {
     echo "  autostart-off - Disable automatic startup on boot"
     echo "  driver-check  - Check NVIDIA driver status and install drivers if missing"
     echo "  driver-status - Show NVIDIA GPU and driver readiness"
+    echo "  doctor      - Verify runtime compatibility on this architecture"
     echo "  uninstall   - Permanently remove the server from this machine"
     echo "  dashboard   - Print the web interface URLs"
     echo "  logs        - Follow the service logs in real-time"
@@ -79,6 +80,9 @@ case "$1" in
     driver-status)
         echo "[*] Checking NVIDIA GPU and driver readiness..."
         sudo /opt/hashcat-wpa-server/bash/install_nvidia_drivers.sh status
+        ;;
+    doctor)
+        sudo -u hashcat /opt/hashcat-wpa-server/bash/verify_runtime.sh
         ;;
     logs)
         sudo journalctl -u hashcat-wpa-server -f

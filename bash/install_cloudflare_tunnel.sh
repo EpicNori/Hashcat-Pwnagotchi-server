@@ -1,6 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/common.sh"
+
 # Called via root/sudo from the web interface. The tunnel token is read from
 # stdin so it is not saved in the app settings file.
 PUBLIC_HOSTNAME="${1:-}"
@@ -21,13 +25,10 @@ install_cloudflared() {
         return
     fi
 
-    arch="$(uname -m)"
-    case "$arch" in
-        x86_64|amd64) asset="cloudflared-linux-amd64" ;;
-        aarch64|arm64) asset="cloudflared-linux-arm64" ;;
-        armv7l|armhf) asset="cloudflared-linux-arm" ;;
-        *) echo "Unsupported architecture for automatic cloudflared install: $arch"; exit 1 ;;
-    esac
+    if ! asset="$(cloudflared_asset_for_arch)"; then
+        echo "Unsupported architecture for automatic cloudflared install: $(uname -m)"
+        exit 1
+    fi
 
     tmp="$(mktemp)"
     curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/${asset}" -o "$tmp"

@@ -3,6 +3,9 @@ set -e
 
 ACTION="${1:-check}"
 PROGRESS_FILE="${HASHCAT_WPA_NVIDIA_PROGRESS_FILE:-/var/log/hashcat-wpa-server/nvidia_install.progress}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/common.sh"
 
 write_progress() {
     local state="$1"
@@ -55,6 +58,13 @@ case "$ACTION" in
         if ! has_nvidia_gpu; then
             echo "No NVIDIA GPU was detected on this system."
             write_progress not-applicable 100 "No NVIDIA GPU detected"
+            exit 0
+        fi
+
+        if ! supports_debian_nvidia_autoinstall; then
+            echo "NVIDIA GPU detected, but automatic driver installation is only supported on amd64 Debian/Ubuntu hosts."
+            echo "ARM systems need a vendor-specific GPU stack. The server can still run in ARM CPU-safe mode."
+            write_progress not-applicable 100 "NVIDIA auto-install is not supported on this architecture"
             exit 0
         fi
 
