@@ -30,8 +30,17 @@ TRANSIENT_STATUS_PREFIXES = (
     "Resumed after limit cooldown",
 )
 HASHCAT_EXIT_HINTS = {
-    -11: "Hashcat self-test failed. This is usually a GPU/OpenCL/CUDA driver or backend tuning issue.",
-    11: "Hashcat exited with code 11. This often points to a GPU/OpenCL/CUDA backend crash or self-test problem.",
+    -11: (
+        "Hashcat backend self-test failed before cracking started. "
+        "This usually means a GPU/OpenCL/CUDA driver problem, a bad device selection, or unsafe backend tuning. "
+        "Try rebooting the hashcat server, selecting one known-good device in Settings, lowering GPU intensity, "
+        "and checking `hashcat -I` plus `hashcat -b -m 22000` on the server."
+    ),
+    11: (
+        "Hashcat reported code 11, which commonly maps to the same backend self-test/GPU runtime failure. "
+        "No password cracking happened yet. Check the GPU driver/CUDA/OpenCL stack, device selection, and run "
+        "`hashcat -I` plus `hashcat -b -m 22000` on the server."
+    ),
 }
 
 
@@ -59,6 +68,16 @@ def split_warnings_errors(stderr: str):
     warn = '\n'.join(warn)
     err = '\n'.join(err)
     return warn, err
+
+
+def format_hashcat_exit_error(returncode, stderr_summary=""):
+    message = f"Hashcat exited with code {returncode}"
+    if stderr_summary:
+        message += f": {stderr_summary}"
+    hint = HASHCAT_EXIT_HINTS.get(returncode)
+    if hint:
+        message += f". {hint}"
+    return message
 
 
 class HashcatCmd:
@@ -354,7 +373,7 @@ def _run_hashcat_process(hashcat_cmd_list, lock: ProgressLock, timeout_minutes=N
         warn, err = split_warnings_errors(stderr)
         if err.strip():
             logger.error(f"Hashcat error detected: {err.strip()}")
-            if time.time() - start < 2:
+            if time.time() - start < 2 and process.returncode in (0, 1, None):
                 raise RuntimeError(f"Hashcat failed to start: {err.splitlines()[0]}")
 
     if process.returncode != 0:
@@ -364,10 +383,7 @@ def _run_hashcat_process(hashcat_cmd_list, lock: ProgressLock, timeout_minutes=N
                 stderr_summary = err.strip() or warn.strip() or stderr.strip()
                 stderr_summary = stderr_summary.splitlines()[0]
                 stderr_summary = f": {stderr_summary}"
-            hint = HASHCAT_EXIT_HINTS.get(process.returncode)
-            if hint:
-                stderr_summary = f"{stderr_summary}. {hint}" if stderr_summary else f": {hint}"
-            raise RuntimeError(f"Hashcat exited with code {process.returncode}{stderr_summary}")
+            raise RuntimeError(format_hashcat_exit_error(process.returncode, stderr_summary.lstrip(": ")))
 
 
 def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_minutes=None, recovery_state=None):

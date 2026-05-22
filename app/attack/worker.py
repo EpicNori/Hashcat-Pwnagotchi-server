@@ -503,7 +503,7 @@ class HashcatWorker:
                 if isinstance(exception, CancelledError):
                     lock.set_status(TaskInfoStatus.CANCELLED)
                 else:
-                    lock.set_status(repr(exception))
+                    lock.set_status(str(exception) or repr(exception))
             lock.finish()
             update_dict = lock.update_dict()
             task_id = lock.task_id
