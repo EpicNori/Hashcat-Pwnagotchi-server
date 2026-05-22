@@ -3,12 +3,12 @@
 {% block page_content %}
 <div class="container">
     <h1>Rainbow Wordlist</h1>
-    <p class="text-muted">This page shows the reusable password list built from cracked keys across uploaded captures and cached task results.</p>
+    <p class="text-muted">This page shows the password source list used to build ESSID-specific WPA PMK rainbow caches.</p>
 
     <div class="row">
         <div class="col-md-8">
             <div class="panel panel-info">
-                <div class="panel-heading">Current Rainbow Cache</div>
+                <div class="panel-heading">Current Rainbow Source</div>
                 <div class="panel-body">
                     {% if rainbow_wordlist %}
                         <p><strong>File:</strong> {{ rainbow_wordlist }}</p>
@@ -22,12 +22,12 @@
                         </p>
                         <p>
                             <a href="{{ url_for('download_rainbow_wordlist') }}" class="btn btn-info">
-                                Download Rainbow Wordlist
+                                Download Rainbow Source Wordlist
                             </a>
                         </p>
                     {% else %}
                         <div class="alert alert-warning">
-                            No rainbow wordlist is available yet. Crack a few captures first, then return here to build the reuse list.
+                            No rainbow source is available yet. Crack a few captures first, then return here to build ESSID-specific PMK caches.
                         </div>
                     {% endif %}
                 </div>
@@ -56,7 +56,8 @@
                     <ul>
                         <li>Passwords are collected from cracked tasks and cached key files.</li>
                         <li>Duplicates are removed while keeping the newest discoveries first.</li>
-                        <li>The resulting list is saved as `wordlists/rainbow_processed.txt`.</li>
+                        <li>For each target ESSID, the server precomputes WPA PMKs from this list.</li>
+                        <li>Rainbow mode checks those PMKs with hashcat mode 22001.</li>
                     </ul>
                 </div>
             </div>
