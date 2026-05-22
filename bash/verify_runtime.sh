@@ -19,6 +19,7 @@ fi
 
 if [ -x "$VENV_PYTHON" ]; then
     echo "python=$VENV_PYTHON"
+    cd "$APP_ROOT"
     "$VENV_PYTHON" - <<'PY'
 from app.utils import settings
 
