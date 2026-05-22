@@ -1,7 +1,37 @@
 import json
+import platform
 from app.config import ADMIN_SETTINGS_PATH
 from app.domain import Workload
 from app.utils.utils import get_hashcat_devices
+
+
+ARM_HASHCAT_SAFE_FLAGS = [
+    "-D", "1",
+    "--backend-ignore-cuda",
+    "--backend-ignore-hip",
+    "--self-test-disable",
+    "--backend-vector-width=1",
+    "--workload-profile=1",
+    "--kernel-accel=1",
+    "--kernel-loops=1",
+    "--force",
+]
+ARM_HASHCAT_SAFE_REMOVE_NEXT = {"-D", "--opencl-device-types", "--backend-vector-width", "-w"}
+ARM_HASHCAT_SAFE_REMOVE_EXACT = {
+    "--backend-ignore-cuda",
+    "--backend-ignore-hip",
+    "--backend-ignore-opencl",
+    "--backend-ignore-metal",
+    "--self-test-disable",
+    "--force",
+}
+ARM_HASHCAT_SAFE_REMOVE_PREFIXES = (
+    "--opencl-device-types=",
+    "--backend-vector-width=",
+    "--workload-profile=",
+    "--kernel-accel=",
+    "--kernel-loops=",
+)
 
 
 def hashcat_tuning_for_intensity(intensity: int):
@@ -20,6 +50,29 @@ def hashcat_tuning_for_intensity(intensity: int):
     if intensity <= 90:
         return {"workload_profile": "3"}
     return {"workload_profile": "4"}
+
+
+def is_arm_host():
+    machine = platform.machine().lower()
+    return machine in ("aarch64", "arm64", "armv7l", "armv6l")
+
+
+def strip_arm_conflicting_hashcat_args(hashcat_args: list):
+    filtered_args = []
+    skip_next = False
+    for arg in hashcat_args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in ARM_HASHCAT_SAFE_REMOVE_NEXT:
+            skip_next = True
+            continue
+        if arg in ARM_HASHCAT_SAFE_REMOVE_EXACT:
+            continue
+        if any(arg.startswith(prefix) for prefix in ARM_HASHCAT_SAFE_REMOVE_PREFIXES):
+            continue
+        filtered_args.append(arg)
+    return filtered_args
 
 def read_settings():
     if not ADMIN_SETTINGS_PATH.exists():
@@ -177,5 +230,9 @@ def apply_hashcat_limits(hashcat_args: list, device_ids: list = None):
 
         filtered_args.append(f"--workload-profile={tuning['workload_profile']}")
         hashcat_args = filtered_args
+
+    if is_arm_host():
+        hashcat_args = strip_arm_conflicting_hashcat_args(hashcat_args)
+        hashcat_args.extend(ARM_HASHCAT_SAFE_FLAGS)
         
     return hashcat_args
