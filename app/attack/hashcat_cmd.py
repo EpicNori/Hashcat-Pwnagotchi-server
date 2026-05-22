@@ -42,6 +42,15 @@ HASHCAT_EXIT_HINTS = {
         "`hashcat -I` plus `hashcat -b -m 22000` on the server."
     ),
 }
+HASHCAT_BACKEND_SELF_TEST_CODES = {-11, 11}
+HASHCAT_SAFE_RETRY_REMOVE_EXACT = {"--force"}
+HASHCAT_SAFE_RETRY_REMOVE_NEXT = {"-d", "--backend-devices", "-w"}
+HASHCAT_SAFE_RETRY_PREFIXES = (
+    "--backend-devices=",
+    "--workload-profile=",
+    "--kernel-accel=",
+    "--kernel-loops=",
+)
 
 
 def is_transient_status(status: str) -> bool:
@@ -78,6 +87,29 @@ def format_hashcat_exit_error(returncode, stderr_summary=""):
     if hint:
         message += f". {hint}"
     return message
+
+
+def _safe_retry_command(hashcat_cmd_list):
+    safer = []
+    skip_next = False
+    removed = []
+    for arg in hashcat_cmd_list:
+        if skip_next:
+            removed.append(arg)
+            skip_next = False
+            continue
+        if arg in HASHCAT_SAFE_RETRY_REMOVE_NEXT:
+            removed.append(arg)
+            skip_next = True
+            continue
+        if arg in HASHCAT_SAFE_RETRY_REMOVE_EXACT:
+            removed.append(arg)
+            continue
+        if any(arg.startswith(prefix) for prefix in HASHCAT_SAFE_RETRY_PREFIXES):
+            removed.append(arg)
+            continue
+        safer.append(arg)
+    return safer, removed
 
 
 class HashcatCmd:
@@ -194,7 +226,7 @@ def _hashcat_restore_command(session: str):
     return [hashcat_executable, "--restore", f"--session={session}"]
 
 
-def _run_hashcat_process(hashcat_cmd_list, lock: ProgressLock, timeout_minutes=None):
+def _run_hashcat_process_once(hashcat_cmd_list, lock: ProgressLock, timeout_minutes=None):
     if timeout_minutes is None:
         timeout_minutes = float('inf')
     timeout_seconds = timeout_minutes * 60
@@ -384,6 +416,26 @@ def _run_hashcat_process(hashcat_cmd_list, lock: ProgressLock, timeout_minutes=N
                 stderr_summary = stderr_summary.splitlines()[0]
                 stderr_summary = f": {stderr_summary}"
             raise RuntimeError(format_hashcat_exit_error(process.returncode, stderr_summary.lstrip(": ")))
+    return process.returncode
+
+
+def _run_hashcat_process(hashcat_cmd_list, lock: ProgressLock, timeout_minutes=None):
+    try:
+        return _run_hashcat_process_once(hashcat_cmd_list, lock, timeout_minutes=timeout_minutes)
+    except RuntimeError as exc:
+        message = str(exc)
+        if not any(f"code {code}" in message for code in HASHCAT_BACKEND_SELF_TEST_CODES):
+            raise
+        safer_cmd, removed = _safe_retry_command(hashcat_cmd_list)
+        if not removed or safer_cmd == hashcat_cmd_list:
+            raise
+        logger.warning(
+            "Hashcat backend self-test failed; retrying once without forced device/tuning args: %s",
+            " ".join(removed),
+        )
+        with lock:
+            lock.set_status("Hashcat backend failed self-test; retrying with safe auto device settings")
+        return _run_hashcat_process_once(safer_cmd, lock, timeout_minutes=timeout_minutes)
 
 
 def run_with_status(hashcat_cmd: HashcatCmdCapture, lock: ProgressLock, timeout_minutes=None, recovery_state=None):
