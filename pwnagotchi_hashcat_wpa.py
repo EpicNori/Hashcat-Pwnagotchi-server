@@ -37,7 +37,7 @@ def _log_event(ok, message):
 
 class PwnagotchiHashcatWPA(plugins.Plugin):
     __author__ = 'EpicNori (via Antigravity AI)'
-    __version__ = '1.4.6'
+    __version__ = '1.4.7'
     __license__ = 'GPL3'
     __description__ = 'Uploads captured WPA/WPA2 handshakes to a self-hosted Hashcat WPA Server.'
 
@@ -310,6 +310,54 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
             return 'true' if value else 'false'
         return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"') + '"'
 
+    def _parse_config_value(self, value):
+        value = value.strip()
+        if value.lower() in ('true', 'false'):
+            return value.lower() == 'true'
+        if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+            value = value[1:-1]
+            return value.replace('\\"', '"').replace('\\\\', '\\')
+        return value
+
+    def _iter_config_assignments(self, content, prefix=''):
+        for line in content.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith('#') or '=' not in stripped:
+                continue
+            key, value = stripped.split('=', 1)
+            key = key.strip()
+            if prefix:
+                if not key.startswith(prefix):
+                    continue
+                key = key[len(prefix):]
+            yield key, value.strip()
+
+    def _read_plugin_config(self):
+        content = self._read_config()
+        config = {}
+        bounds = self._table_bounds(content)
+        if bounds:
+            start, end = bounds
+            block = content[start:end]
+            for key, value in self._iter_config_assignments(block):
+                if key in self._DEFAULTS:
+                    config[key] = self._parse_config_value(value)
+            return config
+
+        prefix = f'main.plugins.{self._PLUGIN_KEY}.'
+        for key, value in self._iter_config_assignments(content, prefix=prefix):
+            if key in self._DEFAULTS:
+                config[key] = self._parse_config_value(value)
+        return config
+
+    def _apply_runtime_config(self, values):
+        self.options.update(values)
+        self.ready = self._is_configured()
+        logging.info(
+            "[HashcatWPAServer] Runtime config applied immediately. Upload target: %s",
+            self._upload_url() or "(not configured)",
+        )
+
     def _table_bounds(self, content):
         table_re = re.compile(
             rf'(?m)^\s*\[main\.plugins\.{re.escape(self._PLUGIN_KEY)}\]\s*$'
@@ -386,13 +434,15 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
             if missing:
                 self._write_plugin_config(missing)
                 logging.info("[HashcatWPAServer] Added default config block to %s", self._CONFIG_PATH)
+            file_config = self._read_plugin_config()
+            if file_config:
+                self._apply_runtime_config(file_config)
         except Exception as exc:
             logging.warning("[HashcatWPAServer] Could not add default config: %s", exc)
 
     def on_loaded(self):
         self._load_uploaded_state()
         self._ensure_default_config()
-        self.ready = self._is_configured()
         if self.ready:
             logging.info("[HashcatWPAServer] Plugin loaded. Upload target: %s", self._upload_url())
             self._scan_existing_handshakes()
@@ -694,9 +744,8 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
                 values = {'enabled': True, 'url': url, 'username': username or 'admin', 'password': password or 'changeme'}
                 try:
                     self._write_plugin_config(values)
-                    self.options.update(values)
-                    self.ready = self._is_configured()
-                    notice = {'ok': True, 'label': 'Config saved', 'message': 'The plugin is updated. Restart Pwnagotchi if Webcfg still shows old values.'}
+                    self._apply_runtime_config(values)
+                    notice = {'ok': True, 'label': 'Config saved', 'message': 'The running plugin is using the new settings immediately. No restart needed.'}
                 except Exception as exc:
                     notice = {'ok': False, 'label': 'Could not save', 'message': str(exc)}
 
