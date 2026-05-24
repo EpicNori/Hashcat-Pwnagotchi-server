@@ -177,6 +177,13 @@ td, th {
   max-width: 460px;
 }
 
+.settings-status-strip .label {
+  line-height: 1.4;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .settings-tabs {
   margin-bottom: 0;
 }
@@ -263,6 +270,7 @@ td, th {
 
 .settings-accordion .panel-title a {
   display: block;
+  padding: 4px 0;
   text-decoration: none;
 }
 
@@ -354,6 +362,26 @@ td, th {
   .settings-status-strip {
     justify-content: flex-start;
     margin-top: 12px;
+  }
+
+  .navbar-brand {
+    font-size: 15px;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .btn-xs,
+  .btn-group-xs > .btn {
+    font-size: 12px;
+    min-height: 30px;
+    padding: 6px 8px;
+  }
+
+  .settings-accordion .panel-title a {
+    min-height: 36px;
+    padding: 8px 0;
   }
 
   .settings-tab-content {
