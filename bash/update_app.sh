@@ -18,7 +18,9 @@ export HASHCAT_WPA_NVIDIA_PROGRESS_FILE="${HASHCAT_WPA_NVIDIA_PROGRESS_FILE:-/va
 echo "Starting application update..."
 # We use systemd-run to spawn the update in a NEW transient service.
 # This ensures that when we call "systemctl stop", it DOES NOT kill the update process!
-systemd-run --unit=hashcat-server-updater --remain-after-exit bash -c '
+UNIT_NAME="hashcat-server-updater-$(date +%s)"
+systemctl reset-failed "hashcat-server-updater.service" >/dev/null 2>&1 || true
+systemd-run --unit="$UNIT_NAME" bash -c '
   mkdir -p /var/log/hashcat-wpa-server
   exec > "'"$UPDATE_LOG"'" 2>&1
   PROGRESS_FILE="${HASHCAT_WPA_PROGRESS_FILE:-/var/log/hashcat-wpa-server/app_update.progress}"
