@@ -658,8 +658,10 @@ def user_profile():
             UploadedTask.queue_position.asc(),
             UploadedTask.uploaded_time.desc(),
         ).all()
+    retryable_count = sum(1 for task in tasks if task.completed and not task.found_key)
     return render_template('user_profile.html', title='Home', tasks=tasks,
                            can_reorder_queue=user_has_roles(current_user, RoleEnum.ADMIN),
+                           retryable_count=retryable_count,
                            benchmark=read_last_benchmark(), devices=hashcat_devices_info(), progress=progress())
 
 
@@ -930,26 +932,70 @@ def requeue(task_id):
         return redirect(url_for('user_profile'))
 
     try:
-        new_task = UploadedTask(
-            user_id=task.user_id,
-            filename=task.filename,
-            wordlist=task.wordlist,
-            rule=task.rule,
-            bssid=task.bssid,
-            essid=task.essid,
-            hashcat_args=' '.join(split_hashcat_args(task.hashcat_args)),
-            queue_position=next_queue_position()
-        )
-        db.session.add(new_task)
-        db.session.commit()
-
-        hashcat_worker.submit_capture(resolve_task_attack_file(task), uploaded_form=form_for_stored_task(task), task=new_task)
+        new_task = requeue_completed_task(task)
         flask.flash(f"Task #{task.id} was re-queued as task #{new_task.id}.", category="success")
     except (FileNotFoundError, InvalidFileError, ValueError) as error:
         logger.exception(error)
         flask.flash(f"Failed to re-queue task #{task.id}: {error}", category="error")
 
     return redirect(url_for('user_profile'))
+
+
+@app.route("/requeue_all", methods=["POST"])
+@login_required
+def requeue_all():
+    tasks_query = UploadedTask.query.filter(
+        UploadedTask.completed == True,
+        UploadedTask.found_key.is_(None),
+    )
+    if not user_has_roles(current_user, RoleEnum.ADMIN):
+        tasks_query = tasks_query.filter_by(user_id=current_user.id)
+
+    tasks = tasks_query.order_by(
+        UploadedTask.uploaded_time.asc(),
+        UploadedTask.id.asc(),
+    ).all()
+
+    if not tasks:
+        flask.flash("There are no failed completed tasks to retry.", category="info")
+        return redirect(url_for('user_profile'))
+
+    requeued = 0
+    failed = []
+    for task in tasks:
+        try:
+            requeue_completed_task(task)
+            requeued += 1
+        except (FileNotFoundError, InvalidFileError, ValueError) as error:
+            logger.exception("Failed to re-queue task %s: %s", task.id, error)
+            failed.append(f"#{task.id}: {error}")
+
+    if requeued:
+        flask.flash(f"Re-queued {requeued} failed task(s).", category="success")
+    if failed:
+        flask.flash(f"Could not re-queue {len(failed)} task(s): {'; '.join(failed[:3])}", category="error")
+
+    return redirect(url_for('user_profile'))
+
+
+def requeue_completed_task(task: UploadedTask):
+    attack_file = resolve_task_attack_file(task)
+    uploaded_form = form_for_stored_task(task)
+    new_task = UploadedTask(
+        user_id=task.user_id,
+        filename=task.filename,
+        wordlist=task.wordlist,
+        rule=task.rule,
+        bssid=task.bssid,
+        essid=task.essid,
+        hashcat_args=' '.join(split_hashcat_args(task.hashcat_args)),
+        queue_position=next_queue_position()
+    )
+    db.session.add(new_task)
+    db.session.commit()
+
+    hashcat_worker.submit_capture(attack_file, uploaded_form=uploaded_form, task=new_task)
+    return new_task
 
 
 @app.route('/terminate')

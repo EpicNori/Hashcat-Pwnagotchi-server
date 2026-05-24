@@ -46,6 +46,12 @@ danger
             <a href="{{ url_for('download_all_results') }}" class="btn btn-success">
                 <span class="glyphicon glyphicon-download-alt"></span> Download All Found Passwords (.txt)
             </a>
+            <form method="POST" action="{{ url_for('requeue_all') }}" style="display: inline-block; margin-left: 6px;" onsubmit="return confirm('Retry all failed completed tasks?');">
+                <button type="submit" class="btn btn-warning" {% if retryable_count == 0 %}disabled{% endif %}>
+                    <span class="glyphicon glyphicon-repeat"></span> Retry All
+                    {% if retryable_count %}({{ retryable_count }}){% endif %}
+                </button>
+            </form>
         </div>
     </div>
 
