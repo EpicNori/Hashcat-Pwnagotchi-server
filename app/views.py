@@ -666,6 +666,7 @@ def user_profile():
 
 
 @app.route('/progress')
+@limiter.exempt
 @login_required
 def progress():
     tasks_progress = []

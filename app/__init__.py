@@ -39,6 +39,9 @@ except Exception:
             def decorator(f):
                 return f
             return decorator
+
+        def exempt(self, f):
+            return f
     limiter = DummyLimiter()
 
 from app import views
