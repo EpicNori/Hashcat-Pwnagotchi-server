@@ -5,7 +5,6 @@ import threading
 import time
 from asyncio import CancelledError
 from pathlib import Path
-import math
 
 from app import app, db, lock_app
 from app.attack.base_attack import BaseAttack
@@ -90,7 +89,7 @@ class CapAttack(BaseAttack):
         remaining_seconds = self.deadline - time.time()
         if remaining_seconds <= 0:
             raise TimeoutError("Timed out before starting the next attack step")
-        return max(1, math.ceil(remaining_seconds / 60))
+        return remaining_seconds / 60
 
     def _arm_safe_mode(self):
         from app.utils.settings import is_arm_host
@@ -524,9 +523,7 @@ class HashcatWorker:
         requested_timeout = uploaded_form.timeout.data
         effective_timeout = requested_timeout
         work_mode = str(uploaded_form.workload.data)
-        if work_mode == Workload.Normal.value:
-            effective_timeout = None
-        elif configured_max_time:
+        if configured_max_time:
             effective_timeout = configured_max_time if requested_timeout is None else min(requested_timeout, configured_max_time)
         wordlist_path = uploaded_form.get_wordlist_path()
         rule = uploaded_form.get_rule()
