@@ -944,6 +944,15 @@ def requeue(task_id):
 @app.route("/requeue_all", methods=["POST"])
 @login_required
 def requeue_all():
+    active_or_queued = UploadedTask.query.filter(UploadedTask.completed == False).count()
+    if active_or_queued:
+        flask.flash(
+            f"Cannot retry all while {active_or_queued} task(s) are already queued or running. "
+            "Cancel or finish them first.",
+            category="info"
+        )
+        return redirect(url_for('user_profile'))
+
     tasks_query = UploadedTask.query.filter(
         UploadedTask.completed == True,
         UploadedTask.found_key.is_(None),
