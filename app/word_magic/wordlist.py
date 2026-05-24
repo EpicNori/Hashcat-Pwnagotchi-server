@@ -307,6 +307,8 @@ def find_wordlist_by_name(wordlist_name) -> Union[WordListInfo, None]:
 def wordlist_choices():
     wlists_info = WordListDefault.list()
     for custom_path in sorted(WORDLISTS_USER_DIR.iterdir()):
+        if not custom_path.is_file():
+            continue
         wlists_info.append(WordListInfo(path=custom_path))
 
     choices = [(NONE_STR, "(fast)")]
@@ -368,6 +370,16 @@ def iter_user_wordlist_scripts():
     for custom_path in sorted(WORDLISTS_USER_DIR.iterdir()):
         if custom_path.is_file() and is_wordlist_script(custom_path):
             yield custom_path
+
+
+def iter_user_wordlist_sources():
+    default_paths = {wlist.path.resolve() for wlist in WordListDefault.list()}
+    for custom_path in sorted(WORDLISTS_USER_DIR.iterdir()):
+        if not custom_path.is_file():
+            continue
+        if custom_path.resolve() in default_paths:
+            continue
+        yield custom_path
 
 
 def cyrrilic2qwerty(wlist: WordList):

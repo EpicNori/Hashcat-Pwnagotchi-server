@@ -17,7 +17,7 @@ from app.logger import logger
 from app.uploader import UploadForm, UploadedTask
 from app.utils import read_plain_key, date_formatted, subprocess_call, read_hashcat_brain_password, \
     build_rainbow_wordlist, build_pmk_rainbow_cache, resolve_pmk_rainbow_password, bssid_essid_from_22000, decode_essid_hex
-from app.word_magic.wordlist import WordListDefault, iter_user_wordlist_scripts, materialize_wordlist_source
+from app.word_magic.wordlist import WordListDefault, iter_user_wordlist_sources, materialize_wordlist_source
 
 
 class KeyFound(Exception):
@@ -34,8 +34,8 @@ class CapAttack(BaseAttack):
         "names",
         "main_wordlist",
         "names_with_digits",
-        "default_wordlists",
         "user_scripts",
+        "default_wordlists",
         "exhaustive",
     )
 
@@ -207,12 +207,12 @@ class CapAttack(BaseAttack):
             hashcat_cmd.add_wordlists(default_wordlist.path)
             self.runner(hashcat_cmd)
 
-    def run_user_script_wordlist_chain(self):
-        for script_path in iter_user_wordlist_scripts():
+    def run_user_wordlist_chain(self):
+        for wordlist_source in iter_user_wordlist_sources():
             self.cancel_if_needed()
             with self.lock:
-                self.lock.set_status(f"Running user wordlist script: {script_path.name}")
-            resolved_wordlist = materialize_wordlist_source(script_path)
+                self.lock.set_status(f"Running user wordlist: {wordlist_source.name}")
+            resolved_wordlist = materialize_wordlist_source(wordlist_source)
             if not resolved_wordlist.exists() or resolved_wordlist.stat().st_size == 0:
                 continue
             hashcat_cmd = self.new_cmd()
@@ -288,11 +288,11 @@ class CapAttack(BaseAttack):
                 self._run_stage("main_wordlist", "Running the main wordlist...", self.run_main_wordlist)
 
             if self.work_mode == Workload.Normal.value:
+                if self._should_run_stage("user_scripts", start_after):
+                    self._run_stage("user_scripts", "Running CPU-safe user wordlists...", self.run_user_wordlist_chain)
+
                 if self._should_run_stage("default_wordlists", start_after):
                     self._run_stage("default_wordlists", "Running CPU-safe fallback wordlists...", self.run_default_wordlist_chain)
-
-                if self._should_run_stage("user_scripts", start_after):
-                    self._run_stage("user_scripts", "Running CPU-safe user wordlist scripts...", self.run_user_script_wordlist_chain)
 
             with self.lock:
                 self.lock.set_status("Completed CPU-safe attack chain")
@@ -320,11 +320,11 @@ class CapAttack(BaseAttack):
             if self._should_run_stage("names_with_digits", start_after):
                 self._run_stage("names_with_digits", "Running name mutations with digits...", self.run_names_with_digits)
 
+            if self._should_run_stage("user_scripts", start_after):
+                self._run_stage("user_scripts", "Running user wordlists...", self.run_user_wordlist_chain)
+
             if self._should_run_stage("default_wordlists", start_after):
                 self._run_stage("default_wordlists", "Running extended default wordlists...", self.run_default_wordlist_chain)
-
-            if self._should_run_stage("user_scripts", start_after):
-                self._run_stage("user_scripts", "Running user wordlist scripts...", self.run_user_script_wordlist_chain)
 
             if self._should_run_stage("exhaustive", start_after):
                 self._run_stage(
