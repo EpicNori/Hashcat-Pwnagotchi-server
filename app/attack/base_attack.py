@@ -42,7 +42,6 @@ def download_wordlists():
 
 class BaseAttack:
     timers = defaultdict(lambda: dict(count=0, elapsed=1e-6))
-    WPA_EXHAUSTIVE_MASK = "?a" * 63
 
     def __init__(self, file_22000: Union[str, Path], hashcat_args=(), fast=False, verbose=True):
         """
@@ -183,20 +182,15 @@ class BaseAttack:
 
     @monitor_timer
     def run_exhaustive_bruteforce(self, min_length=8, max_length=63):
-        hashcat_args = list(self.hashcat_args)
-        hashcat_args.extend([
-            "--increment",
-            f"--increment-min={min_length}",
-            f"--increment-max={max_length}",
-        ])
-        hashcat_cmd = HashcatCmdCapture(
-            hcap_file=self.file_22000,
-            outfile=self.key_file,
-            hashcat_args=tuple(hashcat_args),
-            session=self.session,
-        )
-        hashcat_cmd.mask = self.WPA_EXHAUSTIVE_MASK
-        self.runner(hashcat_cmd)
+        for length in range(min_length, max_length + 1):
+            hashcat_cmd = HashcatCmdCapture(
+                hcap_file=self.file_22000,
+                outfile=self.key_file,
+                hashcat_args=tuple(self.hashcat_args),
+                session=f"{self.session}-bf{length}",
+            )
+            hashcat_cmd.mask = "?a" * length
+            self.runner(hashcat_cmd)
 
     def run_all(self):
         """

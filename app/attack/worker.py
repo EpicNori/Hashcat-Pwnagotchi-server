@@ -151,6 +151,16 @@ class CapAttack(BaseAttack):
             self.lock.set_status("Running digits8")
         super().run_digits8()
 
+    def run_exhaustive_bruteforce(self, min_length=8, max_length=63):
+        for length in range(min_length, max_length + 1):
+            self.cancel_if_needed()
+            with self.lock:
+                self.lock.set_status(f"Brute forcing length {length}")
+            hashcat_cmd = self.new_cmd()
+            hashcat_cmd.session = f"{self.session}-bf{length}"
+            hashcat_cmd.mask = "?a" * length
+            self.runner(hashcat_cmd)
+
     def run_main_wordlist(self):
         """
         Run main attack, specified by the user through the client app.
