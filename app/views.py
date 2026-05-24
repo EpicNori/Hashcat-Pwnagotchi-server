@@ -1002,8 +1002,8 @@ def requeue_completed_task(task: UploadedTask):
 @login_required
 @roles_required(RoleEnum.ADMIN)
 def terminate():
-    hashcat_worker.terminate()
-    return jsonify("Terminated all jobs")
+    cancelled_count = hashcat_worker.terminate()
+    return jsonify(f"Terminated all jobs and cancelled {cancelled_count} queued/running task(s).")
 
 
 @app.route('/hashcat.potfile')

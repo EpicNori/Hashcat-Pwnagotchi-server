@@ -355,12 +355,14 @@ def _hashcat_benchmark_async():
 
 
 class HashcatWorker:
+    MAX_WORKERS = 8
+
     def __init__(self, app):
         """
         Called in main process.
         :param app: flask app
         """
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=8)
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.MAX_WORKERS)
         self.app = app
         self.locks = {}
         self.locks_onetime = []
@@ -544,12 +546,32 @@ class HashcatWorker:
         self.executor.submit(_hashcat_benchmark_async)
 
     def terminate(self):
+        task_ids = []
         for lock in tuple(self.locks.values()):
             with lock:
+                task_ids.append(lock.task_id)
                 lock.cancel()
                 self.release_devices(lock.task_id)
-        subprocess_call(["pkill", "hashcat"])
+
+        with self._device_condition:
+            self._devices_by_task.clear()
+            self._device_condition.notify_all()
+
+        with app.app_context():
+            interrupted_tasks = UploadedTask.query.filter_by(completed=False).all()
+            for task in interrupted_tasks:
+                task.status = TaskInfoStatus.CANCELLED
+                task.completed = True
+                task_ids.append(task.id)
+            db.session.commit()
+
+        try:
+            subprocess_call(["pkill", "hashcat"])
+        finally:
+            self.executor.shutdown(wait=False, cancel_futures=True)
+            self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.MAX_WORKERS)
         self.locks.clear()
+        return len(set(task_ids))
 
     def cancel(self, task_id: int):
         for job_id, lock in tuple(self.locks.items()):
