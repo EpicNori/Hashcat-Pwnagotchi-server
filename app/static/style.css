@@ -142,3 +142,167 @@ td, th {
     transform: rotate(360deg);
   }
 }
+
+.settings-page {
+  max-width: 1180px;
+}
+
+.settings-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.settings-header h1 {
+  margin-bottom: 6px;
+}
+
+.settings-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 24px;
+  max-width: 460px;
+}
+
+.settings-tabs {
+  margin-bottom: 0;
+}
+
+.settings-tabs > li > a {
+  color: #344054;
+  font-weight: 600;
+}
+
+.settings-tabs .glyphicon {
+  margin-right: 5px;
+}
+
+.settings-tab-content {
+  border: 1px solid #ddd;
+  border-top: 0;
+  padding: 22px;
+}
+
+.settings-section-title {
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 18px;
+  padding-bottom: 10px;
+}
+
+.settings-section-title.compact {
+  margin-top: 12px;
+}
+
+.settings-section-title h2 {
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+
+.settings-section-title p {
+  margin-bottom: 0;
+}
+
+.settings-panel {
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.settings-device-heading {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.settings-range {
+  box-shadow: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.settings-info-block {
+  background: #f8fafc;
+  border: 1px solid #d9e2ec;
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.settings-info-block h3 {
+  font-size: 16px;
+  margin: 0 0 6px;
+}
+
+.settings-info-block p {
+  margin-bottom: 16px;
+}
+
+.settings-code-block,
+.settings-log-block {
+  max-height: 170px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.settings-code-block {
+  margin-top: 12px;
+}
+
+.settings-progress {
+  margin-bottom: 6px;
+}
+
+.settings-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-danger-row {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.settings-danger-row h3 {
+  font-size: 16px;
+  margin-top: 0;
+}
+
+.settings-danger-row p {
+  margin-bottom: 0;
+}
+
+@media (max-width: 768px) {
+  .settings-header,
+  .settings-danger-row {
+    display: block;
+  }
+
+  .settings-status-strip {
+    justify-content: flex-start;
+    margin-top: 12px;
+  }
+
+  .settings-tab-content {
+    padding: 14px;
+  }
+
+  .settings-tabs > li {
+    float: none;
+  }
+
+  .settings-tabs > li > a {
+    border-radius: 4px;
+    margin-right: 0;
+  }
+
+  .settings-danger-row form {
+    margin-top: 12px;
+  }
+}

@@ -2,169 +2,179 @@
 {% import "bootstrap/wtf.html" as wtf %}
 
 {% block page_content %}
-<div class="container">
-    <h1>Admin Performance Settings</h1>
-    <div class="row" style="margin-bottom: 30px;">
-        <div class="col-md-6">
-            <div class="panel panel-info">
-                <div class="panel-heading">🔒 Account Security</div>
-                <div class="panel-body">
-                    <p>Change your administrator login details here.</p>
-                    {{ wtf.quick_form(account_form) }}
-                </div>
-            </div>
+<div class="container settings-page">
+    <div class="settings-header">
+        <div>
+            <h1>Admin Settings</h1>
+            <p class="text-muted">Tune cracking performance, remote access, account security, and server maintenance from one place.</p>
+        </div>
+        <div class="settings-status-strip">
+            <span id="cloudflare-status" class="label label-default">Checking public website...</span>
+            <span id="tailscale-status" class="label label-default">Checking Tailscale...</span>
+            <span class="label {% if autostart_status == 'enabled' %}label-success{% elif autostart_status == 'disabled' %}label-default{% else %}label-warning{% endif %}">
+                Autostart {{ autostart_status|capitalize }}
+            </span>
+            <span class="label {% if update_status == 'success' %}label-success{% elif update_status == 'running' %}label-warning{% elif update_status == 'failed' %}label-danger{% else %}label-default{% endif %}">
+                Update {{ update_status|capitalize }}
+            </span>
         </div>
     </div>
 
-    <p>Use these settings to limit how much CPU and GPU your hashcat tasks are allowed to consume. This affects all future cracking jobs.</p>
-    <div class="row">
-        <div class="col-md-8">
+    <ul class="nav nav-tabs settings-tabs" role="tablist">
+        <li role="presentation" class="active">
+            <a href="#settings-performance" aria-controls="settings-performance" role="tab" data-toggle="tab">
+                <span class="glyphicon glyphicon-dashboard" aria-hidden="true"></span> Performance
+            </a>
+        </li>
+        <li role="presentation">
+            <a href="#settings-access" aria-controls="settings-access" role="tab" data-toggle="tab">
+                <span class="glyphicon glyphicon-globe" aria-hidden="true"></span> Remote Access
+            </a>
+        </li>
+        <li role="presentation">
+            <a href="#settings-maintenance" aria-controls="settings-maintenance" role="tab" data-toggle="tab">
+                <span class="glyphicon glyphicon-wrench" aria-hidden="true"></span> Maintenance
+            </a>
+        </li>
+        <li role="presentation">
+            <a href="#settings-account" aria-controls="settings-account" role="tab" data-toggle="tab">
+                <span class="glyphicon glyphicon-lock" aria-hidden="true"></span> Account
+            </a>
+        </li>
+    </ul>
+
+    <div class="tab-content settings-tab-content">
+        <div role="tabpanel" class="tab-pane active" id="settings-performance">
+            <div class="settings-section-title">
+                <h2>Performance</h2>
+                <p>These limits affect future cracking jobs and API/Pwnagotchi defaults.</p>
+            </div>
             <form method="POST">
                 {{ form.hidden_tag() }}
-                
-                <h3 style="margin-top: 0;">Device Performance Cards</h3>
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="panel panel-primary settings-panel">
+                            <div class="panel-heading">Safety and Routing</div>
+                            <div class="panel-body">
+                                <div class="row">
+                                    <div class="col-sm-4">{{ wtf.form_field(form.gpu_temp_limit) }}</div>
+                                    <div class="col-sm-4">{{ wtf.form_field(form.cpu_temp_limit) }}</div>
+                                    <div class="col-sm-4">{{ wtf.form_field(form.temp_resume_delta) }}</div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-sm-6">{{ wtf.form_field(form.cpu_percent) }}</div>
+                                    <div class="col-sm-6">{{ wtf.form_field(form.max_job_time_minutes) }}</div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-sm-6">{{ wtf.form_field(form.default_devices) }}</div>
+                                    <div class="col-sm-6">{{ wtf.form_field(form.default_api_workload) }}</div>
+                                </div>
+                                {{ wtf.form_field(form.use_spare_devices_for_queue) }}
+                                {{ wtf.form_field(form.submit, class="btn btn-primary") }}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="settings-info-block">
+                            <h3>Cracking Order</h3>
+                            <p>Normal mode starts with the ESSID rainbow PMK cache. If no wordlist is selected, brute force runs numbers, letters, letters+numbers, then printable+special at length checkpoints up to 63.</p>
+                            <h3>Workload Mapping</h3>
+                            <p>Device intensity controls whether each device is disabled, low, medium, high, or full workload.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section-title compact">
+                    <h2>Devices</h2>
+                    <p>Set intensity per CPU/GPU. A value of 0 skips that device.</p>
+                </div>
                 <div class="row">
                     {% for device in devices %}
                     <div class="col-md-6">
-                        <div class="panel panel-default" id="device-card-{{ device['id'] }}">
-                            <div class="panel-heading">
-                                <h3 class="panel-title">
-                                    {% if device['is_gpu'] %}🎮 GPU{% else %}💻 CPU{% endif %}: {{ device['name'] }}
-                                    <span class="pull-right label label-info" id="temp-badge-{{ device['id'] }}">--°C</span>
-                                </h3>
+                        <div class="panel panel-default settings-panel" id="device-card-{{ device['id'] }}">
+                            <div class="panel-heading settings-device-heading">
+                                <span>
+                                    <span class="glyphicon {% if device['is_gpu'] %}glyphicon-hdd{% else %}glyphicon-tasks{% endif %}" aria-hidden="true"></span>
+                                    {% if device['is_gpu'] %}GPU{% else %}CPU{% endif %}: {{ device['name'] }}
+                                </span>
+                                <span class="label label-info" id="temp-badge-{{ device['id'] }}">-- C</span>
                             </div>
                             <div class="panel-body">
-                                <p><strong>{{ device['name'] }}</strong></p>
                                 <p class="text-muted small">Memory: {{ device['memory'] }}</p>
-                                
                                 <div class="form-group">
                                     <label for="device_{{ device['id'] }}">Utilization Intensity (%)</label>
-                                    <input type="range" id="device_{{ device['id'] }}" name="device_{{ device['id'] }}" 
-                                           class="form-control" min="0" max="100" step="10"
+                                    <input type="range" id="device_{{ device['id'] }}" name="device_{{ device['id'] }}"
+                                           class="form-control settings-range" min="0" max="100" step="10"
                                            value="{{ device_intensities.get(device['id']|string, 100) }}"
                                            oninput="this.nextElementSibling.value = this.value + '%'">
                                     <output>{{ device_intensities.get(device['id']|string, 100) }}%</output>
-                                    <p class="help-block small">Set to 0% to skip this device.</p>
                                 </div>
                             </div>
                         </div>
                     </div>
                     {% endfor %}
                 </div>
-
-                <div class="panel panel-primary">
-                    <div class="panel-heading">Global Safety & Routing</div>
-                    <div class="panel-body">
-                        <div class="row">
-                            <div class="col-md-4">{{ wtf.form_field(form.gpu_temp_limit) }}</div>
-                            <div class="col-md-4">{{ wtf.form_field(form.cpu_temp_limit) }}</div>
-                            <div class="col-md-4">{{ wtf.form_field(form.temp_resume_delta) }}</div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6">{{ wtf.form_field(form.cpu_percent) }}</div>
-                            <div class="col-md-6">{{ wtf.form_field(form.max_job_time_minutes) }}</div>
-                        </div>
-                        {{ wtf.form_field(form.default_devices) }}
-                        {{ wtf.form_field(form.default_api_workload) }}
-                        {{ wtf.form_field(form.use_spare_devices_for_queue) }}
-                        <hr>
-                        {{ wtf.form_field(form.submit, class="btn btn-primary btn-lg btn-block") }}
-                    </div>
-                </div>
             </form>
         </div>
-        <div class="col-md-4">
-            <div class="panel panel-info">
-                <div class="panel-heading">How do these limits work?</div>
-                <div class="panel-body">
-                    <ul>
-                        <li><b>Dual GPU Support</b>: You can now specify individual intensity for up to 2 GPUs. 
-                            <ul>
-                                <li><b>0%</b>: Disables the device completely.</li>
-                                <li><b>1-100%</b>: Enables the device and sets the global workload profile (-w) based on the highest setting.</li>
-                            </ul>
-                        </li>
-                        <li><b>Workload Mapping (-w)</b>: 
-                            <ul>
-                                <li>1-25%: Low usage (Desktop remains responsive)</li>
-                                <li>26-50%: Medium (Default balanced mode)</li>
-                                <li>51-75%: High (Intense cracking)</li>
-                                <li>76-100%: Nightmare (Maximum heat/Full utilization)</li>
-                            </ul>
-                        </li>
-                        <li><b>Cracking Strategy</b>: 
-                            <ul>
-                                <li><b>Rainbow</b>: Normal mode checks the ESSID-specific WPA PMK cache before any wordlist or brute-force work.</li>
-                                <li><b>Wordlists</b>: Wordlists run only when selected for a task.</li>
-                                <li><b>Brute Force</b>: Leaving the wordlist choice on brute force continues into staged WPA masks if rainbow does not find the key: numbers, letters, letters+numbers, then printable+special up to 8, then 10, 12, 14, and onward to 63.</li>
-                            </ul>
-                        </li>
-                        <li><b>Spare Device Queue</b>: When enabled, the first active handshake uses the default devices. Other queued handshakes may run on remaining enabled devices instead of waiting.</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="row" style="margin-top: 25px;">
-        <div class="col-md-12">
-            <hr>
-            <h1>Remote Access</h1>
-            <p>Choose how operators reach this server remotely. Public Website is the simplest path for Pwnagotchi uploads over normal internet access, while Tailscale stays available for private VPN access.</p>
-        </div>
-    </div>
-    <div class="row" style="margin-bottom: 10px;">
-        <div class="col-md-12">
-            <span id="cloudflare-status" class="label label-default">Checking public website...</span>
-            <span id="tailscale-status" class="label label-default">Checking Tailscale...</span>
-        </div>
-    </div>
 
-    <div class="row">
-        <div class="col-md-6">
-            <div class="panel panel-info">
-                <div class="panel-heading">1. Public Website</div>
-                <div class="panel-body">
-                    <p>Create a Cloudflare Tunnel in the Cloudflare Zero Trust dashboard, point its public hostname to <code>http://localhost:9111</code>, then paste the connector token here. The server will install and start <code>cloudflared</code> for you.</p>
-                    <form method="POST">
-                        {{ public_form.hidden_tag() }}
-                        {{ wtf.form_field(public_form.public_hostname) }}
-                        {{ wtf.form_field(public_form.tunnel_token) }}
-                        {{ public_form.submit_public_website(class_="btn btn-info") }}
-                    </form>
-                    <hr>
-                    <p><b>Public plugin URL:</b> <code id="cloudflare-plugin-url">{{ cloudflare_snapshot.plugin_url or "Set up a public hostname first" }}</code></p>
-                    <button type="button" class="btn btn-default btn-sm" id="copy-cloudflare-url" {% if not cloudflare_snapshot.plugin_url %}disabled{% endif %}>Copy plugin URL</button>
-                    <pre id="cloudflare-plugin-config" style="word-wrap: break-word; white-space: pre-wrap; margin-top: 12px;">main.plugins.pwnagotchi_hashcat_wpa.url = "{{ cloudflare_snapshot.plugin_url or "https://upload.example.com" }}"</pre>
-                    <p class="help-block">Use a strong password for the Pwnagotchi upload user before exposing the endpoint through a public hostname.</p>
+        <div role="tabpanel" class="tab-pane" id="settings-access">
+            <div class="settings-section-title">
+                <h2>Remote Access</h2>
+                <p>Choose how Pwnagotchi devices and operators reach this server.</p>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="panel panel-info settings-panel">
+                        <div class="panel-heading">Public Website</div>
+                        <div class="panel-body">
+                            <p class="text-muted">Use a Cloudflare Tunnel public hostname pointed at <code>http://localhost:9111</code>.</p>
+                            <form method="POST">
+                                {{ public_form.hidden_tag() }}
+                                {{ wtf.form_field(public_form.public_hostname) }}
+                                {{ wtf.form_field(public_form.tunnel_token) }}
+                                {{ public_form.submit_public_website(class_="btn btn-info") }}
+                            </form>
+                            <hr>
+                            <p><b>Plugin URL:</b> <code id="cloudflare-plugin-url">{{ cloudflare_snapshot.plugin_url or "Set up a public hostname first" }}</code></p>
+                            <button type="button" class="btn btn-default btn-sm" id="copy-cloudflare-url" {% if not cloudflare_snapshot.plugin_url %}disabled{% endif %}>Copy plugin URL</button>
+                            <pre id="cloudflare-plugin-config" class="settings-code-block">main.plugins.pwnagotchi_hashcat_wpa.url = "{{ cloudflare_snapshot.plugin_url or "https://upload.example.com" }}"</pre>
+                            <p class="help-block">Use a strong upload password before exposing the endpoint publicly.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="panel panel-success settings-panel">
+                        <div class="panel-heading">Private VPN</div>
+                        <div class="panel-body">
+                            <p class="text-muted">Connect with Tailscale for private network access.</p>
+                            {{ wtf.quick_form(ts_form) }}
+                            <hr>
+                            <p><b>Server IP:</b> <code id="tailscale-ip">{{ tailscale_snapshot.ip or "Not connected yet" }}</code></p>
+                            <p><b>Plugin URL:</b> <code id="tailscale-plugin-url">{{ tailscale_snapshot.plugin_url or "Connect Tailscale first" }}</code></p>
+                            <button type="button" class="btn btn-default btn-sm" id="copy-tailscale-url" {% if not tailscale_snapshot.plugin_url %}disabled{% endif %}>Copy plugin URL</button>
+                            <pre id="tailscale-plugin-config" class="settings-code-block">main.plugins.pwnagotchi_hashcat_wpa.url = "{{ tailscale_snapshot.plugin_url or "http://100.x.x.x:9111" }}"</pre>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-6">
-            <div class="panel panel-success">
-                <div class="panel-heading">2. Private VPN</div>
-                <div class="panel-body">
-                    <p>Enter a Tailscale auth key for first-time setup, or leave it blank to reconnect an already configured server. If Tailscale is not installed on this Linux server, the system will install it first.</p>
-                    {{ wtf.quick_form(ts_form) }}
-                    <hr>
-                    <p><b>Server Tailscale IP:</b> <code id="tailscale-ip">{{ tailscale_snapshot.ip or "Not connected yet" }}</code></p>
-                    <p><b>Pwnagotchi plugin URL:</b> <code id="tailscale-plugin-url">{{ tailscale_snapshot.plugin_url or "Connect Tailscale first" }}</code></p>
-                    <button type="button" class="btn btn-default btn-sm" id="copy-tailscale-url" {% if not tailscale_snapshot.plugin_url %}disabled{% endif %}>Copy plugin URL</button>
-                    <pre id="tailscale-plugin-config" style="word-wrap: break-word; white-space: pre-wrap; margin-top: 12px;">main.plugins.pwnagotchi_hashcat_wpa.url = "{{ tailscale_snapshot.plugin_url or "http://100.x.x.x:9111" }}"</pre>
-                    <p class="help-block">Use this URL in the Pwnagotchi plugin setup page, then press Save config and Test connection.</p>
-                </div>
+
+        <div role="tabpanel" class="tab-pane" id="settings-maintenance">
+            <div class="settings-section-title">
+                <h2>Maintenance</h2>
+                <p>Driver checks, sample files, startup behavior, updates, and uninstall controls.</p>
             </div>
-        </div>
-        <div class="col-md-12">
-                <div class="panel panel-info">
-                    <div class="panel-heading">Testing and Driver Checks</div>
-                    <div class="panel-body">
-                        <p>Download the bundled test files to verify upload, conversion, and cracking behavior.</p>
-                        <p><a href="{{ url_for('static', filename='test_capture_hashcat_essid.22000') }}" download="test_capture_hashcat_essid.22000">Direct download link for the test file</a></p>
-                        <p><a href="{{ url_for('download_test_capture_pcap') }}" download="test_capture_hashcat_essid.pcap">Direct download link for the sample PCAP</a></p>
-                        <hr>
-                        <div class="form-group">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="panel panel-info settings-panel">
+                        <div class="panel-heading">Testing and Driver Checks</div>
+                        <div class="panel-body">
+                            <p>Download bundled sample captures to verify upload, conversion, and cracking behavior.</p>
+                            <p><a href="{{ url_for('static', filename='test_capture_hashcat_essid.22000') }}" download="test_capture_hashcat_essid.22000">Download sample 22000 file</a></p>
+                            <p><a href="{{ url_for('download_test_capture_pcap') }}" download="test_capture_hashcat_essid.pcap">Download sample PCAP</a></p>
+                            <hr>
                             <label>NVIDIA Driver Install Progress</label>
-                            <div class="progress" style="margin-bottom: 6px;">
+                            <div class="progress settings-progress">
                                 <div id="nvidia-progress-bar"
                                      class="progress-bar progress-bar-info"
                                      role="progressbar"
@@ -176,97 +186,98 @@
                                 </div>
                             </div>
                             <p id="nvidia-progress-message" class="help-block">{{ install_progress.nvidia.message }}</p>
+                            {% if not gpu_visible %}
+                            <form method="POST">
+                                {{ nvidia_form.hidden_tag() }}
+                                {{ nvidia_form.submit_check_nvidia(class_="btn btn-warning", id="nvidia-install-btn") }}
+                            </form>
+                            {% else %}
+                            <p class="text-muted small">A GPU is visible, so driver installation is not needed right now.</p>
+                            {% endif %}
                         </div>
-                        {% if not gpu_visible %}
-                        <p>No GPU is currently visible in the settings view. You can ask the server to check whether NVIDIA drivers are missing and install them if needed.</p>
-                        <form method="POST">
-                            {{ nvidia_form.hidden_tag() }}
-                            {{ nvidia_form.submit_check_nvidia(class_="btn btn-warning", id="nvidia-install-btn") }}
-                        </form>
-                        {% endif %}
                     </div>
                 </div>
-            </div>
-    </div>
-    <div class="row">
-        <div class="col-md-12" style="margin-top: 15px;">
-            <hr>
-            <h1>Server Autostart</h1>
-            <p>Choose whether the Hashcat WPA/WPA2 Server should start automatically when the machine boots.</p>
-        </div>
-    </div>
-    <div class="row">
-        <div class="col-md-6">
-            <div class="panel panel-primary">
-                <div class="panel-heading">Boot Startup Control</div>
-                <div class="panel-body">
-                    <p>
-                        Current status:
-                        <span class="label {% if autostart_status == 'enabled' %}label-success{% elif autostart_status == 'disabled' %}label-default{% else %}label-warning{% endif %}">
-                            {{ autostart_status|capitalize }}
-                        </span>
-                    </p>
-                    <p>Enable this if you want the web server to come online automatically after a reboot without starting it manually.</p>
-                    <form method="POST" style="margin-bottom: 10px;">
-                        {{ autostart_form.hidden_tag() }}
-                        {{ autostart_form.submit_enable_autostart(class_="btn btn-success") }}
-                        {{ autostart_form.submit_disable_autostart(class_="btn btn-default") }}
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="row">
-        <div class="col-md-12" style="margin-top: 15px;">
-            <hr>
-            <h1>Software Update</h1>
-            <p>Keep your hacking rig up to date with the latest features from GitHub.</p>
-        </div>
-    </div>
-    <div class="row">
-        <div class="col-md-6">
-                <div class="panel panel-danger">
-                    <div class="panel-heading">Automated Upgrade</div>
-                    <div class="panel-body">
-                        <p>Clicking the button below will automatically contact GitHub, pull the latest codebase, recompile the backend, and automatically restart the web-server daemon.</p>
-                        <p><i>Note: The server will be temporarily inaccessible for ~60 seconds during the upgrade process.</i></p>
-                        <p>
-                            Current update status:
-                            <span class="label {% if update_status == 'success' %}label-success{% elif update_status == 'running' %}label-warning{% elif update_status == 'failed' %}label-danger{% else %}label-default{% endif %}">
-                                {{ update_status|capitalize }}
-                            </span>
-                        </p>
-                        <div class="progress" style="margin-bottom: 6px;">
-                            <div id="update-progress-bar"
-                                 class="progress-bar progress-bar-info"
-                                 role="progressbar"
-                                 aria-valuemin="0"
-                                 aria-valuemax="100"
-                                 aria-valuenow="{{ install_progress.update.progress }}"
-                                 style="width: {{ install_progress.update.progress }}%;">
-                                {{ install_progress.update.progress }}%
+
+                <div class="col-md-6">
+                    <div class="panel panel-primary settings-panel">
+                        <div class="panel-heading">Boot Startup</div>
+                        <div class="panel-body">
+                            <p>
+                                Current status:
+                                <span class="label {% if autostart_status == 'enabled' %}label-success{% elif autostart_status == 'disabled' %}label-default{% else %}label-warning{% endif %}">
+                                    {{ autostart_status|capitalize }}
+                                </span>
+                            </p>
+                            <form method="POST" class="settings-button-row">
+                                {{ autostart_form.hidden_tag() }}
+                                {{ autostart_form.submit_enable_autostart(class_="btn btn-success") }}
+                                {{ autostart_form.submit_disable_autostart(class_="btn btn-default") }}
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="panel panel-warning settings-panel">
+                        <div class="panel-heading">Software Update</div>
+                        <div class="panel-body">
+                            <p>
+                                Current update status:
+                                <span class="label {% if update_status == 'success' %}label-success{% elif update_status == 'running' %}label-warning{% elif update_status == 'failed' %}label-danger{% else %}label-default{% endif %}">
+                                    {{ update_status|capitalize }}
+                                </span>
+                            </p>
+                            <div class="progress settings-progress">
+                                <div id="update-progress-bar"
+                                     class="progress-bar progress-bar-info"
+                                     role="progressbar"
+                                     aria-valuemin="0"
+                                     aria-valuemax="100"
+                                     aria-valuenow="{{ install_progress.update.progress }}"
+                                     style="width: {{ install_progress.update.progress }}%;">
+                                    {{ install_progress.update.progress }}%
+                                </div>
                             </div>
+                            <p id="update-progress-message" class="help-block">{{ install_progress.update.message }}</p>
+                            <p class="text-muted">{{ update_summary }}</p>
+                            <pre class="settings-log-block">{{ update_log_excerpt }}</pre>
+                            <form method="POST" id="update-app-form">
+                                {{ update_form.hidden_tag() }}
+                                {{ update_form.submit_update(class_="btn btn-warning", id="update-install-btn") }}
+                            </form>
                         </div>
-                        <p id="update-progress-message" class="help-block">{{ install_progress.update.message }}</p>
-                        <p>{{ update_summary }}</p>
-                        <pre style="max-height: 220px; overflow-y: auto; white-space: pre-wrap;">{{ update_log_excerpt }}</pre>
-                        <form method="POST" id="update-app-form">
-                            {{ update_form.hidden_tag() }}
-                            {{ update_form.submit_update(class_="btn btn-danger", id="update-install-btn") }}
-                        </form>
+                    </div>
+                </div>
+
+                <div class="col-md-12">
+                    <div class="panel panel-danger settings-panel">
+                        <div class="panel-heading">Danger Zone</div>
+                        <div class="panel-body settings-danger-row">
+                            <div>
+                                <h3>Permanent Uninstall</h3>
+                                <p>Removes the application files and background service. The hash database remains in <code>~/.hashcat/wpa-server</code>.</p>
+                            </div>
+                            <form method="POST" onsubmit="return confirm('Are you absolutely sure you want to permanently delete and uninstall this server?');">
+                                {{ uninstall_form.hidden_tag() }}
+                                {{ uninstall_form.submit_uninstall(class_="btn btn-danger") }}
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>
-        <div class="col-md-6">
-            <div class="panel panel-danger">
-                <div class="panel-heading">Danger Zone: Permanent Uninstall</div>
-                <div class="panel-body">
-                    <p>Clicking this button will completely purge this application, its files, and the background systemd service from your machine natively.</p>
-                    <p><i>Note: The hash database will remain safely in <code>~/.hashcat/wpa-server</code>, but the server will shut down permanently.</i></p>
-                    <form method="POST" onsubmit="return confirm('Are you absolutely sure you want to permanently delete and uninstall this server?');">
-                        {{ uninstall_form.hidden_tag() }}
-                        {{ uninstall_form.submit_uninstall(class_="btn btn-danger btn-block") }}
-                    </form>
+        </div>
+
+        <div role="tabpanel" class="tab-pane" id="settings-account">
+            <div class="settings-section-title">
+                <h2>Account</h2>
+                <p>Change the administrator username or password.</p>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="panel panel-info settings-panel">
+                        <div class="panel-heading">Account Security</div>
+                        <div class="panel-body">
+                            {{ wtf.quick_form(account_form) }}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -287,15 +298,14 @@
     function updateSensors() {
         $.get("/api/stats", function(data) {
             if (data.live_usage.cpu_temp) {
-                // Assuming CPU might be #1 or just checking matching IDs
-                $('#temp-badge-1').text(data.live_usage.cpu_temp + "°C");
+                $("#temp-badge-1").text(data.live_usage.cpu_temp + " C");
             }
             if (data.live_usage.gpus) {
                 data.live_usage.gpus.forEach(function(gpu) {
-                    var selector = '#temp-badge-' + gpu.id;
-                    $(selector).text(gpu.temp + "°C");
-                    if (gpu.temp > 80) $(selector).addClass('label-danger').removeClass('label-info');
-                    else $(selector).addClass('label-info').removeClass('label-danger');
+                    var selector = "#temp-badge-" + gpu.id;
+                    $(selector).text(gpu.temp + " C");
+                    if (gpu.temp > 80) $(selector).addClass("label-danger").removeClass("label-info");
+                    else $(selector).addClass("label-info").removeClass("label-danger");
                 });
             }
         });
@@ -312,12 +322,13 @@
             $("#tailscale-plugin-url").text(data.plugin_url || "Connect Tailscale first");
             $("#tailscale-plugin-config").text('main.plugins.pwnagotchi_hashcat_wpa.url = "' + (data.plugin_url || "http://100.x.x.x:9111") + '"');
             $("#copy-tailscale-url").prop("disabled", !data.plugin_url);
+            el.removeClass("label-default label-success label-warning label-danger");
             if (data.running) {
-                el.addClass("label-success").removeClass("label-default");
+                el.addClass("label-success");
             } else if (status.includes("starting")) {
-                el.addClass("label-warning").removeClass("label-default");
+                el.addClass("label-warning");
             } else {
-                el.addClass("label-danger").removeClass("label-default");
+                el.addClass("label-danger");
             }
         });
     }
@@ -404,10 +415,8 @@
             if (button.length) {
                 button.prop("disabled", false);
             }
-        } else {
-            if (button.length) {
-                button.prop("disabled", false);
-            }
+        } else if (button.length) {
+            button.prop("disabled", false);
         }
 
         bar.addClass(labelClass);
