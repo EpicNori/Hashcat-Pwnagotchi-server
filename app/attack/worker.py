@@ -12,12 +12,12 @@ from app.attack.base_attack import BaseAttack
 from app.attack.hashcat_cmd import restore_with_status, run_with_status, HashcatCmdCapture
 from app.attack.recovery import clear_recovery_state, read_recovery_state
 from app.config import BENCHMARK_FILE
-from app.domain import Rule, TaskInfoStatus, InvalidFileError, ProgressLock, Workload, WordList
+from app.domain import Rule, TaskInfoStatus, InvalidFileError, ProgressLock, Workload
 from app.logger import logger
 from app.uploader import UploadForm, UploadedTask
 from app.utils import read_plain_key, date_formatted, subprocess_call, read_hashcat_brain_password, \
     build_rainbow_wordlist, build_pmk_rainbow_cache, resolve_pmk_rainbow_password, bssid_essid_from_22000, decode_essid_hex
-from app.word_magic.wordlist import WordListDefault, iter_user_wordlist_sources, materialize_wordlist_source
+from app.word_magic.wordlist import materialize_wordlist_source
 
 
 class KeyFound(Exception):
@@ -27,15 +27,7 @@ class KeyFound(Exception):
 class CapAttack(BaseAttack):
     STAGE_ORDER = (
         "rainbow",
-        "digits8",
-        "top1k",
-        "keyboard_walk",
-        "essid",
-        "names",
         "main_wordlist",
-        "names_with_digits",
-        "user_scripts",
-        "default_wordlists",
         "exhaustive",
     )
 
@@ -153,14 +145,6 @@ class CapAttack(BaseAttack):
             self.lock.set_status("Running top1k with rules")
         super().run_top1k()
 
-    def run_arm_top1k_plain(self):
-        self.cancel_if_needed()
-        with self.lock:
-            self.lock.set_status("Running ARM-safe top1k")
-        hashcat_cmd = self.new_cmd()
-        hashcat_cmd.add_wordlists(WordList.TOP1K)
-        self.runner(hashcat_cmd)
-
     def run_digits8(self):
         self.cancel_if_needed()
         with self.lock:
@@ -187,37 +171,6 @@ class CapAttack(BaseAttack):
         hashcat_cmd.add_wordlists(resolved_wordlist)
         hashcat_cmd.add_rule(self.rule)
         self.runner(hashcat_cmd)
-
-    def run_default_wordlist_chain(self):
-        for default_wordlist in WordListDefault.list():
-            self.cancel_if_needed()
-            if not default_wordlist.path.exists():
-                with self.lock:
-                    self.lock.set_status(f"Downloading fallback wordlist: {default_wordlist.name}")
-                try:
-                    default_wordlist.download()
-                except Exception as error:
-                    logger.warning(f"Skipping fallback wordlist {default_wordlist.name}: {error}")
-                    with self.lock:
-                        self.lock.set_status(f"Skipping fallback wordlist: {default_wordlist.name}")
-                    continue
-            with self.lock:
-                self.lock.set_status(f"Running fallback wordlist: {default_wordlist.name}")
-            hashcat_cmd = self.new_cmd()
-            hashcat_cmd.add_wordlists(default_wordlist.path)
-            self.runner(hashcat_cmd)
-
-    def run_user_wordlist_chain(self):
-        for wordlist_source in iter_user_wordlist_sources():
-            self.cancel_if_needed()
-            with self.lock:
-                self.lock.set_status(f"Running user wordlist: {wordlist_source.name}")
-            resolved_wordlist = materialize_wordlist_source(wordlist_source)
-            if not resolved_wordlist.exists() or resolved_wordlist.stat().st_size == 0:
-                continue
-            hashcat_cmd = self.new_cmd()
-            hashcat_cmd.add_wordlists(resolved_wordlist)
-            self.runner(hashcat_cmd)
 
     def run_rainbow_attack(self):
         """
@@ -271,67 +224,23 @@ class CapAttack(BaseAttack):
                 task.status = TaskInfoStatus.RUNNING
                 db.session.commit()
 
-        if self._should_run_stage("rainbow", start_after):
-            self._run_stage("rainbow", "Running rainbow reuse list...", self.run_rainbow_attack)
-
         if self.work_mode == Workload.Rainbow.value:
+            if self._should_run_stage("rainbow", start_after):
+                self._run_stage("rainbow", "Running rainbow reuse list...", self.run_rainbow_attack)
             self.read_key()
             return
 
-        arm_safe_mode = self._arm_safe_mode()
-
-        if arm_safe_mode:
-            if self._should_run_stage("top1k", start_after):
-                self._run_stage("top1k", "Running ARM-safe top1k...", self.run_arm_top1k_plain)
-
+        if self.wordlist is not None:
             if self._should_run_stage("main_wordlist", start_after):
                 self._run_stage("main_wordlist", "Running the main wordlist...", self.run_main_wordlist)
-
-            if self.work_mode == Workload.Normal.value:
-                if self._should_run_stage("user_scripts", start_after):
-                    self._run_stage("user_scripts", "Running CPU-safe user wordlists...", self.run_user_wordlist_chain)
-
-                if self._should_run_stage("default_wordlists", start_after):
-                    self._run_stage("default_wordlists", "Running CPU-safe fallback wordlists...", self.run_default_wordlist_chain)
-
-            with self.lock:
-                self.lock.set_status("Completed CPU-safe attack chain")
             return
 
-        if not arm_safe_mode and self._should_run_stage("digits8", start_after):
-            self._run_stage("digits8", "Running digits8...", self.run_digits8)
-        
-        if self._should_run_stage("top1k", start_after):
-            self._run_stage("top1k", "Running top1k with rules...", self.run_top1k)
-        
-        if self._should_run_stage("keyboard_walk", start_after):
-            self._run_stage("keyboard_walk", "Running keyboard walk...", self.run_keyboard_walk)
-        
-        if self._should_run_stage("essid", start_after):
-            self._run_stage("essid", "Running ESSID attack...", self.run_essid_attack)
-        
-        if self._should_run_stage("names", start_after):
-            self._run_stage("names", "Running name mutations...", self.run_names)
-        
-        if self._should_run_stage("main_wordlist", start_after):
-            self._run_stage("main_wordlist", "Running the main wordlist...", self.run_main_wordlist)
-
-        if self.work_mode == Workload.Normal.value:
-            if self._should_run_stage("names_with_digits", start_after):
-                self._run_stage("names_with_digits", "Running name mutations with digits...", self.run_names_with_digits)
-
-            if self._should_run_stage("user_scripts", start_after):
-                self._run_stage("user_scripts", "Running user wordlists...", self.run_user_wordlist_chain)
-
-            if self._should_run_stage("default_wordlists", start_after):
-                self._run_stage("default_wordlists", "Running extended default wordlists...", self.run_default_wordlist_chain)
-
-            if self._should_run_stage("exhaustive", start_after):
-                self._run_stage(
-                    "exhaustive",
-                    "Running exhaustive WPA brute force (8-63)...",
-                    lambda: self.run_exhaustive_bruteforce(min_length=8),
-                )
+        if self._should_run_stage("exhaustive", start_after):
+            self._run_stage(
+                "exhaustive",
+                "Running exhaustive WPA brute force (8-63)...",
+                lambda: self.run_exhaustive_bruteforce(min_length=8),
+            )
 
 
 def _crack_async(worker, attack: CapAttack, raw_hashcat_args, requested_device_ids):
