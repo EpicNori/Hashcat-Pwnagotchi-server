@@ -155,8 +155,17 @@ td, th {
   margin-bottom: 18px;
 }
 
+.settings-header.simple {
+  background: #f8fafc;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  padding: 18px;
+}
+
 .settings-header h1 {
+  font-size: 30px;
   margin-bottom: 6px;
+  margin-top: 0;
 }
 
 .settings-status-strip {
@@ -189,7 +198,7 @@ td, th {
 
 .settings-section-title {
   border-bottom: 1px solid #e5e7eb;
-  margin-bottom: 18px;
+  margin: 24px 0 18px;
   padding-bottom: 10px;
 }
 
@@ -209,6 +218,64 @@ td, th {
 .settings-panel {
   border-radius: 6px;
   box-shadow: none;
+}
+
+.settings-action-grid {
+  align-items: stretch;
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.settings-action-grid > [class*="col-"] {
+  display: flex;
+}
+
+.settings-action-card {
+  background: #ffffff;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 16px;
+  min-height: 260px;
+  padding: 18px;
+  width: 100%;
+}
+
+.settings-action-card > .glyphicon {
+  color: #2f80ed;
+  font-size: 26px;
+}
+
+.settings-action-card h3 {
+  font-size: 18px;
+  margin: 12px 0 8px;
+}
+
+.settings-action-card .btn {
+  margin-top: 8px;
+}
+
+.settings-url-line {
+  font-size: 12px;
+  margin: 10px 0 0;
+}
+
+.settings-accordion .panel-title a {
+  display: block;
+  text-decoration: none;
+}
+
+.settings-accordion .panel-title .glyphicon {
+  margin-right: 6px;
+}
+
+.settings-device-row {
+  background: #f8fafc;
+  border: 1px solid #d9e2ec;
+  border-radius: 6px;
+  margin-bottom: 14px;
+  padding: 14px;
 }
 
 .settings-device-heading {
@@ -291,6 +358,14 @@ td, th {
 
   .settings-tab-content {
     padding: 14px;
+  }
+
+  .settings-action-grid {
+    display: block;
+  }
+
+  .settings-action-grid > [class*="col-"] {
+    display: block;
   }
 
   .settings-tabs > li {
