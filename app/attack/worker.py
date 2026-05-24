@@ -193,8 +193,14 @@ class CapAttack(BaseAttack):
             self.cancel_if_needed()
             if not default_wordlist.path.exists():
                 with self.lock:
-                    self.lock.set_status(f"Skipping missing fallback wordlist: {default_wordlist.name}")
-                continue
+                    self.lock.set_status(f"Downloading fallback wordlist: {default_wordlist.name}")
+                try:
+                    default_wordlist.download()
+                except Exception as error:
+                    logger.warning(f"Skipping fallback wordlist {default_wordlist.name}: {error}")
+                    with self.lock:
+                        self.lock.set_status(f"Skipping fallback wordlist: {default_wordlist.name}")
+                    continue
             with self.lock:
                 self.lock.set_status(f"Running fallback wordlist: {default_wordlist.name}")
             hashcat_cmd = self.new_cmd()
@@ -281,8 +287,15 @@ class CapAttack(BaseAttack):
             if self._should_run_stage("main_wordlist", start_after):
                 self._run_stage("main_wordlist", "Running the main wordlist...", self.run_main_wordlist)
 
+            if self.work_mode == Workload.Normal.value:
+                if self._should_run_stage("default_wordlists", start_after):
+                    self._run_stage("default_wordlists", "Running CPU-safe fallback wordlists...", self.run_default_wordlist_chain)
+
+                if self._should_run_stage("user_scripts", start_after):
+                    self._run_stage("user_scripts", "Running CPU-safe user wordlist scripts...", self.run_user_script_wordlist_chain)
+
             with self.lock:
-                self.lock.set_status("Completed ARM-safe quick attack chain")
+                self.lock.set_status("Completed CPU-safe attack chain")
             return
 
         if not arm_safe_mode and self._should_run_stage("digits8", start_after):
