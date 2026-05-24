@@ -151,13 +151,14 @@ class CapAttack(BaseAttack):
         super().run_digits8()
 
     def run_exhaustive_bruteforce(self, min_length=8, max_length=63):
-        for length in range(min_length, max_length + 1):
+        for stage_name, hashcat_args_extra, mask_unit, length in self.iter_bruteforce_masks(min_length, max_length):
             self.cancel_if_needed()
             with self.lock:
-                self.lock.set_status(f"Brute forcing length {length}")
+                self.lock.set_status(f"Brute forcing {stage_name} length {length}")
             hashcat_cmd = self.new_cmd()
-            hashcat_cmd.session = f"{self.session}-bf{length}"
-            hashcat_cmd.mask = "?a" * length
+            hashcat_cmd.hashcat_args = tuple(hashcat_cmd.hashcat_args) + tuple(hashcat_args_extra)
+            hashcat_cmd.session = f"{self.session}-{stage_name.replace('+', 'plus')}-{length}"
+            hashcat_cmd.mask = mask_unit * length
             self.runner(hashcat_cmd)
 
     def run_main_wordlist(self):
@@ -250,7 +251,7 @@ class CapAttack(BaseAttack):
         if self._should_run_stage("exhaustive", start_after):
             self._run_stage(
                 "exhaustive",
-                "Running exhaustive WPA brute force (8-63)...",
+                "Running staged WPA brute force (numbers, letters, combined, special)...",
                 lambda: self.run_exhaustive_bruteforce(min_length=8),
             )
 

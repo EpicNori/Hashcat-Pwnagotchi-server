@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block navbar %}{% endblock %}
+
+{% block content %}
+<div class="update-lockscreen">
+    <div class="update-card">
+        <div class="update-spinner" aria-hidden="true"></div>
+        <h1>Updating Server</h1>
+        <p id="update-state-text">The server is updating from GitHub. Controls are locked until it comes back online.</p>
+        <div class="progress update-progress">
+            <div id="update-progress-bar"
+                 class="progress-bar progress-bar-warning progress-bar-striped active"
+                 role="progressbar"
+                 aria-valuemin="0"
+                 aria-valuemax="100"
+                 aria-valuenow="{{ update_progress.progress }}"
+                 style="width: {{ update_progress.progress }}%;">
+                {{ update_progress.progress }}%
+            </div>
+        </div>
+        <p id="update-progress-message" class="help-block">{{ update_progress.message }}</p>
+        <p id="update-connection-message" class="text-muted small">Waiting for update progress...</p>
+        <a id="update-failed-link" href="{{ url_for('admin_settings') }}" class="btn btn-danger" style="display: none;">Back to Settings</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    (function() {
+        var finishedPolls = 0;
+        var pollDelay = 2500;
+        var redirectDelay = 900;
+        var bar = document.getElementById("update-progress-bar");
+        var message = document.getElementById("update-progress-message");
+        var connection = document.getElementById("update-connection-message");
+        var failedLink = document.getElementById("update-failed-link");
+        var stateText = document.getElementById("update-state-text");
+
+        function setProgress(snapshot) {
+            var progress = Number(snapshot.progress || 0);
+            if (isNaN(progress)) {
+                progress = 0;
+            }
+            progress = Math.max(0, Math.min(100, progress));
+            var state = (snapshot.state || "idle").toLowerCase();
+
+            bar.style.width = progress + "%";
+            bar.setAttribute("aria-valuenow", progress);
+            bar.textContent = progress + "%";
+            message.textContent = snapshot.message || "";
+            bar.className = "progress-bar";
+
+            if (state === "success") {
+                bar.className += " progress-bar-success";
+                stateText.textContent = "Update finished. Reloading the server UI...";
+                connection.textContent = "Server is online again.";
+                finishedPolls += 1;
+                if (finishedPolls >= 2) {
+                    window.setTimeout(function() {
+                        window.location.replace("{{ url_for('admin_settings') }}?updated=" + Date.now());
+                    }, redirectDelay);
+                }
+                return;
+            }
+
+            finishedPolls = 0;
+            if (state === "failed") {
+                bar.className += " progress-bar-danger";
+                stateText.textContent = "The update failed.";
+                connection.textContent = "Open Settings to check the updater log.";
+                failedLink.style.display = "inline-block";
+                return;
+            }
+
+            bar.className += " progress-bar-warning progress-bar-striped active";
+            connection.textContent = "The page will stay here while the app restarts.";
+        }
+
+        function pollUpdate() {
+            fetch("{{ url_for('api_admin_install_progress') }}?ts=" + Date.now(), {
+                credentials: "same-origin",
+                cache: "no-store"
+            }).then(function(response) {
+                if (!response.ok) {
+                    throw new Error("Server is restarting");
+                }
+                return response.json();
+            }).then(function(data) {
+                setProgress(data.update || {});
+            }).catch(function() {
+                finishedPolls = 0;
+                bar.className = "progress-bar progress-bar-warning progress-bar-striped active";
+                connection.textContent = "Server is restarting or temporarily offline...";
+            }).finally(function() {
+                window.setTimeout(pollUpdate, pollDelay);
+            });
+        }
+
+        pollUpdate();
+    })();
+</script>
+{% endblock %}

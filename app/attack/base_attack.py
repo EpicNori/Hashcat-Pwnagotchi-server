@@ -42,6 +42,13 @@ def download_wordlists():
 
 class BaseAttack:
     timers = defaultdict(lambda: dict(count=0, elapsed=1e-6))
+    WPA_BRUTEFORCE_CHECKPOINTS = tuple(range(8, 64, 2)) + (63,)
+    WPA_BRUTEFORCE_CHARSETS = (
+        ("numbers", (), "?d"),
+        ("letters", ("-1", "?l?u"), "?1"),
+        ("letters+numbers", ("-1", "?l?u?d"), "?1"),
+        ("printable+special", (), "?a"),
+    )
 
     def __init__(self, file_22000: Union[str, Path], hashcat_args=(), fast=False, verbose=True):
         """
@@ -182,15 +189,33 @@ class BaseAttack:
 
     @monitor_timer
     def run_exhaustive_bruteforce(self, min_length=8, max_length=63):
-        for length in range(min_length, max_length + 1):
+        for stage_name, hashcat_args_extra, mask_unit, length in self.iter_bruteforce_masks(min_length, max_length):
             hashcat_cmd = HashcatCmdCapture(
                 hcap_file=self.file_22000,
                 outfile=self.key_file,
-                hashcat_args=tuple(self.hashcat_args),
-                session=f"{self.session}-bf{length}",
+                hashcat_args=tuple(self.hashcat_args) + tuple(hashcat_args_extra),
+                session=f"{self.session}-{stage_name.replace('+', 'plus')}-{length}",
             )
-            hashcat_cmd.mask = "?a" * length
+            hashcat_cmd.mask = mask_unit * length
             self.runner(hashcat_cmd)
+
+    def iter_bruteforce_masks(self, min_length=8, max_length=63):
+        previous_checkpoint = min_length - 1
+        checkpoints = [checkpoint for checkpoint in self.WPA_BRUTEFORCE_CHECKPOINTS if checkpoint >= min_length]
+        if not checkpoints or checkpoints[-1] < max_length:
+            checkpoints.append(max_length)
+
+        for checkpoint in checkpoints:
+            checkpoint = min(checkpoint, max_length)
+            if checkpoint < min_length:
+                continue
+            start_length = max(min_length, previous_checkpoint + 1)
+            if start_length > checkpoint:
+                continue
+            for stage_name, hashcat_args_extra, mask_unit in self.WPA_BRUTEFORCE_CHARSETS:
+                for length in range(start_length, checkpoint + 1):
+                    yield stage_name, hashcat_args_extra, mask_unit, length
+            previous_checkpoint = checkpoint
 
     def run_all(self):
         """

@@ -282,6 +282,13 @@ def read_progress_snapshot(path: Path, default_message: str) -> dict:
         return snapshot
 
 
+def write_progress_snapshot(kind: str, state: str, progress: int, message: str):
+    path = get_progress_file(kind)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    progress = max(0, min(100, int(progress)))
+    path.write_text(f"{state}|{progress}|{message}\n", encoding="utf-8")
+
+
 def get_install_progress() -> dict:
     return {
         "update": read_progress_snapshot(
@@ -557,6 +564,17 @@ def install_default_wordlist(wordlist_name):
 @roles_required(RoleEnum.ADMIN)
 def api_admin_install_progress():
     return jsonify(get_install_progress())
+
+
+@app.route('/update_wait')
+@login_required
+@roles_required(RoleEnum.ADMIN)
+def update_wait():
+    return render_template(
+        'update_wait.html',
+        title='Updating',
+        update_progress=get_install_progress()["update"],
+    )
 
 @app.route('/api/upload', methods=['POST'])
 def api_upload():
@@ -1201,9 +1219,14 @@ def admin_settings():
 
     if update_form.submit_update.data and update_form.validate():
         try:
+            write_progress_snapshot("update", "running", 1, "Starting the application update")
             subprocess.Popen(["sudo", get_management_script_path("update_app.sh")])
-            flask.flash('🚀 Update initiated! The system is now downloading the latest version and rebuilding the package in the background. The server will automatically restart and be back online in roughly 60 seconds.', category='success')
+            return redirect(url_for('update_wait'))
         except Exception as e:
+            try:
+                write_progress_snapshot("update", "failed", 0, f"Failed to start update script: {e}")
+            except Exception:
+                pass
             flask.flash(f'Failed to start update script: {e}', category='error')
         return redirect(url_for('admin_settings'))
 

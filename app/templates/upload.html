@@ -75,7 +75,7 @@
     </form>
 
     <p class="text-muted small" style="margin-top: 20px;">Rainbow mode builds an ESSID-specific WPA PMK cache from previously cracked keys and checks it with hashcat mode 22001.</p>
-    <p class="text-muted small" style="margin-top: 20px;">Normal mode checks the ESSID-specific rainbow PMK cache first. If you select a wordlist, only that selected wordlist runs after rainbow; otherwise the task continues into exhaustive WPA brute force.</p>
+    <p class="text-muted small" style="margin-top: 20px;">Normal mode checks the ESSID-specific rainbow PMK cache first. If you select a wordlist, only that selected wordlist runs after rainbow; otherwise the task continues into staged WPA brute force: numbers, letters, letters+numbers, then printable+special by length checkpoints.</p>
 </div>
 {% endblock %}
 

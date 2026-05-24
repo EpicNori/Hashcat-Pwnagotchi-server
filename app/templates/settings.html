@@ -96,7 +96,7 @@
                             <ul>
                                 <li><b>Rainbow</b>: Normal mode checks the ESSID-specific WPA PMK cache before any wordlist or brute-force work.</li>
                                 <li><b>Wordlists</b>: Wordlists run only when selected for a task.</li>
-                                <li><b>Brute Force</b>: Leaving the wordlist choice on brute force continues into printable WPA passwords from 8 to 63 characters if rainbow does not find the key.</li>
+                                <li><b>Brute Force</b>: Leaving the wordlist choice on brute force continues into staged WPA masks if rainbow does not find the key: numbers, letters, letters+numbers, then printable+special up to 8, then 10, 12, 14, and onward to 63.</li>
                             </ul>
                         </li>
                         <li><b>Spare Device Queue</b>: When enabled, the first active handshake uses the default devices. Other queued handshakes may run on remaining enabled devices instead of waiting.</li>
@@ -250,7 +250,7 @@
                         <p id="update-progress-message" class="help-block">{{ install_progress.update.message }}</p>
                         <p>{{ update_summary }}</p>
                         <pre style="max-height: 220px; overflow-y: auto; white-space: pre-wrap;">{{ update_log_excerpt }}</pre>
-                        <form method="POST">
+                        <form method="POST" id="update-app-form">
                             {{ update_form.hidden_tag() }}
                             {{ update_form.submit_update(class_="btn btn-danger", id="update-install-btn") }}
                         </form>
@@ -270,6 +270,13 @@
                 </div>
             </div>
         </div>
+    </div>
+</div>
+<div id="settings-update-overlay" style="display: none;">
+    <div class="settings-update-box">
+        <div class="settings-update-spinner" aria-hidden="true"></div>
+        <h2>Starting Update</h2>
+        <p>The server UI is locked while the updater starts. You will be moved to the update screen automatically.</p>
     </div>
 </div>
 {% endblock %}
@@ -421,5 +428,10 @@
 
     setInterval(refreshInstallerProgress, 5000);
     refreshInstallerProgress();
+
+    $("#update-app-form").on("submit", function() {
+        $("#settings-update-overlay").show();
+        $("#update-install-btn").val("Starting update...");
+    });
 </script>
 {% endblock %}
