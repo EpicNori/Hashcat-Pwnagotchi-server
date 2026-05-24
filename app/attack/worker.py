@@ -230,6 +230,9 @@ class CapAttack(BaseAttack):
             self.read_key()
             return
 
+        if self._should_run_stage("rainbow", start_after):
+            self._run_stage("rainbow", "Running rainbow PMK cache...", self.run_rainbow_attack)
+
         if self.wordlist is not None:
             if self._should_run_stage("main_wordlist", start_after):
                 self._run_stage("main_wordlist", "Running the main wordlist...", self.run_main_wordlist)
