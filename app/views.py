@@ -1042,7 +1042,7 @@ def cancel(task_id):
     task = db.session.get(UploadedTask, task_id)
     if task is None:
         return flask.Response(status=HTTPStatus.BAD_REQUEST)
-    if task.user_id != current_user.id:
+    if not user_has_roles(current_user, RoleEnum.ADMIN) and task.user_id != current_user.id:
         return flask.Response(status=HTTPStatus.FORBIDDEN)
     if hashcat_worker.cancel(task.id):
         return jsonify(TaskInfoStatus.CANCELLED)

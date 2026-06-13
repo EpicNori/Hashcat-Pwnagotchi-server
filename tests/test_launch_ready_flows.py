@@ -725,6 +725,64 @@ class LaunchReadyFlowTests(unittest.TestCase):
         self.assertIn("uninstall_app.sh", FakeProcess.calls[0].command[1])
         self.assertIn("--background", FakeProcess.calls[0].command)
 
+    def test_admin_can_cancel_another_users_task_from_gui(self):
+        with app.app_context():
+            owner = User(username="job-owner")
+            owner.set_password("owner-password")
+            owner.roles = [Role.by_enum(RoleEnum.USER)]
+            db.session.add(owner)
+            db.session.commit()
+            task = UploadedTask(
+                user_id=owner.id,
+                filename="job-owner/test_capture_hashcat_essid.22000",
+                bssid="fc690c158264",
+                essid="hashcat-essid",
+                completed=False,
+            )
+            db.session.add(task)
+            db.session.commit()
+            task_id = task.id
+
+        self.login_admin()
+        with mock.patch.object(views.hashcat_worker, "cancel", return_value=True, create=True) as cancel_task:
+            response = self.client.get(f"/cancel/{task_id}")
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertEqual(response.get_json(), "Cancelled")
+        cancel_task.assert_called_once_with(task_id)
+
+    def test_non_owner_cannot_cancel_another_users_task(self):
+        with app.app_context():
+            owner = User(username="job-owner")
+            owner.set_password("owner-password")
+            owner.roles = [Role.by_enum(RoleEnum.USER)]
+            intruder = User(username="job-intruder")
+            intruder.set_password("intruder-password")
+            intruder.roles = [Role.by_enum(RoleEnum.USER)]
+            db.session.add_all([owner, intruder])
+            db.session.commit()
+            task = UploadedTask(
+                user_id=owner.id,
+                filename="job-owner/test_capture_hashcat_essid.22000",
+                bssid="fc690c158264",
+                essid="hashcat-essid",
+                completed=False,
+            )
+            db.session.add(task)
+            db.session.commit()
+            task_id = task.id
+            intruder_id = str(intruder.id)
+
+        with self.client.session_transaction() as session:
+            session["_user_id"] = intruder_id
+            session["_fresh"] = True
+
+        with mock.patch.object(views.hashcat_worker, "cancel", return_value=True, create=True) as cancel_task:
+            response = self.client.get(f"/cancel/{task_id}")
+
+        self.assertEqual(response.status_code, 403)
+        cancel_task.assert_not_called()
+
     def test_pwnagotchi_heartbeat_updates_status(self):
         response = self.client.post(
             "/api/pwnagotchi/heartbeat",
