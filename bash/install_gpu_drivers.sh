@@ -184,7 +184,7 @@ hashcat_sees_nvidia_runtime() {
     local output
 
     if ! command -v hashcat >/dev/null 2>&1; then
-        return 0
+        return 1
     fi
 
     output="$(hashcat -I 2>/dev/null || true)"

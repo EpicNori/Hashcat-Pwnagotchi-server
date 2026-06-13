@@ -14,7 +14,8 @@ class GpuDriverInstallerTests(unittest.TestCase):
         cls.bash = str(git_bash) if git_bash.exists() else shutil.which("bash")
 
     def run_installer(self, lspci_output, fake_packages, os_release, ubuntu_drivers_devices="",
-                      nvidia_smi_l_output="", hashcat_info_output=""):
+                      nvidia_smi_l_output="", hashcat_info_output="", create_hashcat=True,
+                      ignore_host_gpu_tools=True):
         if self.bash is None:
             self.skipTest("bash is not available")
         with tempfile.TemporaryDirectory(prefix="hashcat-gpu-test-") as temp_name:
@@ -42,16 +43,17 @@ class GpuDriverInstallerTests(unittest.TestCase):
             else:
                 (bin_dir / "nvidia-smi").write_text("#!/bin/bash\nexit 1\n", encoding="utf-8")
             (bin_dir / "nvidia-smi").chmod(0o755)
-            (bin_dir / "hashcat").write_text(
-                "#!/bin/bash\n"
-                "if [ \"${1:-}\" = \"-I\" ]; then\n"
-                "cat <<'EOF'\n" + hashcat_info_output + "\nEOF\n"
-                "exit 0\n"
-                "fi\n"
-                "exit 0\n",
-                encoding="utf-8",
-            )
-            (bin_dir / "hashcat").chmod(0o755)
+            if create_hashcat:
+                (bin_dir / "hashcat").write_text(
+                    "#!/bin/bash\n"
+                    "if [ \"${1:-}\" = \"-I\" ]; then\n"
+                    "cat <<'EOF'\n" + hashcat_info_output + "\nEOF\n"
+                    "exit 0\n"
+                    "fi\n"
+                    "exit 0\n",
+                    encoding="utf-8",
+                )
+                (bin_dir / "hashcat").chmod(0o755)
             (bin_dir / "rocminfo").write_text("#!/bin/bash\nexit 1\n", encoding="utf-8")
             (bin_dir / "rocminfo").chmod(0o755)
             (bin_dir / "rocm-smi").write_text("#!/bin/bash\nexit 1\n", encoding="utf-8")
@@ -71,7 +73,7 @@ class GpuDriverInstallerTests(unittest.TestCase):
                 export PATH="{bash_path(bin_dir)}:$PATH"
                 export HASHCAT_WPA_DRY_RUN=1
                 export HASHCAT_WPA_IGNORE_HOST_PCI=1
-                export HASHCAT_WPA_IGNORE_HOST_GPU_TOOLS=1
+                export HASHCAT_WPA_IGNORE_HOST_GPU_TOOLS={"1" if ignore_host_gpu_tools else "0"}
                 export HASHCAT_WPA_TEST_LSPCI_OUTPUT="{lspci_output}"
                 export HASHCAT_WPA_TEST_UBUNTU_DRIVERS_DEVICES="{ubuntu_drivers_devices}"
                 export HASHCAT_WPA_FAKE_APT_PACKAGES="{fake_packages}"
@@ -131,6 +133,22 @@ class GpuDriverInstallerTests(unittest.TestCase):
         self.assertIn("apt-get install -y nvidia-driver-570", result.stdout)
         self.assertIn("apt-get install -y ocl-icd-libopencl1 clinfo", result.stdout)
         self.assertIn("apt-get install -y nvidia-opencl-icd-570", result.stdout)
+
+    def test_nvidia_smi_visible_but_hashcat_missing_does_not_skip_install(self):
+        result = self.run_installer(
+            "",
+            "pciutils ubuntu-drivers-common nvidia-driver-570 ocl-icd-libopencl1 clinfo nvidia-opencl-icd-570",
+            'ID=ubuntu\nVERSION_ID="24.04"\nVERSION_CODENAME=noble\nID_LIKE=debian\n',
+            ubuntu_drivers_devices="driver   : nvidia-driver-570 - distro non-free recommended",
+            nvidia_smi_l_output="GPU 0: NVIDIA GeForce RTX 4070 (UUID: GPU-test)",
+            create_hashcat=False,
+            ignore_host_gpu_tools=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("NVIDIA GPU detected", result.stdout)
+        self.assertIn("apt-get install -y nvidia-driver-570", result.stdout)
+        self.assertNotIn("NVIDIA runtime is already available", result.stdout)
 
     def test_debian_nvidia_requires_driver_package_not_only_firmware(self):
         result = self.run_installer(
