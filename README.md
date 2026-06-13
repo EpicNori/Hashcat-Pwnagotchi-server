@@ -23,6 +23,24 @@ The same installer/update scripts support both `amd64` and `arm64`; ARM hosts in
 
 After installation, the dashboard is available at `http://127.0.0.1:9111`.
 
+## Windows / WSL Quick Start
+
+On Windows, run the server inside WSL 2 with Ubuntu. From an Administrator PowerShell, install Ubuntu first:
+
+```powershell
+wsl --install -d Ubuntu
+```
+
+After rebooting if Windows asks for it and finishing the first Ubuntu user setup, run this one-liner from PowerShell:
+
+```powershell
+wsl -d Ubuntu -u root -- bash -lc "apt-get update && apt-get install -y curl ca-certificates && curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/install.sh | bash"
+```
+
+Open the dashboard at `http://localhost:9111`. If systemd is disabled in your WSL distro, the installer prints a manual `gunicorn` command to start the server.
+
+For NVIDIA GPUs on WSL, install the CUDA-capable NVIDIA driver on Windows, then run `wsl --shutdown` and start Ubuntu again. Do not install Linux NVIDIA kernel drivers inside WSL; WSL exposes the GPU through the Windows driver bridge.
+
 ## Update Workflow
 
 ```bash

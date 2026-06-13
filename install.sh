@@ -49,6 +49,10 @@ os_id_like_contains() {
     [[ " ${ID_LIKE:-} " == *" ${needle} "* ]]
 }
 
+is_wsl_host() {
+    grep -qiE '(microsoft|wsl)' /proc/sys/kernel/osrelease /proc/version 2>/dev/null
+}
+
 install_optional_package() {
     local package_name="$1"
     local purpose="$2"
@@ -85,6 +89,20 @@ has_nvidia_gpu() {
 }
 
 install_nvidia_drivers_if_needed() {
+    if is_wsl_host; then
+        if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+            NVIDIA_DRIVER_STATUS="already-installed"
+            echo "[*] NVIDIA GPU runtime is available through the Windows WSL driver bridge."
+            write_nvidia_progress success 100 "NVIDIA WSL GPU runtime is available"
+        else
+            NVIDIA_DRIVER_STATUS="manual-required"
+            echo "[!] WSL detected. Install or update the NVIDIA CUDA-capable Windows driver on the Windows host."
+            echo "[!] Do not install Linux NVIDIA kernel drivers inside WSL; restart WSL with: wsl --shutdown"
+            write_nvidia_progress not-applicable 100 "Install the NVIDIA WSL driver on the Windows host"
+        fi
+        return 0
+    fi
+
     if command -v nvidia-smi >/dev/null 2>&1 && lsmod | grep -q '^nvidia'; then
         NVIDIA_DRIVER_STATUS="already-installed"
         echo "[*] NVIDIA GPU runtime already appears to be installed."

@@ -30,6 +30,10 @@ is_arm_arch() {
     esac
 }
 
+is_wsl_host() {
+    grep -qiE '(microsoft|wsl)' /proc/sys/kernel/osrelease /proc/version 2>/dev/null
+}
+
 cloudflared_asset_for_arch() {
     case "$(detect_machine_arch)" in
         amd64) echo "cloudflared-linux-amd64" ;;

@@ -29,11 +29,26 @@ has_nvidia_gpu() {
 }
 
 drivers_ready() {
+    if is_wsl_host; then
+        command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1
+        return
+    fi
     command -v nvidia-smi >/dev/null 2>&1 && lsmod | grep -q '^nvidia'
 }
 
 case "$ACTION" in
     status)
+        if is_wsl_host; then
+            if drivers_ready; then
+                echo "visible:nvidia-wsl driver:installed"
+                write_progress success 100 "NVIDIA WSL GPU runtime is available"
+            else
+                echo "visible:wsl driver:windows-host-required"
+                write_progress not-applicable 100 "Install the NVIDIA WSL driver on the Windows host"
+            fi
+            exit 0
+        fi
+
         if has_nvidia_gpu; then
             if drivers_ready; then
                 echo "visible:nvidia-gpu driver:installed"
@@ -52,6 +67,13 @@ case "$ACTION" in
         if drivers_ready; then
             echo "NVIDIA drivers already appear to be installed."
             write_progress success 100 "NVIDIA drivers are already installed"
+            exit 0
+        fi
+
+        if is_wsl_host; then
+            echo "WSL detected. Install or update the NVIDIA CUDA-capable Windows driver on the Windows host."
+            echo "Do not install Linux NVIDIA kernel drivers inside WSL; restart WSL with: wsl --shutdown"
+            write_progress not-applicable 100 "Install the NVIDIA WSL driver on the Windows host"
             exit 0
         fi
 
