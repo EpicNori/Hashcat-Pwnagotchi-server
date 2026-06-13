@@ -16,7 +16,14 @@ ARM_HASHCAT_SAFE_FLAGS = [
     "--kernel-loops=1",
     "--force",
 ]
-ARM_HASHCAT_SAFE_REMOVE_NEXT = {"-D", "--opencl-device-types", "--backend-vector-width", "-w"}
+ARM_HASHCAT_SAFE_REMOVE_NEXT = {
+    "-d",
+    "--backend-devices",
+    "-D",
+    "--opencl-device-types",
+    "--backend-vector-width",
+    "-w",
+}
 ARM_HASHCAT_SAFE_REMOVE_EXACT = {
     "--backend-ignore-cuda",
     "--backend-ignore-hip",
@@ -26,6 +33,7 @@ ARM_HASHCAT_SAFE_REMOVE_EXACT = {
     "--force",
 }
 ARM_HASHCAT_SAFE_REMOVE_PREFIXES = (
+    "--backend-devices=",
     "--opencl-device-types=",
     "--backend-vector-width=",
     "--workload-profile=",

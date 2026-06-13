@@ -95,7 +95,7 @@ install_nvidia_drivers_if_needed() {
             echo "[*] NVIDIA GPU runtime is available through the Windows WSL driver bridge."
             write_nvidia_progress success 100 "NVIDIA WSL GPU runtime is available"
         else
-            NVIDIA_DRIVER_STATUS="manual-required"
+            NVIDIA_DRIVER_STATUS="wsl-driver-required"
             echo "[!] WSL detected. Install or update the NVIDIA CUDA-capable Windows driver on the Windows host."
             echo "[!] Do not install Linux NVIDIA kernel drivers inside WSL; restart WSL with: wsl --shutdown"
             write_nvidia_progress not-applicable 100 "Install the NVIDIA WSL driver on the Windows host"
@@ -267,6 +267,9 @@ if [ "$NVIDIA_DRIVER_STATUS" = "installed" ]; then
     echo "[+] A reboot may still be required before Hashcat can use the GPU."
 elif [ "$NVIDIA_DRIVER_STATUS" = "already-installed" ]; then
     echo "[+] NVIDIA GPU runtime was already available on this machine."
+elif [ "$NVIDIA_DRIVER_STATUS" = "wsl-driver-required" ]; then
+    echo "[!] WSL detected. GPU acceleration needs the CUDA-capable NVIDIA driver on the Windows host."
+    echo "[!] After installing or updating the Windows driver, run: wsl --shutdown"
 elif [ "$NVIDIA_DRIVER_STATUS" = "manual-required" ]; then
     echo "[!] NVIDIA GPU detected, but driver setup still needs manual attention before GPU cracking will work."
 fi
