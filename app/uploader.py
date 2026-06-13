@@ -99,7 +99,7 @@ class UploadedTask(db.Model):
     duration = db.Column(db.Interval, default=datetime.timedelta)
     queue_position = db.Column(db.Integer, index=True)
     status = db.Column(db.String(256), default=TaskInfoStatus.SCHEDULED)
-    found_key = db.Column(db.String(256))
+    found_key = db.Column(db.Text)
     completed = db.Column(db.Boolean, default=False)
     essid = db.Column(db.String(64))
     bssid = db.Column(db.String(64))

@@ -10,6 +10,8 @@ from app.logger import logger
 
 CAPTURES_DIR = HASHCAT_WPA_CACHE_DIR / "captures"
 SUPPORTED_HASH_SUFFIXES = set(HashcatMode.valid_modes())
+WPA_PASSPHRASE_MIN_BYTES = 8
+WPA_PASSPHRASE_MAX_BYTES = 63
 
 
 def iter_capture_roots():
@@ -127,27 +129,25 @@ def read_plain_key(key_path):
     if not key_path.exists():
         return None
     try:
-        with open(key_path) as f:
+        with open(key_path, encoding="utf-8", errors="replace") as f:
             lines = f.read().splitlines()
     except FileNotFoundError:
         return None
     found_keys = []
     seen_keys = set()
     for line in lines:
-        key_parts = line.split(':', 1)
-        if len(key_parts) != 2:
+        parsed = parse_found_key_line(line)
+        if parsed is None:
             continue
-        hash_value, key = key_parts
-        if not hash_value or not key:
-            continue
-        found_key = "{hash_value}:{key}".format(hash_value=hash_value, key=key)
+        hash_value, key = parsed
+        found_key = f"{hash_value}:{key}"
         if found_key in seen_keys:
             continue
         seen_keys.add(found_key)
         found_keys.append(found_key)
     if not found_keys:
         return None
-    return ', '.join(found_keys)
+    return '\n'.join(found_keys)
 
 
 def read_last_benchmark():
@@ -207,10 +207,43 @@ def calculate_md5(fpath, chunk_size=1024 * 1024):
     return md5.hexdigest()
 
 
-def extract_password_from_found_key(found_key):
-    if not found_key:
+def parse_found_key_line(found_key_line):
+    if found_key_line is None:
         return None
-    return str(found_key).split(':', 1)[-1].strip() or None
+    hash_value, separator, password = str(found_key_line).partition(':')
+    if not separator or not hash_value or password == "":
+        return None
+    return hash_value, password
+
+
+def iter_found_key_lines(found_key):
+    if not found_key:
+        return
+    for line in str(found_key).splitlines():
+        if line:
+            yield line
+
+
+def extract_passwords_from_found_key(found_key):
+    if not found_key:
+        return []
+    passwords = []
+    seen = set()
+    for line in iter_found_key_lines(found_key):
+        parsed = parse_found_key_line(line)
+        if parsed is None:
+            continue
+        _, password = parsed
+        if password in seen:
+            continue
+        seen.add(password)
+        passwords.append(password)
+    return passwords
+
+
+def extract_password_from_found_key(found_key):
+    passwords = extract_passwords_from_found_key(found_key)
+    return passwords[0] if passwords else None
 
 
 def build_rainbow_wordlist():
@@ -223,10 +256,10 @@ def build_rainbow_wordlist():
     tasks = UploadedTask.query.filter(UploadedTask.found_key.is_not(None)) \
         .order_by(UploadedTask.uploaded_time.desc()).all()
     for task in tasks:
-        password = extract_password_from_found_key(task.found_key)
-        if password and password not in seen_passwords:
-            seen_passwords.add(password)
-            ordered_passwords.append(password)
+        for password in extract_passwords_from_found_key(task.found_key):
+            if password not in seen_passwords:
+                seen_passwords.add(password)
+                ordered_passwords.append(password)
 
     if CAPTURES_DIR.exists():
         candidate_key_files = []
@@ -243,10 +276,10 @@ def build_rainbow_wordlist():
                 found_key = read_plain_key(key_file)
             except Exception:
                 continue
-            password = extract_password_from_found_key(found_key)
-            if password and password not in seen_passwords:
-                seen_passwords.add(password)
-                ordered_passwords.append(password)
+            for password in extract_passwords_from_found_key(found_key):
+                if password not in seen_passwords:
+                    seen_passwords.add(password)
+                    ordered_passwords.append(password)
 
     if not ordered_passwords:
         return None
@@ -306,7 +339,7 @@ def build_pmk_rainbow_cache(essid: str, source_wordlist: Path):
             if not password:
                 continue
             password_bytes = password.encode("utf-8", errors="ignore")
-            if len(password_bytes) < 8 or len(password_bytes) > 63:
+            if len(password_bytes) < WPA_PASSPHRASE_MIN_BYTES or len(password_bytes) > WPA_PASSPHRASE_MAX_BYTES:
                 continue
             pmk = hashlib.pbkdf2_hmac("sha1", password_bytes, essid_bytes, 4096, 32).hex()
             if pmk in seen_pmks:

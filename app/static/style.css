@@ -49,6 +49,16 @@ td, th {
   white-space: normal !important;
 }
 
+td.found_key {
+  font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+  white-space: pre-wrap !important;
+  word-break: break-word;
+}
+
+.found-password-preview {
+  white-space: pre-wrap;
+}
+
 /* Keep checkbox lists from rendering browser bullets in form controls */
 .form-group ul {
   list-style: none;
