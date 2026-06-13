@@ -17,6 +17,33 @@ SUDOERS_FILE="${HASHCAT_WPA_SUDOERS_FILE:-/etc/sudoers.d/hashcat-tailscale}"
 APP_USER="${HASHCAT_WPA_APP_USER:-hashcat}"
 PACKAGE_NAME="${HASHCAT_WPA_PACKAGE_NAME:-hashcat-wpa-server}"
 LOG_FILE="${HASHCAT_WPA_UNINSTALL_LOG_FILE:-/tmp/hashcat-wpa-uninstall.log}"
+CRITICAL_REMOVAL_PATHS=(
+    /
+    /bin
+    /boot
+    /dev
+    /etc
+    /etc/sudoers.d
+    /etc/systemd
+    /etc/systemd/system
+    /home
+    /lib
+    /lib64
+    /opt
+    /proc
+    /root
+    /run
+    /sbin
+    /sys
+    /tmp
+    /usr
+    /usr/bin
+    /usr/local
+    /usr/local/bin
+    /var
+    /var/lib
+    /var/log
+)
 
 for arg in "$@"; do
     case "$arg" in
@@ -100,13 +127,34 @@ systemctl_maybe() {
     fi
 }
 
+normalize_removal_path() {
+    local path="$1"
+    while [ "${#path}" -gt 1 ] && [ "${path%/}" != "$path" ]; do
+        path="${path%/}"
+    done
+    printf '%s' "$path"
+}
+
 assert_safe_path() {
     local path="${1:-}"
     local label="$2"
-    if [ -z "$path" ] || [ "$path" = "/" ]; then
+    local normalized
+    local critical_path
+    if [ -z "$path" ]; then
         echo "[!] Refusing to remove unsafe $label path: '${path:-<empty>}'"
         exit 1
     fi
+    normalized="$(normalize_removal_path "$path")"
+    if [[ "$normalized" != /* ]]; then
+        echo "[!] Refusing to remove non-absolute $label path: '$path'"
+        exit 1
+    fi
+    for critical_path in "${CRITICAL_REMOVAL_PATHS[@]}"; do
+        if [ "$normalized" = "$critical_path" ]; then
+            echo "[!] Refusing to remove unsafe $label path: '$normalized'"
+            exit 1
+        fi
+    done
 }
 
 remove_tree() {

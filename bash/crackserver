@@ -10,6 +10,28 @@ DEFAULT_URL="http://127.0.0.1:9111"
 NONE_VALUE="None"
 DEFAULT_WORKLOAD="3"
 DEFAULT_BRAIN_FEATURE="2"
+CRITICAL_RESET_PATHS=(
+    /
+    /bin
+    /boot
+    /dev
+    /etc
+    /home
+    /lib
+    /lib64
+    /opt
+    /proc
+    /root
+    /run
+    /sbin
+    /sys
+    /tmp
+    /usr
+    /usr/local
+    /var
+    /var/lib
+    /var/log
+)
 
 script_path() {
     echo "$APP_ROOT/bash/$1"
@@ -71,6 +93,35 @@ require_option_value() {
         echo "[!] ${option} requires a value."
         exit 2
     fi
+}
+
+normalize_path_for_guard() {
+    local path="$1"
+    while [ "${#path}" -gt 1 ] && [ "${path%/}" != "$path" ]; do
+        path="${path%/}"
+    done
+    printf '%s' "$path"
+}
+
+assert_safe_data_dir() {
+    local path="${1:-}"
+    local normalized
+    local critical_path
+    if [ -z "$path" ]; then
+        echo "[!] Refusing to reset unsafe data path: '<empty>'"
+        exit 1
+    fi
+    normalized="$(normalize_path_for_guard "$path")"
+    if [[ "$normalized" != /* ]]; then
+        echo "[!] Refusing to reset non-absolute data path: '$path'"
+        exit 1
+    fi
+    for critical_path in "${CRITICAL_RESET_PATHS[@]}"; do
+        if [ "$normalized" = "$critical_path" ]; then
+            echo "[!] Refusing to reset unsafe data path: '$normalized'"
+            exit 1
+        fi
+    done
 }
 
 trim_value() {
@@ -485,10 +536,7 @@ case "$command" in
         echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
         echo "Data path: $DATA_DIR"
         if confirm "Are you sure you want a factory reset? [y/N]" "n"; then
-            if [ -z "$DATA_DIR" ] || [ "$DATA_DIR" = "/" ]; then
-                echo "[!] Refusing to reset unsafe data path: '${DATA_DIR:-<empty>}'"
-                exit 1
-            fi
+            assert_safe_data_dir "$DATA_DIR"
             sudo systemctl stop "$SERVICE_NAME" || true
             if sudo test -d "$DATA_DIR"; then
                 sudo find "$DATA_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +

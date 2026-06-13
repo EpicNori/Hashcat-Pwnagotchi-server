@@ -192,6 +192,20 @@ cat "$tmp/curl.args"
         self.assertIn(f"find {self.bash_path(data_dir)} -mindepth 1 -maxdepth 1", result.stdout)
         self.assertNotIn("/var/lib/hashcat-wpa-server", result.stdout)
 
+    def test_reset_refuses_critical_system_data_path(self):
+        result = self.run_bash("printf 'y\\n' | HASHCAT_WPA_DATA_DIR=/var/lib bash ./bash/crackserver reset\n")
+
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("Refusing to reset unsafe data path: '/var/lib'", result.stdout)
+        self.assertNotIn("find /var/lib", result.stdout)
+
+    def test_reset_refuses_relative_data_path(self):
+        result = self.run_bash("printf 'y\\n' | HASHCAT_WPA_DATA_DIR=relative-data bash ./bash/crackserver reset\n")
+
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("Refusing to reset non-absolute data path: 'relative-data'", result.stdout)
+        self.assertNotIn("find relative-data", result.stdout)
+
     def test_package_sudoers_allows_uninstall_path_overrides(self):
         postinst = (self.repo_root / "debian" / "postinst").read_text(encoding="utf-8")
 

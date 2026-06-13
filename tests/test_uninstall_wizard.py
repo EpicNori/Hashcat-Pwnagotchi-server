@@ -123,6 +123,46 @@ class UninstallWizardTests(unittest.TestCase):
         self.assertIn(self.bash_path(root / "logs"), result.stdout)
         self.assertIn("[dry-run] userdel hashcat-test-user", result.stdout)
 
+    def test_dry_run_refuses_critical_system_data_paths(self):
+        with tempfile.TemporaryDirectory(prefix="hashcat-uninstall-critical-") as temp_name:
+            root = Path(temp_name)
+            script = textwrap.dedent(f"""
+                export HASHCAT_WPA_APP_ROOT="{self.bash_path(root / 'app')}"
+                export HASHCAT_WPA_DATA_DIR="/var/lib"
+                export HASHCAT_WPA_LOG_DIR="{self.bash_path(root / 'logs')}"
+                export HASHCAT_WPA_SERVICE_FILE="{self.bash_path(root / 'service')}"
+                export HASHCAT_WPA_CLI_LINK="{self.bash_path(root / 'crackserver')}"
+                export HASHCAT_WPA_SUDOERS_FILE="{self.bash_path(root / 'sudoers')}"
+                export HASHCAT_WPA_PACKAGE_NAME="hashcat-wpa-server-test-only"
+                bash ./bash/uninstall_app.sh --dry-run --yes --purge-data
+            """)
+
+            result = self.run_bash(script)
+
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("Refusing to remove unsafe data path: '/var/lib'", result.stdout)
+        self.assertNotIn("[dry-run] rm -rf -- /var/lib", result.stdout)
+
+    def test_dry_run_refuses_relative_application_path(self):
+        with tempfile.TemporaryDirectory(prefix="hashcat-uninstall-relative-") as temp_name:
+            root = Path(temp_name)
+            script = textwrap.dedent(f"""
+                export HASHCAT_WPA_APP_ROOT="relative-app"
+                export HASHCAT_WPA_DATA_DIR="{self.bash_path(root / 'data')}"
+                export HASHCAT_WPA_LOG_DIR="{self.bash_path(root / 'logs')}"
+                export HASHCAT_WPA_SERVICE_FILE="{self.bash_path(root / 'service')}"
+                export HASHCAT_WPA_CLI_LINK="{self.bash_path(root / 'crackserver')}"
+                export HASHCAT_WPA_SUDOERS_FILE="{self.bash_path(root / 'sudoers')}"
+                export HASHCAT_WPA_PACKAGE_NAME="hashcat-wpa-server-test-only"
+                bash ./bash/uninstall_app.sh --dry-run --yes --keep-data
+            """)
+
+            result = self.run_bash(script)
+
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("Refusing to remove non-absolute application path: 'relative-app'", result.stdout)
+        self.assertNotIn("[dry-run] rm -rf -- relative-app", result.stdout)
+
     def test_background_dry_run_preserves_custom_log_and_paths(self):
         with tempfile.TemporaryDirectory(prefix="hashcat-uninstall-bg-") as temp_name:
             root = Path(temp_name)
