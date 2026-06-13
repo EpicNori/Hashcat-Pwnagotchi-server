@@ -783,6 +783,90 @@ class LaunchReadyFlowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         cancel_task.assert_not_called()
 
+    def test_requeue_all_non_admin_ignores_other_users_active_tasks(self):
+        sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
+        with app.app_context():
+            retry_user = User(username="retry-user")
+            retry_user.set_password("retry-password")
+            retry_user.roles = [Role.by_enum(RoleEnum.USER)]
+            busy_user = User(username="busy-user")
+            busy_user.set_password("busy-password")
+            busy_user.roles = [Role.by_enum(RoleEnum.USER)]
+            db.session.add_all([retry_user, busy_user])
+            db.session.commit()
+            failed_task = UploadedTask(
+                user_id=retry_user.id,
+                filename="retry-user/test_capture_hashcat_essid.22000",
+                bssid="fc690c158264",
+                essid="hashcat-essid",
+                completed=True,
+                found_key=None,
+            )
+            other_active_task = UploadedTask(
+                user_id=busy_user.id,
+                filename="busy-user/test_capture_hashcat_essid.22000",
+                bssid="fc690c158264",
+                essid="hashcat-essid",
+                completed=False,
+            )
+            db.session.add_all([failed_task, other_active_task])
+            db.session.commit()
+            retry_user_id = str(retry_user.id)
+
+        with self.client.session_transaction() as session:
+            session["_user_id"] = retry_user_id
+            session["_fresh"] = True
+
+        with mock.patch("app.views.resolve_task_attack_file", return_value=sample_capture):
+            response = self.client.post("/requeue_all", follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertIn("Re-queued 1 failed task", response.get_data(as_text=True))
+        self.assertEqual(len(self.fake_worker.submitted), 1)
+        with app.app_context():
+            retry_user = User.query.filter_by(username="retry-user").first()
+            self.assertEqual(
+                UploadedTask.query.filter_by(user_id=retry_user.id, completed=False).count(),
+                1,
+            )
+
+    def test_requeue_all_non_admin_still_blocks_on_own_active_tasks(self):
+        with app.app_context():
+            retry_user = User(username="retry-user")
+            retry_user.set_password("retry-password")
+            retry_user.roles = [Role.by_enum(RoleEnum.USER)]
+            db.session.add(retry_user)
+            db.session.commit()
+            db.session.add_all([
+                UploadedTask(
+                    user_id=retry_user.id,
+                    filename="retry-user/failed.22000",
+                    bssid="fc690c158264",
+                    essid="hashcat-essid",
+                    completed=True,
+                    found_key=None,
+                ),
+                UploadedTask(
+                    user_id=retry_user.id,
+                    filename="retry-user/active.22000",
+                    bssid="fc690c158264",
+                    essid="hashcat-essid",
+                    completed=False,
+                ),
+            ])
+            db.session.commit()
+            retry_user_id = str(retry_user.id)
+
+        with self.client.session_transaction() as session:
+            session["_user_id"] = retry_user_id
+            session["_fresh"] = True
+
+        response = self.client.post("/requeue_all", follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertIn("Cannot retry all while 1 task", response.get_data(as_text=True))
+        self.assertEqual(len(self.fake_worker.submitted), 0)
+
     def test_pwnagotchi_heartbeat_updates_status(self):
         response = self.client.post(
             "/api/pwnagotchi/heartbeat",

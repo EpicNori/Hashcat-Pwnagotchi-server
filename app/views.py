@@ -1113,7 +1113,10 @@ def requeue(task_id):
 @app.route("/requeue_all", methods=["POST"])
 @login_required
 def requeue_all():
-    active_or_queued = UploadedTask.query.filter(UploadedTask.completed == False).count()
+    active_query = UploadedTask.query.filter(UploadedTask.completed == False)
+    if not user_has_roles(current_user, RoleEnum.ADMIN):
+        active_query = active_query.filter_by(user_id=current_user.id)
+    active_or_queued = active_query.count()
     if active_or_queued:
         flask.flash(
             f"Cannot retry all while {active_or_queued} task(s) are already queued or running. "
