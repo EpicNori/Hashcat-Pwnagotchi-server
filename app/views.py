@@ -1049,7 +1049,7 @@ def hashcat_potfile():
 
 from flask_wtf import FlaskForm
 from wtforms import BooleanField, IntegerField, SubmitField, PasswordField, StringField, RadioField
-from wtforms.validators import DataRequired, NumberRange, EqualTo, Optional, Regexp
+from wtforms.validators import DataRequired, NumberRange, EqualTo, Optional, Regexp, Length
 from app.utils.settings import read_settings, write_settings, update_admin_setting
 
 from wtforms import StringField
@@ -1105,14 +1105,18 @@ class AutostartForm(FlaskForm):
 
 class AccountSettingsForm(FlaskForm):
     new_username = StringField('Update Username', validators=[DataRequired()])
-    new_password = PasswordField('New Password (leave blank to keep current)', render_kw={"autocomplete": "new-password"})
+    new_password = PasswordField('New Password (leave blank to keep current)',
+                                 validators=[Optional(), Length(min=8)],
+                                 render_kw={"autocomplete": "new-password"})
     confirm_password = PasswordField('Confirm New Password', validators=[EqualTo('new_password', message='Passwords must match')], render_kw={"autocomplete": "new-password"})
     submit_account = SubmitField('Update Account')
 
 
 class EditUserForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
-    new_password = PasswordField('New Password (leave blank to keep current)', render_kw={"autocomplete": "new-password"})
+    new_password = PasswordField('New Password (leave blank to keep current)',
+                                 validators=[Optional(), Length(min=8)],
+                                 render_kw={"autocomplete": "new-password"})
     confirm_password = PasswordField('Confirm New Password', validators=[EqualTo('new_password', message='Passwords must match')], render_kw={"autocomplete": "new-password"})
     roles = MultiCheckboxField('Roles', choices=[])
     submit_user = SubmitField('Save User Changes')

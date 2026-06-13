@@ -76,15 +76,13 @@ set_login() {
         exit 2
     fi
 
-    export CRACKSERVER_ADMIN_USER="$username"
-    export CRACKSERVER_ADMIN_PASSWORD="$password"
-    python_app - <<'PY'
-import os
+    printf '%s' "$password" | python_app -c '
+import sys
 from app import app, db
 from app.login import Role, RoleEnum, User, create_first_users
 
-username = os.environ["CRACKSERVER_ADMIN_USER"]
-password = os.environ["CRACKSERVER_ADMIN_PASSWORD"]
+username = sys.argv[1]
+password = sys.stdin.read()
 
 with app.app_context():
     create_first_users()
@@ -97,7 +95,7 @@ with app.app_context():
     user.roles = [role for role in required_roles if role is not None]
     db.session.commit()
     print(f"[+] Admin login ready: {username}")
-PY
+' "$username"
 }
 
 upload_files() {

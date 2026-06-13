@@ -25,7 +25,7 @@ class LoginForm(FlaskForm):
 
 class RegistrationForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired(), Length(min=4, max=64)])
-    password = PasswordField('Password', validators=[DataRequired(), Length(min=8, max=128)])
+    password = PasswordField('Password', validators=[DataRequired(), Length(min=8)])
     password2 = PasswordField(
         'Repeat Password', validators=[DataRequired(), EqualTo('password')])
     submit = SubmitField('Register')
@@ -71,7 +71,7 @@ class User(UserMixin, db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(64), unique=True, index=True)
-    password_hash = db.Column(db.String(128))
+    password_hash = db.Column(db.Text)
     uploads = db.relationship('UploadedTask', lazy=True)
     roles = db.relationship('Role', secondary='user_roles')
 
