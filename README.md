@@ -51,13 +51,24 @@ Updates keep persistent users, captures, databases, wordlists, and settings unde
 
 ## Global CLI
 
+- `crackserver setup`
+- `crackserver set-login`
+- `crackserver upload <capture...>`
+- `crackserver tailscale`
+- `crackserver cloudflare <hostname>`
 - `crackserver start`
 - `crackserver stop`
 - `crackserver restart`
 - `crackserver status`
 - `crackserver update`
+- `crackserver driver-check`
+- `crackserver driver-status`
+- `crackserver doctor`
 - `crackserver dashboard`
 - `crackserver logs`
+- `crackserver uninstall`
+
+`crackserver uninstall` is an interactive wizard and keeps `/var/lib/hashcat-wpa-server` by default. Use `crackserver uninstall --yes --purge-data` only when you also want to delete users, captures, results, settings, and logs.
 
 ## Data Persistence
 

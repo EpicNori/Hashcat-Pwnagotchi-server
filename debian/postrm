@@ -6,8 +6,10 @@ case "$1" in
         rm -rf /opt/hashcat-wpa-server/venv
         rm -rf /var/lib/hashcat-wpa-server
         rm -rf /var/log/hashcat-wpa-server
+        rm -f /usr/local/bin/crackserver
+        rm -f /etc/sudoers.d/hashcat-tailscale
         
-        systemctl daemon-reload
+        systemctl daemon-reload >/dev/null 2>&1 || true
         
         if id "hashcat" >/dev/null 2>&1; then
             userdel hashcat || true

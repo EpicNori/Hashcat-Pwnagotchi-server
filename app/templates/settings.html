@@ -221,7 +221,7 @@
                     <div class="settings-danger-row">
                         <div>
                             <h4>Permanent Uninstall</h4>
-                            <p>Removes the app and background service. The hash database remains in <code>~/.hashcat/wpa-server</code>.</p>
+                            <p>Removes the app and background service. User data stays in <code>/var/lib/hashcat-wpa-server</code>.</p>
                         </div>
                         <form method="POST" onsubmit="return confirm('Are you absolutely sure you want to permanently delete and uninstall this server?');">
                             {{ uninstall_form.hidden_tag() }}

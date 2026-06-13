@@ -1,104 +1,336 @@
 #!/bin/bash
+set -euo pipefail
 
-# CrackServer CLI Wrapper
+APP_ROOT="${HASHCAT_WPA_APP_ROOT:-/opt/hashcat-wpa-server}"
+APP_USER="${HASHCAT_WPA_APP_USER:-hashcat}"
+SERVICE_NAME="hashcat-wpa-server.service"
+DEFAULT_URL="http://127.0.0.1:9111"
 
-function show_help {
-    echo "Usage: crackserver [COMMAND]"
-    echo ""
-    echo "Commands:"
-    echo "  update      - Safe Update: Updates app code but PRESERVES all data"
-    echo "  reset       - Factory Reset: Wipes all user data and databases"
-    echo "  start       - Start the background systemd service"
-    echo "  stop        - Stop the background systemd service"
-    echo "  restart     - Restart the background systemd service"
-    echo "  status      - Show the current service status and logs"
-    echo "  autostart   - Show whether the service starts automatically on boot"
-    echo "  autostart-on  - Enable automatic startup on boot"
-    echo "  autostart-off - Disable automatic startup on boot"
-    echo "  driver-check  - Check NVIDIA driver status and install drivers if missing"
-    echo "  driver-status - Show NVIDIA GPU and driver readiness"
-    echo "  doctor      - Verify runtime compatibility on this architecture"
-    echo "  uninstall   - Permanently remove the server from this machine"
-    echo "  dashboard   - Print the web interface URLs"
-    echo "  logs        - Follow the service logs in real-time"
-    echo ""
+script_path() {
+    echo "$APP_ROOT/bash/$1"
 }
 
-case "$1" in
+need_installed() {
+    if [ ! -d "$APP_ROOT" ]; then
+        echo "[!] Hashcat WPA Server is not installed at $APP_ROOT."
+        echo "    Install it first with:"
+        echo "    curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/install.sh | sudo bash"
+        exit 1
+    fi
+}
+
+run_as_app_user() {
+    if id "$APP_USER" >/dev/null 2>&1; then
+        sudo -u "$APP_USER" env HASHCAT_WPA_SKIP_STARTUP_MAINTENANCE=1 "$@"
+    else
+        env HASHCAT_WPA_SKIP_STARTUP_MAINTENANCE=1 "$@"
+    fi
+}
+
+python_app() {
+    need_installed
+    if [ ! -x "$APP_ROOT/venv/bin/python" ]; then
+        echo "[!] Python venv is missing at $APP_ROOT/venv/bin/python."
+        exit 1
+    fi
+    cd "$APP_ROOT"
+    run_as_app_user "$APP_ROOT/venv/bin/python" "$@"
+}
+
+dashboard_urls() {
+    local ip
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    echo "====================================================="
+    echo "  Hashcat WPA Server Dashboard"
+    echo "====================================================="
+    echo "  Local:   http://127.0.0.1:9111"
+    if [ -n "$ip" ]; then
+        echo "  Network: http://${ip}:9111"
+    fi
+    echo "====================================================="
+}
+
+confirm() {
+    local prompt="$1"
+    local default="${2:-n}"
+    local reply
+    read -r -p "$prompt " reply
+    reply="${reply:-$default}"
+    [[ "$reply" =~ ^[Yy]$ ]]
+}
+
+set_login() {
+    need_installed
+    local username="${1:-}"
+    local password="${2:-}"
+    if [ -z "$username" ]; then
+        read -r -p "Admin username [admin]: " username
+        username="${username:-admin}"
+    fi
+    if [ -z "$password" ]; then
+        read -r -s -p "Admin password: " password
+        echo
+    fi
+    if [ -z "$password" ]; then
+        echo "[!] Password cannot be empty."
+        exit 2
+    fi
+
+    export CRACKSERVER_ADMIN_USER="$username"
+    export CRACKSERVER_ADMIN_PASSWORD="$password"
+    python_app - <<'PY'
+import os
+from app import app, db
+from app.login import Role, RoleEnum, User, create_first_users
+
+username = os.environ["CRACKSERVER_ADMIN_USER"]
+password = os.environ["CRACKSERVER_ADMIN_PASSWORD"]
+
+with app.app_context():
+    create_first_users()
+    user = User.query.filter_by(username=username).first()
+    if user is None:
+        user = User(username=username)
+        db.session.add(user)
+    user.set_password(password)
+    required_roles = [Role.by_enum(RoleEnum.ADMIN), Role.by_enum(RoleEnum.USER)]
+    user.roles = [role for role in required_roles if role is not None]
+    db.session.commit()
+    print(f"[+] Admin login ready: {username}")
+PY
+}
+
+upload_files() {
+    local url="$DEFAULT_URL"
+    local username="${CRACKSERVER_USER:-admin}"
+    local password="${CRACKSERVER_PASSWORD:-}"
+    local files=()
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --url)
+                url="${2:-}"
+                shift 2
+                ;;
+            --user)
+                username="${2:-}"
+                shift 2
+                ;;
+            --password)
+                password="${2:-}"
+                shift 2
+                ;;
+            *)
+                files+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    if [ "${#files[@]}" -eq 0 ]; then
+        echo "Usage: crackserver upload [--url http://host:9111] [--user admin] [--password pass] <capture...>"
+        exit 2
+    fi
+    if [ -z "$password" ]; then
+        read -r -s -p "Password for ${username}: " password
+        echo
+    fi
+
+    local curl_args=()
+    for file in "${files[@]}"; do
+        if [ ! -f "$file" ]; then
+            echo "[!] Capture not found: $file"
+            exit 2
+        fi
+        curl_args+=(-F "capture=@${file}")
+    done
+
+    curl -fS --user "${username}:${password}" "${curl_args[@]}" "${url%/}/api/upload"
+    echo
+}
+
+tailscale_connect() {
+    need_installed
+    local auth_key="${1:-}"
+    sudo -v
+    if [ -z "$auth_key" ]; then
+        read -r -s -p "Tailscale auth key (blank if already configured): " auth_key
+        echo
+    fi
+    printf '%s' "$auth_key" | sudo "$(script_path install_tailscale.sh)"
+}
+
+cloudflare_connect() {
+    need_installed
+    local hostname="${1:-}"
+    local token="${2:-}"
+    sudo -v
+    if [ -z "$hostname" ]; then
+        read -r -p "Public hostname, e.g. upload.example.com: " hostname
+    fi
+    if [ -z "$token" ]; then
+        read -r -s -p "Cloudflare Tunnel token: " token
+        echo
+    fi
+    if [ -z "$hostname" ] || [ -z "$token" ]; then
+        echo "[!] Hostname and Cloudflare token are required."
+        exit 2
+    fi
+    printf '%s' "$token" | sudo "$(script_path install_cloudflare_tunnel.sh)" "$hostname"
+    echo "[+] Pwnagotchi plugin URL: https://${hostname}"
+}
+
+setup_wizard() {
+    need_installed
+    echo "====================================================="
+    echo "  Hashcat WPA Server Setup"
+    echo "====================================================="
+    dashboard_urls
+
+    if confirm "Set or reset the admin login now? [y/N]" "n"; then
+        set_login
+    fi
+
+    if confirm "Enable autostart on boot? [Y/n]" "y"; then
+        sudo "$(script_path autostart_service.sh)" enable || echo "[!] Autostart could not be enabled on this host."
+    fi
+
+    if confirm "Check NVIDIA driver/GPU readiness now? [Y/n]" "y"; then
+        sudo "$(script_path install_nvidia_drivers.sh)" check
+    fi
+
+    echo ""
+    echo "Remote access:"
+    echo "  1) Skip"
+    echo "  2) Tailscale private VPN"
+    echo "  3) Cloudflare Public Website"
+    read -r -p "Choose [1]: " remote_choice
+    case "${remote_choice:-1}" in
+        2) tailscale_connect ;;
+        3) cloudflare_connect ;;
+        *) echo "[*] Remote access skipped." ;;
+    esac
+
+    echo ""
+    echo "[*] Running doctor..."
+    sudo -u "$APP_USER" "$(script_path verify_runtime.sh)" || true
+    echo ""
+    dashboard_urls
+    echo "[+] Setup wizard finished."
+}
+
+show_help() {
+    cat <<'EOF'
+Usage: crackserver <command> [options]
+
+Setup:
+  setup                         Run the interactive launch setup wizard
+  set-login [username]          Create/reset an admin login
+  dashboard                     Print local and LAN dashboard URLs
+  doctor                        Verify runtime compatibility and Hashcat visibility
+
+Service:
+  start | stop | restart        Control the background service
+  status                        Show service status
+  logs                          Follow service logs
+  update                        Safe update from GitHub
+  autostart                     Show boot autostart status
+  autostart-on | autostart-off  Enable/disable boot autostart
+
+Cracking:
+  upload [opts] <capture...>    Upload one or more captures through the API
+    --url URL                   Default: http://127.0.0.1:9111
+    --user USER                 Default: admin
+    --password PASSWORD         Otherwise prompted
+
+Remote access:
+  tailscale [auth-key]          Install/connect Tailscale
+  cloudflare <host> [token]     Install/start Cloudflare Tunnel connector
+  driver-check                  Check/install Linux NVIDIA drivers when supported
+  driver-status                 Show GPU/driver readiness
+
+Uninstall:
+  uninstall                     Interactive uninstall wizard, keeps data by default
+  uninstall --yes               Remove app/service non-interactively, keep data
+  uninstall --yes --purge-data  Remove app/service and delete data/logs
+  reset                         Factory reset data only, then restart
+EOF
+}
+
+command="${1:-help}"
+shift || true
+
+case "$command" in
+    setup)
+        setup_wizard
+        ;;
+    set-login|password)
+        set_login "$@"
+        ;;
     update)
-        echo "[*] Triggering SAFE automated update from GitHub..."
-        echo "[*] (This preserves your database, handshakes, and accounts)"
+        echo "[*] Triggering safe automated update from GitHub..."
         curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/update.sh | sudo bash
         ;;
     reset)
         echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
         echo "!!! WARNING: THIS WILL WIPE ALL USERS AND RESULTS !!!"
         echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-        read -p "Are you sure you want a factory reset? (y/n) " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            echo "[*] Shuting down server..."
-            sudo systemctl stop hashcat-wpa-server
-            echo "[*] Wiping database and captures..."
+        if confirm "Are you sure you want a factory reset? [y/N]" "n"; then
+            sudo systemctl stop "$SERVICE_NAME" || true
             sudo rm -rf /var/lib/hashcat-wpa-server/*
-            echo "[*] Re-initializing system..."
-            sudo systemctl start hashcat-wpa-server
-            echo "[+] Factory reset complete. You may need to log in as 'admin' again."
+            sudo systemctl start "$SERVICE_NAME" || true
+            echo "[+] Factory reset complete."
         fi
         ;;
-    start)
-        echo "[*] Starting Hashcat WPA Server..."
-        sudo systemctl start hashcat-wpa-server
-        ;;
-    stop)
-        echo "[*] Stopping Hashcat WPA Server..."
-        sudo systemctl stop hashcat-wpa-server
-        ;;
-    restart)
-        echo "[*] Restarting Hashcat WPA Server..."
-        sudo systemctl restart hashcat-wpa-server
+    start|stop|restart)
+        sudo systemctl "$command" "$SERVICE_NAME"
         ;;
     status)
-        sudo systemctl status hashcat-wpa-server
+        sudo systemctl status "$SERVICE_NAME"
         ;;
     autostart)
-        echo "[*] Checking boot autostart status..."
-        sudo /opt/hashcat-wpa-server/bash/autostart_service.sh status
+        sudo "$(script_path autostart_service.sh)" status
         ;;
     autostart-on)
-        echo "[*] Enabling automatic startup on boot..."
-        sudo /opt/hashcat-wpa-server/bash/autostart_service.sh enable
+        sudo "$(script_path autostart_service.sh)" enable
         ;;
     autostart-off)
-        echo "[*] Disabling automatic startup on boot..."
-        sudo /opt/hashcat-wpa-server/bash/autostart_service.sh disable
+        sudo "$(script_path autostart_service.sh)" disable
         ;;
     driver-check)
-        echo "[*] Checking NVIDIA drivers and installing them if needed..."
-        sudo /opt/hashcat-wpa-server/bash/install_nvidia_drivers.sh check
+        sudo "$(script_path install_nvidia_drivers.sh)" check
         ;;
     driver-status)
-        echo "[*] Checking NVIDIA GPU and driver readiness..."
-        sudo /opt/hashcat-wpa-server/bash/install_nvidia_drivers.sh status
+        sudo "$(script_path install_nvidia_drivers.sh)" status
+        ;;
+    tailscale|tunnel-tailscale)
+        tailscale_connect "$@"
+        ;;
+    cloudflare|tunnel-cloudflare)
+        cloudflare_connect "$@"
+        ;;
+    upload)
+        upload_files "$@"
         ;;
     doctor)
-        sudo -u hashcat /opt/hashcat-wpa-server/bash/verify_runtime.sh
+        sudo -u "$APP_USER" "$(script_path verify_runtime.sh)"
         ;;
     logs)
-        sudo journalctl -u hashcat-wpa-server -f
+        sudo journalctl -u "$SERVICE_NAME" -f
         ;;
     uninstall)
-        sudo bash /opt/hashcat-wpa-server/bash/uninstall_app.sh
+        sudo bash "$(script_path uninstall_app.sh)" --wizard "$@"
         ;;
     dashboard)
-        echo "====================================================="
-        echo "  Hashcat WPA Server Dashboard"
-        echo "====================================================="
-        echo "  Local:   http://127.0.0.1:9111"
-        echo "  Network: http://$(hostname -I | awk '{print $1}'):9111"
-        echo "====================================================="
+        dashboard_urls
+        ;;
+    help|-h|--help)
+        show_help
         ;;
     *)
+        echo "[!] Unknown command: $command"
+        echo ""
         show_help
+        exit 2
         ;;
 esac

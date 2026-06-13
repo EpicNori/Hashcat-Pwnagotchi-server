@@ -1,8 +1,12 @@
 #!/bin/bash
 set -e
 
-# This script is called via root/sudo from the web interface
-AUTH_KEY="$1"
+# This script is called via root/sudo from the web interface or CLI.
+# Prefer stdin so auth keys do not have to appear in process arguments.
+AUTH_KEY="${1:-}"
+if [ -z "$AUTH_KEY" ] && ! [ -t 0 ]; then
+    AUTH_KEY="$(cat | tr -d '\r\n')"
+fi
 
 # Check if tailscale is already installed
 if ! command -v tailscale >/dev/null 2>&1; then
