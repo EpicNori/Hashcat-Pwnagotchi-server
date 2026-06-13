@@ -138,6 +138,25 @@ def is_wordlist_script(path: Path) -> bool:
     return path.suffix.lower() in SCRIPT_SUFFIXES
 
 
+def path_is_inside(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def validate_wordlist_source_path(wordlist_path) -> Path:
+    wordlist_path = Path(str(wordlist_path)).expanduser()
+    if not wordlist_path.is_absolute():
+        raise ValueError("Use an absolute server-side wordlist path.")
+    if not wordlist_path.exists() or not wordlist_path.is_file():
+        raise ValueError("Server-side wordlist path does not exist.")
+    if is_wordlist_script(wordlist_path) and not path_is_inside(wordlist_path, WORDLISTS_USER_DIR):
+        raise PermissionError("Wordlist generator scripts must live in the user wordlists folder.")
+    return wordlist_path
+
+
 @lru_cache()
 def count_wordlist(wordlist_path):
     st_size_mb = Path(wordlist_path).stat().st_size / (2 ** 20)
@@ -288,8 +307,11 @@ def find_wordlist_by_name(wordlist_name) -> Union[WordListInfo, None]:
         return None
 
     stored_path = Path(str(wordlist_name)).expanduser()
-    if stored_path.is_absolute() and stored_path.exists() and stored_path.is_file():
-        return WordListInfo(stored_path)
+    if stored_path.is_absolute():
+        try:
+            return WordListInfo(validate_wordlist_source_path(stored_path))
+        except (ValueError, PermissionError):
+            return None
 
     for wlist in WordListDefault.list():
         if wordlist_name in (wlist.name, wlist.path.name):
@@ -333,6 +355,8 @@ def materialize_wordlist_source(wordlist_path: Path) -> Path:
 
     if not wordlist_path.exists():
         raise FileNotFoundError(f"Wordlist script not found: {wordlist_path}")
+
+    validate_wordlist_source_path(wordlist_path)
 
     suffix = wordlist_path.suffix.lower()
     if suffix == ".py":

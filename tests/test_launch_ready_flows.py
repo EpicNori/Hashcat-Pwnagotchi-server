@@ -27,6 +27,7 @@ from app.utils.file_io import (
     read_plain_key,
     resolve_pmk_rainbow_password,
 )
+from app.word_magic.wordlist import materialize_wordlist_source
 import app.views as views
 
 
@@ -446,6 +447,14 @@ class LaunchReadyFlowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("generator scripts must live", response.get_data(as_text=True))
         self.assertEqual(len(self.fake_worker.submitted), 0)
+
+    def test_persisted_external_wordlist_generator_script_cannot_run(self):
+        external_script = _TEST_HOME / "external wordlists" / "persisted-generate.sh"
+        external_script.parent.mkdir(parents=True, exist_ok=True)
+        external_script.write_text("#!/bin/sh\necho should-not-run\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(PermissionError, "generator scripts must live"):
+            materialize_wordlist_source(external_script)
 
     def test_api_upload_shortens_unsafe_long_capture_filename(self):
         sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
