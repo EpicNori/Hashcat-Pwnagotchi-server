@@ -181,23 +181,24 @@
                             <h4>Test Files and GPU Driver Check</h4>
                             <p><a href="{{ url_for('static', filename='test_capture_hashcat_essid.22000') }}" download="test_capture_hashcat_essid.22000">Download sample 22000 file</a></p>
                             <p><a href="{{ url_for('download_test_capture_pcap') }}" download="test_capture_hashcat_essid.pcap">Download sample PCAP</a></p>
+                            {% set gpu_progress = install_progress.gpu or install_progress.nvidia %}
                             <label>GPU Driver Install Progress</label>
                             <div class="progress settings-progress">
-                                <div id="nvidia-progress-bar"
+                                <div id="gpu-progress-bar"
                                      class="progress-bar progress-bar-info"
                                      role="progressbar"
                                      aria-valuemin="0"
                                      aria-valuemax="100"
-                                     aria-valuenow="{{ install_progress.nvidia.progress }}"
-                                     style="width: {{ install_progress.nvidia.progress }}%;">
-                                    {{ install_progress.nvidia.progress }}%
+                                     aria-valuenow="{{ gpu_progress.progress }}"
+                                     style="width: {{ gpu_progress.progress }}%;">
+                                    {{ gpu_progress.progress }}%
                                 </div>
                             </div>
-                            <p id="nvidia-progress-message" class="help-block">{{ install_progress.nvidia.message }}</p>
+                            <p id="gpu-progress-message" class="help-block">{{ gpu_progress.message }}</p>
                             {% if not gpu_ready %}
                                 <form method="POST">
                                     {{ nvidia_form.hidden_tag() }}
-                                    {{ nvidia_form.submit_check_nvidia(class_="btn btn-warning", id="nvidia-install-btn") }}
+                                    {{ nvidia_form.submit_check_nvidia(class_="btn btn-warning", id="gpu-install-btn") }}
                                 </form>
                             {% else %}
                             <p class="text-muted small">A GPU is already usable by Hashcat, so driver installation is not needed right now.</p>
@@ -399,7 +400,7 @@
 
     function refreshInstallerProgress() {
         $.getJSON("/api/admin/install_progress", function(data) {
-            renderInstallerProgress("nvidia", data.nvidia);
+            renderInstallerProgress("gpu", data.gpu || data.nvidia);
             renderInstallerProgress("update", data.update);
         });
     }

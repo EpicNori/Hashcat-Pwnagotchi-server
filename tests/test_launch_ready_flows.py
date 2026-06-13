@@ -466,6 +466,7 @@ class LaunchReadyFlowTests(unittest.TestCase):
         self.login_admin()
         progress = {
             "update": {"state": "idle", "progress": 0, "message": "Waiting"},
+            "gpu": {"state": "idle", "progress": 0, "message": "Waiting"},
             "nvidia": {"state": "idle", "progress": 0, "message": "Waiting"},
         }
         devices = [{"id": "cpu", "name": "Host CPU", "memory": "1024 MB", "is_gpu": False, "hashcat_usable": True}]
@@ -484,6 +485,22 @@ class LaunchReadyFlowTests(unittest.TestCase):
         self.assertIn("Remote Access Setup", text)
         self.assertIn("Permanent Uninstall", text)
         self.assertIn("Login Settings", text)
+        self.assertIn('id="gpu-progress-bar"', text)
+        self.assertIn('id="gpu-install-btn"', text)
+        self.assertNotIn("nvidia-progress", text)
+
+    def test_install_progress_exposes_gpu_key_and_legacy_nvidia_alias(self):
+        log_dir = _TEST_HOME / "progress-alias"
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        with mock.patch("app.views.get_runtime_logs_dir", return_value=log_dir):
+            views.write_progress_snapshot("gpu", "running", 42, "Installing AMD ROCm runtime")
+            progress = views.get_install_progress()
+
+        self.assertEqual(progress["gpu"]["state"], "running")
+        self.assertEqual(progress["gpu"]["progress"], 42)
+        self.assertEqual(progress["gpu"]["message"], "Installing AMD ROCm runtime")
+        self.assertEqual(progress["nvidia"], progress["gpu"])
 
     def test_tailscale_settings_accepts_blank_auth_key(self):
         self.login_admin()
@@ -533,6 +550,7 @@ class LaunchReadyFlowTests(unittest.TestCase):
         devices = [{"id": "cpu", "name": "Host CPU", "memory": "1024 MB", "is_gpu": False, "hashcat_usable": True}]
         progress = {
             "update": {"state": "idle", "progress": 0, "message": "Waiting"},
+            "gpu": {"state": "idle", "progress": 0, "message": "Waiting"},
             "nvidia": {"state": "idle", "progress": 0, "message": "Waiting"},
         }
 

@@ -343,7 +343,12 @@ def run_management_action(command, *, stdin_text: str = "", timeout: int = 20) -
 
 
 def get_progress_file(kind: str) -> Path:
-    filename = APP_UPDATE_PROGRESS_FILE if kind == "update" else NVIDIA_INSTALL_PROGRESS_FILE
+    if kind == "update":
+        filename = APP_UPDATE_PROGRESS_FILE
+    elif kind in ("gpu", "nvidia"):
+        filename = NVIDIA_INSTALL_PROGRESS_FILE
+    else:
+        raise ValueError(f"Unknown progress kind: {kind}")
     return get_runtime_logs_dir() / filename
 
 
@@ -392,15 +397,19 @@ def write_progress_snapshot(kind: str, state: str, progress: int, message: str):
 
 
 def get_install_progress() -> dict:
+    gpu_progress = read_progress_snapshot(
+        get_progress_file("gpu"),
+        "Waiting for the GPU driver install to start.",
+    )
     return {
         "update": read_progress_snapshot(
             get_progress_file("update"),
             "Waiting for the app update to start.",
         ),
-        "nvidia": read_progress_snapshot(
-            get_progress_file("nvidia"),
-            "Waiting for the GPU driver install to start.",
-        ),
+        "gpu": gpu_progress,
+        # Backward-compatible key for older pages/scripts that still poll
+        # nvidia while the shared installer now handles NVIDIA and AMD.
+        "nvidia": gpu_progress,
     }
 
 @app.context_processor
