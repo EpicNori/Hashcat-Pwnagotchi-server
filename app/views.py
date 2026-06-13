@@ -1266,8 +1266,14 @@ def admin_settings():
             flask.flash('A GPU is already usable by Hashcat, so NVIDIA driver installation was skipped.', category='info')
         else:
             try:
-                subprocess.Popen(["sudo", get_management_script_path("install_nvidia_drivers.sh")])
-                flask.flash('NVIDIA driver check started in the background. If drivers are missing, the installer will try to add them. A reboot may still be required before the GPU appears.', category='success')
+                result = run_management_action(
+                    ["sudo", get_management_script_path("install_nvidia_drivers.sh")],
+                    timeout=5,
+                )
+                if result["state"] == "running":
+                    flask.flash('NVIDIA driver check started in the background. If drivers are missing, the installer will try to add them. A reboot may still be required before the GPU appears.', category='success')
+                else:
+                    flask.flash('NVIDIA driver check completed. Refresh the page to see updated GPU readiness.', category='success')
             except Exception as e:
                 flask.flash(f'Failed to start NVIDIA driver check: {e}', category='error')
         return redirect(url_for('admin_settings'))
@@ -1275,7 +1281,10 @@ def admin_settings():
     if update_form.submit_update.data and update_form.validate():
         try:
             write_progress_snapshot("update", "running", 1, "Starting the application update")
-            subprocess.Popen(["sudo", get_management_script_path("update_app.sh")])
+            run_management_action(
+                ["sudo", get_management_script_path("update_app.sh")],
+                timeout=10,
+            )
             return redirect(url_for('update_wait'))
         except Exception as e:
             try:
@@ -1287,8 +1296,11 @@ def admin_settings():
 
     if uninstall_form.submit_uninstall.data and uninstall_form.validate():
         try:
-            subprocess.Popen(["sudo", get_management_script_path("uninstall_app.sh")])
-            flask.flash('App uninstallation process started! The web server will be permanently deleted and go offline in 5 seconds.', category='danger')
+            run_management_action(
+                ["sudo", get_management_script_path("uninstall_app.sh"), "--background"],
+                timeout=8,
+            )
+            flask.flash('App uninstallation process started. The web server will go offline soon. User data is kept unless purge was explicitly requested.', category='danger')
         except Exception as e:
             flask.flash(f'Failed to start uninstall script: {e}', category='error')
         return redirect(url_for('admin_settings'))

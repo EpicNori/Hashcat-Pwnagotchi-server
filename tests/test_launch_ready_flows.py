@@ -81,7 +81,7 @@ FakeProcess.configure()
 class LaunchReadyFlowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
+        app.config.update(TESTING=True, WTF_CSRF_ENABLED=False, RATELIMIT_ENABLED=False)
 
     @classmethod
     def tearDownClass(cls):
@@ -108,11 +108,13 @@ class LaunchReadyFlowTests(unittest.TestCase):
             db.session.remove()
 
     def login_admin(self):
-        return self.client.post(
-            "/login",
-            data={"username": "admin", "password": "changeme"},
-            follow_redirects=False,
-        )
+        with app.app_context():
+            user = User.query.filter_by(username="admin").first()
+            self.assertIsNotNone(user)
+            user_id = str(user.id)
+        with self.client.session_transaction() as session:
+            session["_user_id"] = user_id
+            session["_fresh"] = True
 
     def test_found_key_parser_preserves_password_characters_and_length(self):
         very_long_password = "Aa1!" * 300
@@ -316,6 +318,57 @@ class LaunchReadyFlowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Failed to start public website connector", response.get_data(as_text=True))
         self.assertNotEqual(read_settings().get("public_plugin_url"), "https://upload.example.com")
+
+    def test_nvidia_settings_reports_background_driver_check(self):
+        self.login_admin()
+        FakeProcess.configure(returncode=0, output="Installing drivers\n", timeout=True)
+        devices = [{"id": "0", "name": "NVIDIA Test GPU", "memory": "8 GB", "is_gpu": True, "hashcat_usable": False}]
+
+        with mock.patch("app.utils.utils.get_hashcat_devices", return_value=devices), \
+                mock.patch("app.views.get_runtime_logs_dir", return_value=_TEST_HOME / "logs"), \
+                mock.patch("app.views.subprocess.Popen", side_effect=lambda command, **kwargs: FakeProcess(command, **kwargs)):
+            response = self.client.post(
+                "/settings",
+                data={"submit_check_nvidia": "Check NVIDIA Drivers"},
+                follow_redirects=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("NVIDIA driver check started", response.get_data(as_text=True))
+        self.assertIn("install_nvidia_drivers.sh", FakeProcess.calls[0].command[1])
+
+    def test_update_settings_redirects_to_wait_page_after_start(self):
+        self.login_admin()
+        FakeProcess.configure(returncode=0, output="Update process spawned in the background.\n")
+
+        with mock.patch("app.views.get_runtime_logs_dir", return_value=_TEST_HOME / "logs"), \
+                mock.patch("app.views.subprocess.Popen", side_effect=lambda command, **kwargs: FakeProcess(command, **kwargs)):
+            response = self.client.post(
+                "/settings",
+                data={"submit_update": "Update App & Restart"},
+                follow_redirects=False,
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/update_wait", response.headers["Location"])
+        self.assertIn("update_app.sh", FakeProcess.calls[0].command[1])
+
+    def test_uninstall_settings_starts_background_uninstall(self):
+        self.login_admin()
+        FakeProcess.configure(returncode=0, output="Uninstall process spawned.\n")
+
+        with mock.patch("app.views.get_runtime_logs_dir", return_value=_TEST_HOME / "logs"), \
+                mock.patch("app.views.subprocess.Popen", side_effect=lambda command, **kwargs: FakeProcess(command, **kwargs)):
+            response = self.client.post(
+                "/settings",
+                data={"submit_uninstall": "Permanently Uninstall Server"},
+                follow_redirects=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("App uninstallation process started", response.get_data(as_text=True))
+        self.assertIn("uninstall_app.sh", FakeProcess.calls[0].command[1])
+        self.assertIn("--background", FakeProcess.calls[0].command)
 
     def test_pwnagotchi_heartbeat_updates_status(self):
         response = self.client.post(
