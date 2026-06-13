@@ -59,6 +59,15 @@ confirm() {
     [[ "$reply" =~ ^[Yy]$ ]]
 }
 
+require_option_value() {
+    local option="$1"
+    local value="${2:-}"
+    if [ -z "$value" ]; then
+        echo "[!] ${option} requires a value."
+        exit 2
+    fi
+}
+
 set_login() {
     need_installed
     local username="${1:-}"
@@ -107,14 +116,17 @@ upload_files() {
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --url)
+                require_option_value "$1" "${2:-}"
                 url="${2:-}"
                 shift 2
                 ;;
             --user)
+                require_option_value "$1" "${2:-}"
                 username="${2:-}"
                 shift 2
                 ;;
             --password)
+                require_option_value "$1" "${2:-}"
                 password="${2:-}"
                 shift 2
                 ;;
