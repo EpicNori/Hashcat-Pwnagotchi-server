@@ -166,6 +166,56 @@ class LaunchReadyFlowTests(unittest.TestCase):
             self.assertIsNotNone(user)
             self.assertTrue(user.verify_password(long_password))
 
+    def test_settings_account_accepts_long_special_passwords(self):
+        long_password = " A1!:" + ("settings-pass-" * 160) + "\nline2: end "
+        self.login_admin()
+
+        response = self.client.post(
+            "/settings",
+            data={
+                "new_username": "admin",
+                "new_password": long_password,
+                "confirm_password": long_password,
+                "submit_account": "Update Account",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 302, response.get_data(as_text=True))
+        with app.app_context():
+            user = User.query.filter_by(username="admin").first()
+            self.assertIsNotNone(user)
+            self.assertTrue(user.verify_password(long_password))
+
+    def test_admin_edit_user_accepts_long_special_passwords(self):
+        long_password = " A1!:" + ("managed-pass-" * 160) + "\nline2: end "
+        with app.app_context():
+            managed = User(username="managed-user")
+            managed.set_password("old-password")
+            managed.roles = [Role.by_enum(RoleEnum.USER)]
+            db.session.add(managed)
+            db.session.commit()
+            managed_id = managed.id
+
+        self.login_admin()
+        response = self.client.post(
+            f"/admin/edit_user/{managed_id}",
+            data={
+                "username": "managed-user",
+                "new_password": long_password,
+                "confirm_password": long_password,
+                "roles": [RoleEnum.USER.value],
+                "submit_user": "Save User Changes",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 302, response.get_data(as_text=True))
+        with app.app_context():
+            user = User.query.filter_by(username="managed-user").first()
+            self.assertIsNotNone(user)
+            self.assertTrue(user.verify_password(long_password))
+
     def test_login_page_gets_are_not_post_rate_limited(self):
         original = app.config.get("RATELIMIT_ENABLED")
         app.config["RATELIMIT_ENABLED"] = True
