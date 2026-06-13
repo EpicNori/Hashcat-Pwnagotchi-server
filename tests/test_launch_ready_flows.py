@@ -14,9 +14,11 @@ _TEST_HOME.mkdir(parents=True, exist_ok=True)
 (_TEST_HOME / "benchmark.csv").write_text("test,0\n", encoding="utf-8")
 
 from app import app, db
+from app.config import ADMIN_SETTINGS_PATH
 from app.domain import NONE_STR, Workload
 from app.login import User, create_first_users
 from app.uploader import PwnagotchiStatus, UploadedTask
+from app.utils.settings import read_settings
 from app.utils.file_io import (
     build_pmk_rainbow_cache,
     extract_passwords_from_found_key,
@@ -45,6 +47,37 @@ class FakeHashcatWorker:
         })
 
 
+class FakeProcess:
+    calls = []
+
+    def __init__(self, command, **kwargs):
+        self.command = command
+        self.kwargs = kwargs
+        self.returncode = self.next_returncode
+        self.output = self.next_output
+        FakeProcess.calls.append(self)
+
+    def communicate(self, input=None, timeout=None):
+        self.input = input
+        log = self.kwargs.get("stdout")
+        if self.output and log is not None:
+            log.write(self.output)
+            log.flush()
+        if self.next_timeout:
+            raise views.subprocess.TimeoutExpired(self.command, timeout)
+        return "", ""
+
+    @classmethod
+    def configure(cls, *, returncode=0, output="", timeout=False):
+        cls.calls = []
+        cls.next_returncode = returncode
+        cls.next_output = output
+        cls.next_timeout = timeout
+
+
+FakeProcess.configure()
+
+
 class LaunchReadyFlowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -65,6 +98,7 @@ class LaunchReadyFlowTests(unittest.TestCase):
             db.session.remove()
             db.drop_all()
             create_first_users()
+        ADMIN_SETTINGS_PATH.unlink(missing_ok=True)
 
         self.client = app.test_client()
 
@@ -204,6 +238,84 @@ class LaunchReadyFlowTests(unittest.TestCase):
         self.assertIn("Remote Access Setup", text)
         self.assertIn("Permanent Uninstall", text)
         self.assertIn("Login Settings", text)
+
+    def test_tailscale_settings_accepts_blank_auth_key(self):
+        self.login_admin()
+        FakeProcess.configure(returncode=0, output="Tailscale is now active.\n")
+
+        with mock.patch("app.views.get_runtime_logs_dir", return_value=_TEST_HOME / "logs"), \
+                mock.patch("app.views.subprocess.Popen", side_effect=lambda command, **kwargs: FakeProcess(command, **kwargs)):
+            response = self.client.post(
+                "/settings",
+                data={"auth_key": "", "submit_tailscale": "Install / Connect Tailscale"},
+                follow_redirects=False,
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(len(FakeProcess.calls), 1)
+        self.assertEqual(FakeProcess.calls[0].input, "")
+        self.assertIn("install_tailscale.sh", FakeProcess.calls[0].command[1])
+
+    def test_cloudflare_settings_saves_url_only_after_success(self):
+        self.login_admin()
+        FakeProcess.configure(returncode=0, output="Cloudflare Tunnel connector is installed.\n")
+
+        with mock.patch("app.views.get_runtime_logs_dir", return_value=_TEST_HOME / "logs"), \
+                mock.patch("app.views.subprocess.Popen", side_effect=lambda command, **kwargs: FakeProcess(command, **kwargs)):
+            response = self.client.post(
+                "/settings",
+                data={
+                    "public_hostname": "upload.example.com",
+                    "tunnel_token": "secret-token",
+                    "submit_public_website": "Install / Start Public Website",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(read_settings().get("public_plugin_url"), "https://upload.example.com")
+        self.assertEqual(FakeProcess.calls[0].input, "secret-token")
+        self.assertIn("install_cloudflare_tunnel.sh", FakeProcess.calls[0].command[1])
+
+    def test_cloudflare_settings_saves_url_when_setup_is_still_running(self):
+        self.login_admin()
+        FakeProcess.configure(returncode=0, output="Downloading cloudflared\n", timeout=True)
+
+        with mock.patch("app.views.get_runtime_logs_dir", return_value=_TEST_HOME / "logs"), \
+                mock.patch("app.views.subprocess.Popen", side_effect=lambda command, **kwargs: FakeProcess(command, **kwargs)):
+            response = self.client.post(
+                "/settings",
+                data={
+                    "public_hostname": "upload.example.com",
+                    "tunnel_token": "secret-token",
+                    "submit_public_website": "Install / Start Public Website",
+                },
+                follow_redirects=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Public website connector is still starting", response.get_data(as_text=True))
+        self.assertEqual(read_settings().get("public_plugin_url"), "https://upload.example.com")
+
+    def test_cloudflare_settings_keeps_url_unset_on_script_failure(self):
+        self.login_admin()
+        FakeProcess.configure(returncode=1, output="Systemd is not running\n")
+
+        with mock.patch("app.views.get_runtime_logs_dir", return_value=_TEST_HOME / "logs"), \
+                mock.patch("app.views.subprocess.Popen", side_effect=lambda command, **kwargs: FakeProcess(command, **kwargs)):
+            response = self.client.post(
+                "/settings",
+                data={
+                    "public_hostname": "upload.example.com",
+                    "tunnel_token": "secret-token",
+                    "submit_public_website": "Install / Start Public Website",
+                },
+                follow_redirects=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Failed to start public website connector", response.get_data(as_text=True))
+        self.assertNotEqual(read_settings().get("public_plugin_url"), "https://upload.example.com")
 
     def test_pwnagotchi_heartbeat_updates_status(self):
         response = self.client.post(

@@ -240,6 +240,43 @@ def get_runtime_logs_dir() -> Path:
     return Path("/var/log/hashcat-wpa-server")
 
 
+def tail_text_file(path: Path, max_lines: int = 8) -> str:
+    try:
+        if not path.exists():
+            return ""
+        lines = path.read_text(errors="ignore").splitlines()
+        return "\n".join(lines[-max_lines:]).strip()
+    except Exception:
+        return ""
+
+
+def run_management_action(command, *, stdin_text: str = "", timeout: int = 20) -> dict:
+    log_path = get_runtime_logs_dir() / "settings-actions.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a", encoding="utf-8") as log:
+        log.write(f"\n===== {date_formatted()} =====\n")
+        log.write(f"$ {' '.join(shlex.quote(str(part)) for part in command)}\n")
+        log.flush()
+        proc = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        try:
+            proc.communicate(input=stdin_text or "", timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return {"state": "running", "log_path": log_path}
+
+    if proc.returncode != 0:
+        tail = tail_text_file(log_path)
+        message = tail or f"Command exited with status {proc.returncode}."
+        raise RuntimeError(message)
+
+    return {"state": "success", "log_path": log_path}
+
+
 def get_progress_file(kind: str) -> Path:
     filename = APP_UPDATE_PROGRESS_FILE if kind == "update" else NVIDIA_INSTALL_PROGRESS_FILE
     return get_runtime_logs_dir() / filename
@@ -1191,10 +1228,17 @@ def admin_settings():
     form.use_spare_devices_for_queue.data = bool(settings.get("use_spare_devices_for_queue", False))
         
     if ts_form.submit_tailscale.data and ts_form.validate():
+        auth_key = ts_form.auth_key.data or ""
         try:
-            proc = subprocess.Popen(["sudo", get_management_script_path("install_tailscale.sh")], stdin=subprocess.PIPE)
-            proc.communicate(input=ts_form.auth_key.data.encode())
-            flask.flash('Tailscale connection initiated in the background! Check your Tailscale admin console.', category='success')
+            result = run_management_action(
+                ["sudo", get_management_script_path("install_tailscale.sh")],
+                stdin_text=auth_key,
+                timeout=25,
+            )
+            if result["state"] == "running":
+                flask.flash('Tailscale setup is still running in the background. Check the settings action log if it does not appear soon.', category='info')
+            else:
+                flask.flash('Tailscale connection completed. Check the detected Tailscale URL below.', category='success')
         except Exception as e:
             flask.flash(f'Failed to run Tailscale securely: {e}', category='error')
         return redirect(url_for('admin_settings'))
@@ -1203,17 +1247,16 @@ def admin_settings():
         public_url = f"https://{public_form.public_hostname.data.strip().lower()}"
         token = (public_form.tunnel_token.data or "").strip()
         try:
-            proc = subprocess.Popen(
+            result = run_management_action(
                 ["sudo", get_management_script_path("install_cloudflare_tunnel.sh"), public_form.public_hostname.data.strip().lower()],
-                stdin=subprocess.PIPE,
-                text=True,
+                stdin_text=token,
+                timeout=20,
             )
-            proc.communicate(input=token, timeout=20)
             update_admin_setting(public_plugin_url=public_url)
-            flask.flash('Public website connector started. Use the HTTPS plugin URL shown below after Cloudflare reports the tunnel healthy.', category='success')
-        except subprocess.TimeoutExpired:
-            update_admin_setting(public_plugin_url=public_url)
-            flask.flash('Public website connector is still starting in the background. Use the HTTPS plugin URL once Cloudflare shows the tunnel healthy.', category='info')
+            if result["state"] == "running":
+                flask.flash('Public website connector is still starting in the background. Use the HTTPS plugin URL once Cloudflare shows the tunnel healthy.', category='info')
+            else:
+                flask.flash('Public website connector started. Use the HTTPS plugin URL shown below after Cloudflare reports the tunnel healthy.', category='success')
         except Exception as e:
             flask.flash(f'Failed to start public website connector: {e}', category='error')
         return redirect(url_for('admin_settings'))
