@@ -23,6 +23,11 @@ def ensure_upload_queue_position_column():
     if "queue_position" not in columns:
         db.session.execute(text("ALTER TABLE uploads ADD COLUMN queue_position INTEGER"))
         db.session.commit()
+    if "workload" not in columns:
+        db.session.execute(
+            text(f"ALTER TABLE uploads ADD COLUMN workload TEXT DEFAULT '{Workload.Normal.value}'")
+        )
+        db.session.commit()
 
 
 def check_incomplete_tasks():
@@ -95,6 +100,7 @@ class UploadedTask(db.Model):
     wordlist = db.Column(db.Text)
     rule = db.Column(db.Text)
     hashcat_args = db.Column(db.Text, default='')
+    workload = db.Column(db.Text, default=Workload.Normal.value)
     uploaded_time = db.Column(db.DateTime, index=True, default=datetime.datetime.now)
     duration = db.Column(db.Interval, default=datetime.timedelta)
     queue_position = db.Column(db.Integer, index=True)

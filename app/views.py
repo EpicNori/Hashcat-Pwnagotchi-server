@@ -437,6 +437,7 @@ def form_for_stored_task(task: UploadedTask):
     wordlist_info = find_wordlist_by_name(task.wordlist)
     wordlist_path = wordlist_info.path if wordlist_info is not None else None
     rule = Rule.from_data(task.rule)
+    workload = Workload.normalize(getattr(task, "workload", Workload.Normal.value))
 
     base_hashcat_args = split_hashcat_args(task.hashcat_args)
     filtered_hashcat_args = []
@@ -457,7 +458,7 @@ def form_for_stored_task(task: UploadedTask):
 
     return SimpleNamespace(
         timeout=SimpleNamespace(data=None),
-        workload=SimpleNamespace(data=Workload.Normal.value),
+        workload=SimpleNamespace(data=workload),
         get_wordlist_path=lambda: wordlist_path,
         get_rule=lambda: rule,
         hashcat_args=lambda secret=False: list(filtered_hashcat_args),
@@ -564,13 +565,14 @@ def submit_uploaded_capture(file_storage, user: User, form: UploadForm, wordlist
     tasks = {}
     queue_position = next_queue_position()
     hashcat_args = ' '.join(form.hashcat_args())
+    workload = Workload.normalize(form.workload.data)
     for file_essid in iter_split_capture_files(folder_split_by_essid):
         bssid_essid = next(bssid_essid_from_22000(file_essid))
         bssid, essid = bssid_essid.split(':')
         essid = decode_essid_hex(essid)
         new_task = UploadedTask(user_id=user.id, filename=filename, wordlist=form.get_wordlist_name(),
                                 rule=form.rule.data, bssid=bssid, essid=essid, hashcat_args=hashcat_args,
-                                queue_position=queue_position)
+                                workload=workload, queue_position=queue_position)
         tasks[file_essid] = new_task
         queue_position += 1
 
@@ -1171,6 +1173,7 @@ def requeue_completed_task(task: UploadedTask):
         bssid=task.bssid,
         essid=task.essid,
         hashcat_args=' '.join(split_hashcat_args(task.hashcat_args)),
+        workload=Workload.normalize(getattr(task, "workload", Workload.Normal.value)),
         queue_position=next_queue_position()
     )
     db.session.add(new_task)

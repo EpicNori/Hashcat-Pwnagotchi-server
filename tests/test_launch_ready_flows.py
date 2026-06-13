@@ -192,6 +192,7 @@ class LaunchReadyFlowTests(unittest.TestCase):
             UploadedTask.__table__.c.wordlist,
             UploadedTask.__table__.c.rule,
             UploadedTask.__table__.c.hashcat_args,
+            UploadedTask.__table__.c.workload,
             UploadedTask.__table__.c.status,
             UploadedTask.__table__.c.essid,
             UploadedTask.__table__.c.found_key,
@@ -372,6 +373,9 @@ class LaunchReadyFlowTests(unittest.TestCase):
             "--brain-client",
             "--brain-client-features=3",
         ])
+        with app.app_context():
+            task = UploadedTask.query.one()
+            self.assertEqual(task.workload, Workload.Rainbow.value)
 
     def test_api_upload_shortens_unsafe_long_capture_filename(self):
         sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
@@ -895,6 +899,38 @@ class LaunchReadyFlowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
         self.assertIn("Cannot retry all while 1 task", response.get_data(as_text=True))
         self.assertEqual(len(self.fake_worker.submitted), 0)
+
+    def test_requeue_preserves_stored_rainbow_workload(self):
+        sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
+        with app.app_context():
+            admin = User.query.filter_by(username="admin").first()
+            task = UploadedTask(
+                user_id=admin.id,
+                filename="admin/test_capture_hashcat_essid.22000",
+                bssid="fc690c158264",
+                essid="hashcat-essid",
+                workload=Workload.Rainbow.value,
+                completed=True,
+                found_key=None,
+            )
+            db.session.add(task)
+            db.session.commit()
+            task_id = task.id
+
+        self.login_admin()
+        with mock.patch("app.views.resolve_task_attack_file", return_value=sample_capture):
+            response = self.client.get(f"/requeue/{task_id}", follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertIn("was re-queued", response.get_data(as_text=True))
+        self.assertEqual(len(self.fake_worker.submitted), 1)
+        self.assertEqual(self.fake_worker.submitted[0]["workload"], Workload.Rainbow.value)
+        with app.app_context():
+            requeued = UploadedTask.query.filter(
+                UploadedTask.id != task_id,
+                UploadedTask.completed == False,
+            ).one()
+            self.assertEqual(requeued.workload, Workload.Rainbow.value)
 
     def test_pwnagotchi_heartbeat_updates_status(self):
         response = self.client.post(
