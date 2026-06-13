@@ -247,7 +247,23 @@ def get_cloudflare_snapshot():
     plugin_url = settings.get("public_plugin_url", "")
     installed = bool(shutil.which("cloudflared"))
     running = False
-    detail = "Not installed"
+    if not installed:
+        return {
+            "status": "Not installed",
+            "installed": False,
+            "running": False,
+            "plugin_url": plugin_url,
+        }
+
+    if not shutil.which("systemctl"):
+        return {
+            "status": "Installed, service manager unavailable",
+            "installed": True,
+            "running": False,
+            "plugin_url": plugin_url,
+        }
+
+    detail = "Installed, service state unknown"
 
     try:
         result = subprocess.run(
@@ -261,10 +277,10 @@ def get_cloudflare_snapshot():
         if state:
             running = state == "active"
             detail = f"Service {state}"
-        elif installed:
-            detail = "Installed, service state unknown"
+    except FileNotFoundError:
+        detail = "Installed, service manager unavailable"
     except Exception as error:
-        detail = str(error)
+        detail = f"Installed, service status unavailable: {error}"
 
     return {
         "status": detail,
@@ -929,7 +945,7 @@ def download_test_capture_pcap():
 
 
 @app.route('/login', methods=['GET', 'POST'])
-@limiter.limit("10 per minute")
+@limiter.limit("10 per minute", methods=["POST"])
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('index'))

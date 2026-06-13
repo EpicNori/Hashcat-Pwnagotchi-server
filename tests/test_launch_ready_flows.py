@@ -166,6 +166,16 @@ class LaunchReadyFlowTests(unittest.TestCase):
             self.assertIsNotNone(user)
             self.assertTrue(user.verify_password(long_password))
 
+    def test_login_page_gets_are_not_post_rate_limited(self):
+        original = app.config.get("RATELIMIT_ENABLED")
+        app.config["RATELIMIT_ENABLED"] = True
+        try:
+            for _ in range(12):
+                response = self.client.get("/login")
+                self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        finally:
+            app.config["RATELIMIT_ENABLED"] = original
+
     def test_api_upload_schedules_capture_without_running_hashcat(self):
         sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
         payload = {
@@ -322,6 +332,15 @@ class LaunchReadyFlowTests(unittest.TestCase):
         self.assertIn("Failed to start public website connector", response.get_data(as_text=True))
         self.assertNotEqual(read_settings().get("public_plugin_url"), "https://upload.example.com")
 
+    def test_cloudflare_snapshot_hides_missing_systemctl_when_not_installed(self):
+        with mock.patch("app.views.shutil.which", return_value=None), \
+                mock.patch("app.views.subprocess.run", side_effect=FileNotFoundError("systemctl")):
+            snapshot = views.get_cloudflare_snapshot()
+
+        self.assertEqual(snapshot["status"], "Not installed")
+        self.assertFalse(snapshot["installed"])
+        self.assertFalse(snapshot["running"])
+
     def test_gpu_settings_reports_background_driver_check(self):
         self.login_admin()
         FakeProcess.configure(returncode=0, output="Installing drivers\n", timeout=True)
@@ -435,6 +454,16 @@ class LaunchReadyFlowTests(unittest.TestCase):
             self.assertIsNotNone(status)
             self.assertEqual(status.hostname, "pwny")
             self.assertEqual(status.plugin_version, "1.4.7")
+
+    def test_pwnagotchi_page_uses_local_visual_asset(self):
+        self.login_admin()
+
+        response = self.client.get("/pwnagotchi")
+
+        self.assertEqual(response.status_code, 200)
+        text = response.get_data(as_text=True)
+        self.assertIn("/static/pwnagotchi-device.svg", text)
+        self.assertNotIn("pwnagotchi.ai/images", text)
 
     def test_download_export_keeps_multiple_passwords_verbatim(self):
         long_password = "Xy9!" * 180

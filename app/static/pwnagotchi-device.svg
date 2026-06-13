@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360" role="img" aria-labelledby="title desc">
+  <title id="title">Pwnagotchi uploader status panel</title>
+  <desc id="desc">A compact e-ink style device panel showing handshake upload status.</desc>
+  <rect width="560" height="360" rx="26" fill="#101827"/>
+  <rect x="34" y="34" width="492" height="292" rx="18" fill="#edf3f8"/>
+  <rect x="58" y="62" width="444" height="244" rx="8" fill="#f8fbfd" stroke="#9aa8b6" stroke-width="3"/>
+  <g fill="#101827" font-family="Consolas, 'Courier New', monospace">
+    <text x="82" y="103" font-size="26" font-weight="700">HASHCAT WPA UPLINK</text>
+    <text x="82" y="142" font-size="20">status: ready</text>
+    <text x="82" y="174" font-size="20">queue : 0 captures</text>
+    <text x="82" y="206" font-size="20">target: /api/upload</text>
+    <text x="82" y="258" font-size="18">handshake upload path online</text>
+  </g>
+  <circle cx="442" cy="128" r="38" fill="#d8f7df" stroke="#101827" stroke-width="5"/>
+  <path d="M423 128l13 14 29-32" fill="none" stroke="#101827" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="396" y="220" width="86" height="50" rx="10" fill="#101827"/>
+  <circle cx="423" cy="245" r="9" fill="#edf3f8"/>
+  <circle cx="455" cy="245" r="9" fill="#edf3f8"/>
+</svg>
