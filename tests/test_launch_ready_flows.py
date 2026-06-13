@@ -48,6 +48,7 @@ class FakeHashcatWorker:
             "essid": task.essid,
             "bssid": task.bssid,
             "workload": uploaded_form.workload.data,
+            "wordlist_path": str(uploaded_form.get_wordlist_path()) if uploaded_form.get_wordlist_path() else None,
             "hashcat_args": uploaded_form.hashcat_args(secret=False),
             "hashcat_args_secret": uploaded_form.hashcat_args(secret=True),
         })
@@ -377,6 +378,74 @@ class LaunchReadyFlowTests(unittest.TestCase):
         with app.app_context():
             task = UploadedTask.query.one()
             self.assertEqual(task.workload, Workload.Rainbow.value)
+
+    def test_api_upload_and_requeue_preserve_external_server_wordlist_path(self):
+        sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
+        external_wordlist = _TEST_HOME / "external wordlists" / "custom launch list.txt"
+        external_wordlist.parent.mkdir(parents=True, exist_ok=True)
+        external_wordlist.write_text("LaunchReadyPass123!\n", encoding="utf-8")
+
+        response = self.client.post(
+            "/api/upload",
+            data={
+                "wordlist": str(external_wordlist),
+                "rule": NONE_STR,
+                "workload": Workload.Normal.value,
+                "brain_client_feature": "2",
+                "capture": (io.BytesIO(sample_capture.read_bytes()), sample_capture.name),
+            },
+            headers=basic_auth(),
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertEqual(len(self.fake_worker.submitted), 1)
+        self.assertEqual(self.fake_worker.submitted[0]["wordlist_path"], str(external_wordlist))
+        with app.app_context():
+            task = UploadedTask.query.one()
+            self.assertEqual(task.wordlist, str(external_wordlist))
+            task.completed = True
+            task.found_key = None
+            db.session.commit()
+            task_id = task.id
+
+        self.fake_worker.submitted.clear()
+        self.login_admin()
+        with mock.patch("app.views.resolve_task_attack_file", return_value=sample_capture):
+            requeue_response = self.client.get(f"/requeue/{task_id}", follow_redirects=True)
+
+        self.assertEqual(requeue_response.status_code, 200, requeue_response.get_data(as_text=True))
+        self.assertEqual(len(self.fake_worker.submitted), 1)
+        self.assertEqual(self.fake_worker.submitted[0]["wordlist_path"], str(external_wordlist))
+        with app.app_context():
+            requeued = UploadedTask.query.filter(
+                UploadedTask.id != task_id,
+                UploadedTask.completed == False,
+            ).one()
+            self.assertEqual(requeued.wordlist, str(external_wordlist))
+
+    def test_api_upload_rejects_external_wordlist_generator_scripts(self):
+        sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
+        external_script = _TEST_HOME / "external wordlists" / "generate.sh"
+        external_script.parent.mkdir(parents=True, exist_ok=True)
+        external_script.write_text("#!/bin/sh\necho LaunchReadyPass123!\n", encoding="utf-8")
+
+        response = self.client.post(
+            "/api/upload",
+            data={
+                "wordlist": str(external_script),
+                "rule": NONE_STR,
+                "workload": Workload.Normal.value,
+                "brain_client_feature": "2",
+                "capture": (io.BytesIO(sample_capture.read_bytes()), sample_capture.name),
+            },
+            headers=basic_auth(),
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("generator scripts must live", response.get_data(as_text=True))
+        self.assertEqual(len(self.fake_worker.submitted), 0)
 
     def test_api_upload_shortens_unsafe_long_capture_filename(self):
         sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"

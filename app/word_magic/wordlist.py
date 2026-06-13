@@ -287,6 +287,10 @@ def find_wordlist_by_name(wordlist_name) -> Union[WordListInfo, None]:
     if wordlist_name in (None, NONE_STR):
         return None
 
+    stored_path = Path(str(wordlist_name)).expanduser()
+    if stored_path.is_absolute() and stored_path.exists() and stored_path.is_file():
+        return WordListInfo(stored_path)
+
     for wlist in WordListDefault.list():
         if wordlist_name in (wlist.name, wlist.path.name):
             return deepcopy(wlist)

@@ -11,10 +11,40 @@ from wtforms.fields import RadioField, SubmitField, BooleanField, IntegerField
 from wtforms.validators import Optional, ValidationError, NumberRange
 from sqlalchemy import inspect, text
 
+from app.config import WORDLISTS_USER_DIR
 from app import app, db
 from app.domain import Rule, NONE_STR, TaskInfoStatus, Workload, HashcatMode, BrainClientFeature
 from app.utils import read_hashcat_brain_password, normalize_stored_capture_filename, resolve_existing_capture_path
-from app.word_magic.wordlist import estimate_runtime_fmt, wordlist_choices, find_wordlist_by_path
+from app.word_magic.wordlist import estimate_runtime_fmt, wordlist_choices, find_wordlist_by_path, is_wordlist_script
+
+
+def _path_is_inside(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def validate_server_wordlist_path(raw_value: str):
+    if raw_value in (None, NONE_STR):
+        return
+
+    wordlist_path = Path(str(raw_value)).expanduser()
+    if not wordlist_path.is_absolute():
+        raise ValidationError("Use an absolute server-side wordlist path.")
+    if not wordlist_path.exists() or not wordlist_path.is_file():
+        raise ValidationError("Server-side wordlist path does not exist.")
+    if is_wordlist_script(wordlist_path) and not _path_is_inside(wordlist_path, WORDLISTS_USER_DIR):
+        raise ValidationError("Wordlist generator scripts must live in the user wordlists folder.")
+
+
+class ServerWordlistRadioField(RadioField):
+    def pre_validate(self, form):
+        try:
+            super().pre_validate(form)
+        except ValidationError:
+            validate_server_wordlist_path(self.data)
 
 
 def ensure_upload_queue_position_column():
@@ -143,7 +173,7 @@ class MultipleFilesAllowed(FileAllowed):
                 raise StopValidation(self.message or field.gettext("File does not have an approved extension."))
 
 class UploadForm(FlaskForm):
-    wordlist = RadioField('Wordlist', choices=wordlist_choices(), default=NONE_STR, description="The higher the rate, the better")
+    wordlist = ServerWordlistRadioField('Wordlist', choices=wordlist_choices(), default=NONE_STR, description="The higher the rate, the better")
     rule = RadioField('Rule', choices=Rule.to_form(), default=NONE_STR)
     timeout = IntegerField('Timeout in minutes, optional', validators=[Optional(), NumberRange(min=1)])
     workload = RadioField("Work Mode", choices=Workload.to_form(), default=Workload.Normal.value,
@@ -183,9 +213,12 @@ class UploadForm(FlaskForm):
         return Path(self.wordlist.data)
 
     def get_wordlist_name(self):
-        wordlist = find_wordlist_by_path(self.get_wordlist_path())
+        wordlist_path = self.get_wordlist_path()
+        wordlist = find_wordlist_by_path(wordlist_path)
         if wordlist is None:
             return None
+        if not wordlist.custom:
+            return str(wordlist_path)
         return wordlist.name
 
     def get_rule(self):
