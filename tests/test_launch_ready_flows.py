@@ -16,7 +16,7 @@ _TEST_HOME.mkdir(parents=True, exist_ok=True)
 (_TEST_HOME / "benchmark.csv").write_text("test,0\n", encoding="utf-8")
 
 from app import app, db
-from app.config import ADMIN_SETTINGS_PATH
+from app.config import ADMIN_SETTINGS_PATH, WORDLISTS_USER_DIR
 from app.domain import NONE_STR, Workload
 from app.login import Role, RoleEnum, User, create_first_users, user_has_roles
 from app.uploader import PwnagotchiStatus, UploadedTask
@@ -455,6 +455,24 @@ class LaunchReadyFlowTests(unittest.TestCase):
 
         with self.assertRaisesRegex(PermissionError, "generator scripts must live"):
             materialize_wordlist_source(external_script)
+
+    def test_user_wordlist_generator_preserves_password_bytes_and_long_lines(self):
+        script = WORDLISTS_USER_DIR / "generate-weird-passwords.py"
+        long_password = b"Z" * 512
+        expected = b"alpha:\xff\n" + "paess:\u2603".encode("utf-8") + b"\n" + long_password + b"\n"
+        script.write_text(
+            "import sys\n"
+            "sys.stdout.buffer.write("
+            "b'alpha:\\xff\\n' + 'paess:\\u2603'.encode('utf-8') + b'\\n' + b'Z' * 512 + b'\\n'"
+            ")\n",
+            encoding="utf-8",
+        )
+
+        generated_path = materialize_wordlist_source(script)
+        try:
+            self.assertEqual(generated_path.read_bytes(), expected)
+        finally:
+            generated_path.unlink(missing_ok=True)
 
     def test_api_upload_shortens_unsafe_long_capture_filename(self):
         sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"

@@ -369,9 +369,6 @@ def materialize_wordlist_source(wordlist_path: Path) -> Path:
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             check=False,
             cwd=str(WORDLISTS_USER_DIR)
         )
@@ -379,11 +376,12 @@ def materialize_wordlist_source(wordlist_path: Path) -> Path:
         executable = command[0] if command else "unknown"
         raise FileNotFoundError(f"Script interpreter not found: '{executable}'. Please ensure it is installed and in your PATH.") from e
     if completed.returncode != 0:
-        error_output = (completed.stderr or completed.stdout or "").strip()
+        error_bytes = completed.stderr or completed.stdout or b""
+        error_output = error_bytes.decode("utf-8", errors="replace").strip()
         raise RuntimeError(f"Wordlist script failed: {error_output or wordlist_path.name}")
 
     generated = tempfile.NamedTemporaryFile(
-        mode="w",
+        mode="wb",
         prefix=f"generated_{wordlist_path.stem}_",
         suffix=".txt",
         delete=False
