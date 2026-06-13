@@ -17,7 +17,7 @@ _TEST_HOME.mkdir(parents=True, exist_ok=True)
 from app import app, db
 from app.config import ADMIN_SETTINGS_PATH
 from app.domain import NONE_STR, Workload
-from app.login import Role, RoleEnum, User, create_first_users
+from app.login import Role, RoleEnum, User, create_first_users, user_has_roles
 from app.uploader import PwnagotchiStatus, UploadedTask
 from app.utils.settings import read_settings
 from app.utils.file_io import (
@@ -117,6 +117,37 @@ class LaunchReadyFlowTests(unittest.TestCase):
         with self.client.session_transaction() as session:
             session["_user_id"] = user_id
             session["_fresh"] = True
+
+    def test_bootstrap_does_not_recreate_default_admin_after_rename(self):
+        with app.app_context():
+            admin = User.query.filter_by(username="admin").first()
+            self.assertIsNotNone(admin)
+            admin.username = "renamed-admin"
+            db.session.commit()
+
+            create_first_users()
+
+            self.assertIsNone(User.query.filter_by(username="admin").first())
+            renamed = User.query.filter_by(username="renamed-admin").first()
+            self.assertIsNotNone(renamed)
+            self.assertTrue(user_has_roles(renamed, RoleEnum.ADMIN, RoleEnum.USER))
+
+    def test_bootstrap_promotes_existing_named_user_without_resetting_password(self):
+        original_password = "A1!-" + ("existing-pass-" * 40)
+        with app.app_context():
+            admin = User.query.filter_by(username="admin").first()
+            self.assertIsNotNone(admin)
+            admin.roles = []
+            admin.set_password(original_password)
+            db.session.commit()
+
+            create_first_users()
+
+            admin = User.query.filter_by(username="admin").first()
+            self.assertIsNotNone(admin)
+            self.assertTrue(user_has_roles(admin, RoleEnum.ADMIN, RoleEnum.USER))
+            self.assertTrue(admin.verify_password(original_password))
+            self.assertFalse(admin.verify_password("changeme"))
 
     def test_found_key_parser_preserves_password_characters_and_length(self):
         very_long_password = "Aa1!" * 300

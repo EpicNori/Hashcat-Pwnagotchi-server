@@ -118,21 +118,37 @@ def create_first_users():
 
     admin_name = os.environ.get('HASHCAT_ADMIN_USER', 'admin')
     admin_password = os.environ.get('HASHCAT_ADMIN_PASSWORD', 'changeme')
-    admin_exists = User.query.filter(User.username == admin_name).first()
-    if not admin_exists:
-        if 'HASHCAT_ADMIN_USER' not in os.environ or 'HASHCAT_ADMIN_PASSWORD' not in os.environ:
-            warnings.warn(
-                "HASHCAT_ADMIN_USER/HASHCAT_ADMIN_PASSWORD not set; using default bootstrap credentials.",
-                RuntimeWarning,
-            )
-        # no 'admin' user yet
-        print("It appears that you're running hashcat-wpa-server for the first time. "
-              "To migrate database in the future, run:"
-              "\n flask db init"
-              "\n flask db migrate"
-              "\n flask db upgrade")
-        register_user(user=admin_name, password=admin_password,
-                      roles=(RoleEnum.ADMIN, RoleEnum.USER))
+    admin_role = Role.by_enum(RoleEnum.ADMIN)
+    user_role = Role.by_enum(RoleEnum.USER)
+    existing_admin_user = User.query.join(User.roles).filter(Role.name == RoleEnum.ADMIN).first()
+    bootstrap_user = User.query.filter(User.username == admin_name).first()
+
+    if existing_admin_user is not None:
+        if bootstrap_user is None:
+            logger.info("Skipping bootstrap admin creation because an administrator already exists.")
+        return
+
+    if bootstrap_user is not None:
+        if admin_role is not None and admin_role not in bootstrap_user.roles:
+            bootstrap_user.roles.append(admin_role)
+        if user_role is not None and user_role not in bootstrap_user.roles:
+            bootstrap_user.roles.append(user_role)
+        db.session.commit()
+        logger.info("Promoted existing bootstrap user %s to administrator.", bootstrap_user.username)
+        return
+
+    if 'HASHCAT_ADMIN_USER' not in os.environ or 'HASHCAT_ADMIN_PASSWORD' not in os.environ:
+        warnings.warn(
+            "HASHCAT_ADMIN_USER/HASHCAT_ADMIN_PASSWORD not set; using default bootstrap credentials.",
+            RuntimeWarning,
+        )
+    print("It appears that you're running hashcat-wpa-server for the first time. "
+          "To migrate database in the future, run:"
+          "\n flask db init"
+          "\n flask db migrate"
+          "\n flask db upgrade")
+    register_user(user=admin_name, password=admin_password,
+                  roles=(RoleEnum.ADMIN, RoleEnum.USER))
 
 
 def user_has_roles(user: User, *requirements: RoleEnum) -> bool:
