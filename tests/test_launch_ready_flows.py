@@ -758,6 +758,41 @@ class LaunchReadyFlowTests(unittest.TestCase):
         self.assertEqual(FakeProcess.calls[0].command[-1], "check")
         self.assertTrue(FakeProcess.calls[0].stdin.closed)
 
+    def test_gpu_settings_checks_driver_when_any_gpu_is_not_hashcat_usable(self):
+        self.login_admin()
+        FakeProcess.configure(returncode=0, output="Installing drivers\n", timeout=True)
+        devices = [
+            {"id": "1", "name": "AMD Radeon RX 7900 XT", "memory": "20 GB", "is_gpu": True, "hashcat_usable": True},
+            {"id": "0", "name": "NVIDIA GeForce RTX 4070", "memory": "12 GB", "is_gpu": True, "hashcat_usable": False},
+        ]
+        progress = {
+            "update": {"state": "idle", "progress": 0, "message": "Waiting"},
+            "gpu": {"state": "idle", "progress": 0, "message": "Waiting"},
+            "nvidia": {"state": "idle", "progress": 0, "message": "Waiting"},
+        }
+
+        with mock.patch("app.utils.utils.get_hashcat_devices", return_value=devices), \
+                mock.patch("app.views.get_autostart_status", return_value="disabled"), \
+                mock.patch("app.views.get_update_status", return_value=("idle", "No update running", "")), \
+                mock.patch("app.views.get_install_progress", return_value=progress), \
+                mock.patch("app.views.get_tailscale_snapshot", return_value={"status": "Not installed", "running": False, "ip": "", "plugin_url": ""}), \
+                mock.patch("app.views.get_cloudflare_snapshot", return_value={"status": "Not installed", "installed": False, "running": False, "plugin_url": ""}), \
+                mock.patch("app.views.get_runtime_logs_dir", return_value=_TEST_HOME / "logs"), \
+                mock.patch("app.views.subprocess.Popen", side_effect=lambda command, **kwargs: FakeProcess(command, **kwargs)):
+            get_response = self.client.get("/settings")
+            post_response = self.client.post(
+                "/settings",
+                data={"submit_check_nvidia": "Check GPU Drivers"},
+                follow_redirects=True,
+            )
+
+        self.assertEqual(get_response.status_code, 200)
+        self.assertIn('id="gpu-install-btn"', get_response.get_data(as_text=True))
+        self.assertEqual(post_response.status_code, 200)
+        self.assertIn("GPU driver check started", post_response.get_data(as_text=True))
+        self.assertEqual(len(FakeProcess.calls), 1)
+        self.assertIn("install_gpu_drivers.sh", FakeProcess.calls[0].command[1])
+
     def test_update_settings_redirects_to_wait_page_after_start(self):
         self.login_admin()
         FakeProcess.configure(returncode=0, output="Update process spawned in the background.\n")

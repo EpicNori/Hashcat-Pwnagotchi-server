@@ -1336,6 +1336,10 @@ def admin_settings():
         device.get("is_gpu") and device.get("hashcat_usable", True)
         for device in devices
     )
+    gpu_needs_driver = any(
+        device.get("is_gpu") and not device.get("hashcat_usable", True)
+        for device in devices
+    )
     
     # Populate device choices
     form.default_devices.choices = [(d['id'], f"{d['name']} ({d['memory']})") for d in devices]
@@ -1406,7 +1410,7 @@ def admin_settings():
         return redirect(url_for('admin_settings'))
 
     if nvidia_form.submit_check_nvidia.data and nvidia_form.validate():
-        if gpu_ready:
+        if gpu_ready and not gpu_needs_driver:
             flask.flash('A GPU is already usable by Hashcat, so driver installation was skipped.', category='info')
         else:
             try:
@@ -1498,6 +1502,7 @@ def admin_settings():
                            devices=devices, device_intensities=device_intensities,
                            account_form=account_form, autostart_form=autostart_form,
                            nvidia_form=nvidia_form, gpu_visible=gpu_visible, gpu_ready=gpu_ready,
+                           gpu_needs_driver=gpu_needs_driver,
                            autostart_status=autostart_status, update_status=update_status,
                            update_summary=update_summary, update_log_excerpt=update_log_excerpt,
                            install_progress=install_progress, tailscale_snapshot=tailscale_snapshot,

@@ -195,7 +195,7 @@
                                 </div>
                             </div>
                             <p id="gpu-progress-message" class="help-block">{{ gpu_progress.message }}</p>
-                            {% if not gpu_ready %}
+                            {% if gpu_needs_driver or not gpu_ready %}
                                 <form method="POST">
                                     {{ nvidia_form.hidden_tag() }}
                                     {{ nvidia_form.submit_check_nvidia(class_="btn btn-warning", id="gpu-install-btn") }}
