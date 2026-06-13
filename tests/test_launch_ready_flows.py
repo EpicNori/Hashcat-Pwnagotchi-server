@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 _TEST_HOME = Path(tempfile.mkdtemp(prefix="hashcat-wpa-server-tests-"))
@@ -156,6 +157,69 @@ class LaunchReadyFlowTests(unittest.TestCase):
             status = PwnagotchiStatus.query.filter_by(username="admin").first()
             self.assertIsNotNone(status)
             self.assertEqual(status.upload_count, 1)
+
+    def test_web_upload_form_schedules_capture(self):
+        sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
+        self.login_admin()
+
+        response = self.client.post(
+            "/upload",
+            data={
+                "wordlist": NONE_STR,
+                "rule": NONE_STR,
+                "workload": Workload.Normal.value,
+                "brain_client_feature": "2",
+                "capture": (io.BytesIO(sample_capture.read_bytes()), sample_capture.name),
+            },
+            content_type="multipart/form-data",
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 302, response.get_data(as_text=True))
+        self.assertEqual(len(self.fake_worker.submitted), 1)
+        with app.app_context():
+            task = UploadedTask.query.one()
+            self.assertEqual(task.essid, "hashcat-essid")
+            self.assertEqual(task.bssid, "fc690c158264")
+
+    def test_settings_page_loads_launch_controls(self):
+        self.login_admin()
+        progress = {
+            "update": {"state": "idle", "progress": 0, "message": "Waiting"},
+            "nvidia": {"state": "idle", "progress": 0, "message": "Waiting"},
+        }
+        devices = [{"id": "cpu", "name": "Host CPU", "memory": "1024 MB", "is_gpu": False, "hashcat_usable": True}]
+
+        with mock.patch("app.utils.utils.get_hashcat_devices", return_value=devices), \
+                mock.patch("app.views.get_autostart_status", return_value="disabled"), \
+                mock.patch("app.views.get_update_status", return_value=("idle", "No update running", "")), \
+                mock.patch("app.views.get_install_progress", return_value=progress), \
+                mock.patch("app.views.get_tailscale_snapshot", return_value={"status": "Not installed", "running": False, "ip": "", "plugin_url": ""}), \
+                mock.patch("app.views.get_cloudflare_snapshot", return_value={"status": "Not installed", "installed": False, "running": False, "plugin_url": ""}):
+            response = self.client.get("/settings")
+
+        self.assertEqual(response.status_code, 200)
+        text = response.get_data(as_text=True)
+        self.assertIn("Update the Server", text)
+        self.assertIn("Remote Access Setup", text)
+        self.assertIn("Permanent Uninstall", text)
+        self.assertIn("Login Settings", text)
+
+    def test_pwnagotchi_heartbeat_updates_status(self):
+        response = self.client.post(
+            "/api/pwnagotchi/heartbeat",
+            json={"event": "startup", "hostname": "pwny", "plugin_version": "1.4.7"},
+            headers=basic_auth(),
+        )
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        body = response.get_json()
+        self.assertEqual(body["status"], "success")
+        with app.app_context():
+            status = PwnagotchiStatus.query.filter_by(username="admin").first()
+            self.assertIsNotNone(status)
+            self.assertEqual(status.hostname, "pwny")
+            self.assertEqual(status.plugin_version, "1.4.7")
 
     def test_download_export_keeps_multiple_passwords_verbatim(self):
         long_password = "Xy9!" * 180
