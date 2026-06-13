@@ -3,6 +3,7 @@ set -e
 set -o pipefail
 
 GPU_DRIVER_STATUS="not-run"
+TAILSCALE_STATUS="not-run"
 PROGRESS_FILE="${HASHCAT_WPA_PROGRESS_FILE:-/var/log/hashcat-wpa-server/app_update.progress}"
 NVIDIA_PROGRESS_FILE="${HASHCAT_WPA_NVIDIA_PROGRESS_FILE:-/var/log/hashcat-wpa-server/nvidia_install.progress}"
 
@@ -60,6 +61,37 @@ detect_machine_arch() {
     esac
 }
 
+install_tailscale_for_remote_access() {
+    if [ "${HASHCAT_WPA_SKIP_TAILSCALE_INSTALL:-0}" = "1" ]; then
+        TAILSCALE_STATUS="skipped"
+        echo "[*] Skipping optional Tailscale install because HASHCAT_WPA_SKIP_TAILSCALE_INSTALL=1."
+        return 0
+    fi
+
+    if command -v tailscale >/dev/null 2>&1; then
+        TAILSCALE_STATUS="already-installed"
+        echo "[+] Tailscale is already installed."
+        return 0
+    fi
+
+    echo "[*] Installing Tailscale for optional remote VPN access..."
+    write_progress running 82 "Installing optional Tailscale connector"
+    if curl -fsSL https://tailscale.com/install.sh | sh; then
+        TAILSCALE_STATUS="installed"
+        echo "[+] Tailscale installed. Run 'crackserver tailscale' when you want to connect it."
+        return 0
+    fi
+
+    TAILSCALE_STATUS="manual-required"
+    echo "[!] Optional Tailscale install failed. The server install will continue."
+    echo "[!] You can retry later with: crackserver tailscale"
+    return 0
+}
+
+if [ "${HASHCAT_WPA_INSTALL_SOURCE_ONLY:-0}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 # Ensure script is being run as root
 if [ "$EUID" -ne 0 ]; then
   echo "[!] Please run this installation script as root (sudo bash install.sh)"
@@ -112,12 +144,7 @@ dpkg-buildpackage -us -uc -b
 echo "[*] Installing to the system..."
 write_progress running 75 "Installing the built package"
 cd ..
-# Ensure tailscale is installed for remote access
-if ! command -v tailscale >/dev/null 2>&1; then
-    echo "[*] Installing Tailscale for remote VPN access using official script..."
-    write_progress running 82 "Installing Tailscale"
-    curl -fsSL https://tailscale.com/install.sh | sh
-fi
+install_tailscale_for_remote_access
 
 echo "[*] Unpacking and configuring the server files..."
 write_progress running 88 "Applying the package to the system"
@@ -157,6 +184,13 @@ if [ "$GPU_DRIVER_STATUS" = "checked" ]; then
     echo "[+] A reboot may still be required before Hashcat can use a newly installed GPU runtime."
 elif [ "$GPU_DRIVER_STATUS" = "manual-required" ]; then
     echo "[!] GPU driver setup needs manual attention before GPU cracking will work."
+fi
+
+if [ "$TAILSCALE_STATUS" = "manual-required" ]; then
+    echo "[!] Optional Tailscale setup was skipped after an install error."
+    echo "[!] Retry it later from the web Settings page or with: crackserver tailscale"
+elif [ "$TAILSCALE_STATUS" = "skipped" ]; then
+    echo "[*] Optional Tailscale setup was skipped by configuration."
 fi
 
 echo "[+] "

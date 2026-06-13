@@ -20,6 +20,7 @@ curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/ma
 
 The installer also attempts to auto-install GPU runtimes when compatible NVIDIA or AMD hardware is detected on supported Debian-family systems. NVIDIA uses the Debian/Ubuntu driver stack, while AMD uses ROCm/OpenCL packages.
 The same installer/update scripts support both `amd64` and `arm64`; ARM hosts install a CPU OpenCL runtime and use the built-in CPU-safe Hashcat mode while automatic NVIDIA/AMD GPU driver setup remains limited to regular `amd64` Debian/Ubuntu systems.
+Tailscale is optional; if its bootstrap script is unavailable during install, the server setup continues and you can retry later with `crackserver tailscale` or from Admin Settings.
 
 After installation, the dashboard is available at `http://127.0.0.1:9111`.
 
