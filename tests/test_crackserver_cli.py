@@ -105,6 +105,59 @@ cat "$tmp/curl.args"
         self.assertIn("devices=3\n", result.stdout)
         self.assertIn("capture=", result.stdout)
 
+    def test_upload_accepts_full_api_endpoint_url_without_duplication(self):
+        script = r'''
+set -euo pipefail
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+capture="$tmp/test.22000"
+printf 'sample capture' > "$capture"
+cat > "$tmp/env.sh" <<SH
+curl() {
+  printf '%s\n' "\$@" > "$tmp/curl.args"
+}
+SH
+BASH_ENV="$tmp/env.sh" bash ./bash/crackserver upload \
+  --url=https://upload.example.com/root/api/upload/ \
+  --password pass \
+  "$capture"
+cat "$tmp/curl.args"
+'''
+
+        result = self.run_bash(script)
+
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertTrue(result.stdout.rstrip().endswith("https://upload.example.com/root/api/upload"))
+        self.assertNotIn("/api/upload/api/upload", result.stdout)
+
+    def test_upload_rejects_url_with_whitespace_before_curl(self):
+        script = r'''
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+capture="$tmp/test.22000"
+printf 'sample capture' > "$capture"
+cat > "$tmp/env.sh" <<SH
+curl() {
+  echo called > "$tmp/curl.called"
+}
+SH
+BASH_ENV="$tmp/env.sh" bash ./bash/crackserver upload \
+  --url='https://upload.example.com/bad path' \
+  --password pass \
+  "$capture"
+rc=$?
+if [ -e "$tmp/curl.called" ]; then
+  cat "$tmp/curl.called"
+  exit 99
+fi
+exit "$rc"
+'''
+
+        result = self.run_bash(script)
+
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("--url must not contain whitespace", result.stdout)
+
     def test_upload_rejects_unknown_options(self):
         result = self.run_bash("bash ./bash/crackserver upload --not-real\n")
 

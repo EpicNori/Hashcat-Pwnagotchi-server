@@ -171,6 +171,34 @@ append_devices_csv() {
     done
 }
 
+upload_api_url() {
+    local raw_url="$1"
+    local url
+
+    url="$(trim_value "$raw_url")"
+    if [ -z "$url" ]; then
+        echo "[!] --url requires a value." >&2
+        return 1
+    fi
+    case "$url" in
+        *" "*|*$'\t'*|*$'\r'*|*$'\n'*)
+            echo "[!] --url must not contain whitespace." >&2
+            return 1
+            ;;
+    esac
+    while [ "${#url}" -gt 1 ] && [ "${url%/}" != "$url" ]; do
+        url="${url%/}"
+    done
+    case "$url" in
+        */api/upload)
+            printf '%s\n' "$url"
+            ;;
+        *)
+            printf '%s/api/upload\n' "$url"
+            ;;
+    esac
+}
+
 normalize_public_hostname() {
     local raw_hostname="$1"
     local hostname label
@@ -440,7 +468,11 @@ upload_files() {
         curl_args+=(-F "capture=@${file}")
     done
 
-    curl -fS --user "${username}:${password}" "${curl_args[@]}" "${url%/}/api/upload"
+    local endpoint_url
+    if ! endpoint_url="$(upload_api_url "$url")"; then
+        exit 2
+    fi
+    curl -fS --user "${username}:${password}" "${curl_args[@]}" "$endpoint_url"
     echo
 }
 
