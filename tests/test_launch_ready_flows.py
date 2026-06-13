@@ -825,6 +825,37 @@ class LaunchReadyFlowTests(unittest.TestCase):
         self.assertIn("hashcat-essid | fc690c158264 | colon:inside:password\n", text)
         self.assertIn(f"hashcat-essid | fc690c158264 | {long_password}\n", text)
 
+    def test_download_export_uses_safe_filename_for_unusual_username(self):
+        raw_username = '../admin "quoted"\r\nbad'
+        with app.app_context():
+            admin = User.query.filter_by(username="admin").first()
+            admin.username = raw_username
+            db.session.add(UploadedTask(
+                user_id=admin.id,
+                filename="admin/test_capture_hashcat_essid.22000",
+                bssid="fc690c158264",
+                essid="hashcat-essid",
+                found_key="hashA:LaunchReadyPass123!",
+                completed=True,
+            ))
+            db.session.commit()
+            admin_id = str(admin.id)
+
+        with self.client.session_transaction() as session:
+            session["_user_id"] = admin_id
+            session["_fresh"] = True
+
+        response = self.client.get("/download_all_results")
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        disposition = response.headers.get("Content-Disposition", "")
+        self.assertIn("attachment;", disposition)
+        self.assertIn("filename=cracked_passwords_", disposition)
+        self.assertNotIn("..", disposition)
+        self.assertNotIn('"', disposition)
+        self.assertNotIn("\r", disposition)
+        self.assertNotIn("\n", disposition)
+
     def test_pmk_rainbow_cache_uses_wpa_byte_length_boundaries(self):
         valid_63_bytes = "A" * 63
         too_long_64_bytes = "B" * 64

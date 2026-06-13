@@ -512,6 +512,11 @@ def safe_capture_upload_folder(username: str | None) -> str:
     return f"{safe_username[:max_name_length].rstrip('._-') or 'user'}-{digest}"
 
 
+def safe_results_export_filename(username: str | None) -> str:
+    safe_username = safe_capture_upload_folder(username)
+    return f"cracked_passwords_{safe_username}.txt"
+
+
 def iter_split_capture_files(split_folder: Path):
     valid_suffixes = set(HashcatMode.valid_modes())
     for candidate in sorted(split_folder.iterdir()):
@@ -903,7 +908,7 @@ def download_all_results():
     return flask.Response(
         output.getvalue(),
         mimetype="text/plain",
-        headers={"Content-disposition": f"attachment; filename=cracked_passwords_{current_user.username}.txt"}
+        headers={"Content-Disposition": f"attachment; filename={safe_results_export_filename(current_user.username)}"}
     )
 
 
