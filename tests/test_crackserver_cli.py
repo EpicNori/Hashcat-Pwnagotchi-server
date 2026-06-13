@@ -122,6 +122,68 @@ cat "$tmp/curl.args"
         self.assertEqual(result.returncode, 2, result.stdout)
         self.assertIn("Unknown workload: impossible", result.stdout)
 
+    def test_cloudflare_cli_normalizes_hostname_before_install(self):
+        with tempfile.TemporaryDirectory(prefix="hashcat-crackserver-cloudflare-") as temp_name:
+            root = Path(temp_name)
+            env_file = root / "env.sh"
+            calls_file = root / "sudo.calls"
+            stdin_file = root / "sudo.stdin"
+            env_file.write_text(
+                textwrap.dedent(f"""
+                    sudo() {{
+                      printf '%s\\n' "$*" >> "{self.bash_path(calls_file)}"
+                      cat > "{self.bash_path(stdin_file)}"
+                    }}
+                """),
+                encoding="utf-8",
+            )
+            script = textwrap.dedent(f"""
+                BASH_ENV="{self.bash_path(env_file)}" \\
+                HASHCAT_WPA_APP_ROOT="$PWD" \\
+                bash ./bash/crackserver cloudflare UPLOAD.Example.COM secret-token
+                echo "CALLS_BEGIN"
+                cat "{self.bash_path(calls_file)}"
+                echo "STDIN_BEGIN"
+                cat "{self.bash_path(stdin_file)}"
+            """)
+
+            result = self.run_bash(script)
+
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("install_cloudflare_tunnel.sh upload.example.com", result.stdout)
+        self.assertIn("Pwnagotchi plugin URL: https://upload.example.com", result.stdout)
+        self.assertIn("STDIN_BEGIN\nsecret-token", result.stdout)
+
+    def test_cloudflare_cli_rejects_invalid_hostname_before_sudo(self):
+        with tempfile.TemporaryDirectory(prefix="hashcat-crackserver-cloudflare-") as temp_name:
+            root = Path(temp_name)
+            env_file = root / "env.sh"
+            calls_file = root / "sudo.calls"
+            env_file.write_text(
+                textwrap.dedent(f"""
+                    sudo() {{
+                      printf '%s\\n' "$*" >> "{self.bash_path(calls_file)}"
+                    }}
+                """),
+                encoding="utf-8",
+            )
+            script = textwrap.dedent(f"""
+                BASH_ENV="{self.bash_path(env_file)}" \\
+                HASHCAT_WPA_APP_ROOT="$PWD" \\
+                bash ./bash/crackserver cloudflare https://upload.example.com/path secret-token
+                rc=$?
+                if [ -e "{self.bash_path(calls_file)}" ]; then
+                    cat "{self.bash_path(calls_file)}"
+                    exit 99
+                fi
+                exit "$rc"
+            """)
+
+            result = self.run_bash(script)
+
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("Use a hostname only", result.stdout)
+
     def test_uninstall_passes_runtime_paths_through_sudo_env(self):
         with tempfile.TemporaryDirectory(prefix="hashcat-crackserver-uninstall-") as temp_name:
             root = Path(temp_name)

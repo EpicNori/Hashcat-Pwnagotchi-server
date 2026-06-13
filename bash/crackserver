@@ -171,6 +171,48 @@ append_devices_csv() {
     done
 }
 
+normalize_public_hostname() {
+    local raw_hostname="$1"
+    local hostname label
+    local -a labels=()
+
+    hostname="$(trim_value "$raw_hostname")"
+    hostname="${hostname,,}"
+
+    if [ -z "$hostname" ]; then
+        echo "[!] Public hostname is required." >&2
+        return 1
+    fi
+    if [ "${#hostname}" -gt 253 ]; then
+        echo "[!] Public hostname is too long." >&2
+        return 1
+    fi
+    case "$hostname" in
+        *://*|*/*|*\\*|*:*|*@*|*" "*|*$'\t'*|*\[*|*\]*)
+            echo "[!] Use a hostname only, like upload.example.com." >&2
+            return 1
+            ;;
+    esac
+    if [[ "$hostname" != *.* ]]; then
+        echo "[!] Use a fully-qualified hostname like upload.example.com." >&2
+        return 1
+    fi
+
+    IFS='.' read -r -a labels <<< "$hostname"
+    for label in "${labels[@]}"; do
+        if [ -z "$label" ] || [ "${#label}" -gt 63 ]; then
+            echo "[!] Invalid public hostname label: ${label:-<empty>}." >&2
+            return 1
+        fi
+        if ! [[ "$label" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
+            echo "[!] Invalid public hostname label: ${label}." >&2
+            return 1
+        fi
+    done
+
+    printf '%s\n' "$hostname"
+}
+
 set_login() {
     need_installed
     local username="${1:-}"
@@ -417,18 +459,21 @@ cloudflare_connect() {
     need_installed
     local hostname="${1:-}"
     local token="${2:-}"
-    sudo -v
     if [ -z "$hostname" ]; then
         read -r -p "Public hostname, e.g. upload.example.com: " hostname
+    fi
+    if ! hostname="$(normalize_public_hostname "$hostname")"; then
+        exit 2
     fi
     if [ -z "$token" ]; then
         read -r -s -p "Cloudflare Tunnel token: " token
         echo
     fi
-    if [ -z "$hostname" ] || [ -z "$token" ]; then
-        echo "[!] Hostname and Cloudflare token are required."
+    if [ -z "$token" ]; then
+        echo "[!] Cloudflare token is required."
         exit 2
     fi
+    sudo -v
     printf '%s' "$token" | sudo "$(script_path install_cloudflare_tunnel.sh)" "$hostname"
     echo "[+] Pwnagotchi plugin URL: https://${hostname}"
 }
