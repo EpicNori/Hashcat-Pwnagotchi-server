@@ -5,7 +5,18 @@ PURGE_DATA=0
 YES=0
 WIZARD=0
 BACKGROUND=0
-LOG_FILE="/tmp/hashcat-wpa-uninstall.log"
+DRY_RUN=0
+
+APP_ROOT="${HASHCAT_WPA_APP_ROOT:-/opt/hashcat-wpa-server}"
+DATA_DIR="${HASHCAT_WPA_DATA_DIR:-/var/lib/hashcat-wpa-server}"
+LOG_DIR="${HASHCAT_WPA_LOG_DIR:-/var/log/hashcat-wpa-server}"
+SERVICE_NAME="${HASHCAT_WPA_SERVICE_NAME:-hashcat-wpa-server.service}"
+SERVICE_FILE="${HASHCAT_WPA_SERVICE_FILE:-/etc/systemd/system/${SERVICE_NAME}}"
+CLI_LINK="${HASHCAT_WPA_CLI_LINK:-/usr/local/bin/crackserver}"
+SUDOERS_FILE="${HASHCAT_WPA_SUDOERS_FILE:-/etc/sudoers.d/hashcat-tailscale}"
+APP_USER="${HASHCAT_WPA_APP_USER:-hashcat}"
+PACKAGE_NAME="${HASHCAT_WPA_PACKAGE_NAME:-hashcat-wpa-server}"
+LOG_FILE="${HASHCAT_WPA_UNINSTALL_LOG_FILE:-/tmp/hashcat-wpa-uninstall.log}"
 
 for arg in "$@"; do
     case "$arg" in
@@ -24,12 +35,22 @@ for arg in "$@"; do
         --background)
             BACKGROUND=1
             ;;
+        --dry-run)
+            DRY_RUN=1
+            ;;
         --help|-h)
-            cat <<'EOF'
-Usage: uninstall_app.sh [--wizard] [--yes] [--purge-data|--keep-data] [--background]
+            cat <<EOF
+Usage: uninstall_app.sh [--wizard] [--yes] [--purge-data|--keep-data] [--background] [--dry-run]
 
-Default behavior keeps /var/lib/hashcat-wpa-server and /var/log/hashcat-wpa-server.
+Default behavior keeps $DATA_DIR and $LOG_DIR.
 Use --purge-data only when you want to delete users, captures, databases, results, and logs.
+
+Current paths:
+  Application: $APP_ROOT
+  Data:        $DATA_DIR
+  Logs:        $LOG_DIR
+  Service:     $SERVICE_FILE
+  CLI:         $CLI_LINK
 EOF
             exit 0
             ;;
@@ -47,40 +68,97 @@ confirm() {
     [[ "${reply:-}" =~ ^[Yy]$ ]]
 }
 
+quote_cmd() {
+    local arg
+    local sep=""
+    for arg in "$@"; do
+        printf '%s%s' "$sep" "$arg"
+        sep=" "
+    done
+    printf '\n'
+}
+
+run_cmd() {
+    if [ "$DRY_RUN" -eq 1 ]; then
+        printf '[dry-run] '
+        quote_cmd "$@"
+    else
+        "$@"
+    fi
+}
+
+systemctl_maybe() {
+    if [ "$DRY_RUN" -eq 1 ]; then
+        printf '[dry-run] systemctl '
+        quote_cmd "$@"
+        return 0
+    fi
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl "$@" >/dev/null 2>&1 || true
+    else
+        echo "[*] systemctl is not available; skipping: systemctl $*"
+    fi
+}
+
+assert_safe_path() {
+    local path="${1:-}"
+    local label="$2"
+    if [ -z "$path" ] || [ "$path" = "/" ]; then
+        echo "[!] Refusing to remove unsafe $label path: '${path:-<empty>}'"
+        exit 1
+    fi
+}
+
+remove_tree() {
+    local path="$1"
+    local label="$2"
+    assert_safe_path "$path" "$label"
+    run_cmd rm -rf -- "$path"
+}
+
+remove_file() {
+    local path="$1"
+    local label="$2"
+    assert_safe_path "$path" "$label"
+    run_cmd rm -f -- "$path"
+}
+
 run_uninstall() {
-    if [ "$EUID" -ne 0 ]; then
+    if [ "$EUID" -ne 0 ] && [ "$DRY_RUN" -eq 0 ]; then
         echo "[!] This script must be run as root."
         exit 1
     fi
 
     export DEBIAN_FRONTEND=noninteractive
     echo "[*] Stopping Hashcat WPA Server..."
-    systemctl stop hashcat-wpa-server.service >/dev/null 2>&1 || true
-    systemctl disable hashcat-wpa-server.service >/dev/null 2>&1 || true
+    systemctl_maybe stop "$SERVICE_NAME"
+    systemctl_maybe disable "$SERVICE_NAME"
 
     echo "[*] Removing application package while preserving data..."
-    if dpkg -s hashcat-wpa-server >/dev/null 2>&1; then
-        dpkg --remove hashcat-wpa-server
+    if command -v dpkg >/dev/null 2>&1 && dpkg -s "$PACKAGE_NAME" >/dev/null 2>&1; then
+        run_cmd dpkg --remove "$PACKAGE_NAME"
     else
         echo "[*] Debian package is not registered; removing installed app files directly."
-        rm -rf /opt/hashcat-wpa-server
-        rm -f /etc/systemd/system/hashcat-wpa-server.service
-        rm -f /usr/local/bin/crackserver
+        remove_tree "$APP_ROOT" "application"
+        remove_file "$SERVICE_FILE" "service"
+        remove_file "$CLI_LINK" "CLI"
     fi
 
-    rm -f /etc/sudoers.d/hashcat-tailscale
-    systemctl daemon-reload >/dev/null 2>&1 || true
+    remove_file "$SUDOERS_FILE" "sudoers"
+    systemctl_maybe daemon-reload
 
     if [ "$PURGE_DATA" -eq 1 ]; then
         echo "[!] Purging user data, captures, results, settings, and logs..."
-        rm -rf /var/lib/hashcat-wpa-server
-        rm -rf /var/log/hashcat-wpa-server
-        if id "hashcat" >/dev/null 2>&1; then
-            userdel hashcat >/dev/null 2>&1 || true
+        remove_tree "$DATA_DIR" "data"
+        remove_tree "$LOG_DIR" "logs"
+        if [ "$DRY_RUN" -eq 1 ]; then
+            echo "[dry-run] userdel $APP_USER"
+        elif id "$APP_USER" >/dev/null 2>&1; then
+            userdel "$APP_USER" >/dev/null 2>&1 || true
         fi
     else
-        echo "[+] Data kept in /var/lib/hashcat-wpa-server."
-        echo "[+] Logs kept in /var/log/hashcat-wpa-server."
+        echo "[+] Data kept in $DATA_DIR."
+        echo "[+] Logs kept in $LOG_DIR."
     fi
 
     echo "[+] Uninstall complete."
@@ -91,7 +169,9 @@ if [ "$WIZARD" -eq 1 ] && [ "$YES" -eq 0 ]; then
     echo "  Hashcat WPA Server Uninstall"
     echo "====================================================="
     echo "This removes the application and background service."
-    echo "User data is kept unless you explicitly choose to purge it."
+    echo "Default: keep users, captures, results, settings, and logs."
+    echo "Data: $DATA_DIR"
+    echo "Logs: $LOG_DIR"
     if ! confirm "Continue uninstall? [y/N]"; then
         echo "Cancelled."
         exit 0
@@ -107,9 +187,29 @@ if [ "$YES" -eq 0 ] && [ "$WIZARD" -eq 0 ] && [ -t 0 ]; then
     exit 2
 fi
 
-if [ "$BACKGROUND" -eq 1 ] || { [ ! -t 0 ] && [ "$WIZARD" -eq 0 ]; }; then
+if [ "$BACKGROUND" -eq 1 ] || { [ "$YES" -eq 0 ] && [ ! -t 0 ] && [ "$WIZARD" -eq 0 ]; }; then
+    purge_arg="--keep-data"
+    dry_args=()
+    if [ "$PURGE_DATA" -eq 1 ]; then
+        purge_arg="--purge-data"
+    fi
+    if [ "$DRY_RUN" -eq 1 ]; then
+        dry_args=(--dry-run)
+    fi
+    mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
     echo "[*] Starting uninstall in the background..."
-    nohup bash "$0" --yes "$([ "$PURGE_DATA" -eq 1 ] && echo --purge-data || echo --keep-data)" > "$LOG_FILE" 2>&1 &
+    nohup env \
+        HASHCAT_WPA_APP_ROOT="$APP_ROOT" \
+        HASHCAT_WPA_DATA_DIR="$DATA_DIR" \
+        HASHCAT_WPA_LOG_DIR="$LOG_DIR" \
+        HASHCAT_WPA_SERVICE_NAME="$SERVICE_NAME" \
+        HASHCAT_WPA_SERVICE_FILE="$SERVICE_FILE" \
+        HASHCAT_WPA_CLI_LINK="$CLI_LINK" \
+        HASHCAT_WPA_SUDOERS_FILE="$SUDOERS_FILE" \
+        HASHCAT_WPA_APP_USER="$APP_USER" \
+        HASHCAT_WPA_PACKAGE_NAME="$PACKAGE_NAME" \
+        HASHCAT_WPA_UNINSTALL_LOG_FILE="$LOG_FILE" \
+        bash "$0" --yes "$purge_arg" "${dry_args[@]}" > "$LOG_FILE" 2>&1 &
     echo "[+] Uninstall process spawned. Log: $LOG_FILE"
     exit 0
 fi

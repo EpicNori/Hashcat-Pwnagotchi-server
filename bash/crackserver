@@ -3,7 +3,9 @@ set -euo pipefail
 
 APP_ROOT="${HASHCAT_WPA_APP_ROOT:-/opt/hashcat-wpa-server}"
 APP_USER="${HASHCAT_WPA_APP_USER:-hashcat}"
-SERVICE_NAME="hashcat-wpa-server.service"
+DATA_DIR="${HASHCAT_WPA_DATA_DIR:-/var/lib/hashcat-wpa-server}"
+LOG_DIR="${HASHCAT_WPA_LOG_DIR:-/var/log/hashcat-wpa-server}"
+SERVICE_NAME="${HASHCAT_WPA_SERVICE_NAME:-hashcat-wpa-server.service}"
 DEFAULT_URL="http://127.0.0.1:9111"
 
 script_path() {
@@ -290,7 +292,7 @@ Uninstall:
   uninstall                     Interactive uninstall wizard, keeps data by default
   uninstall --yes               Remove app/service non-interactively, keep data
   uninstall --yes --purge-data  Remove app/service and delete data/logs
-  reset                         Factory reset data only, then restart
+  reset                         Factory reset the configured data directory only, then restart
 EOF
 }
 
@@ -312,9 +314,16 @@ case "$command" in
         echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
         echo "!!! WARNING: THIS WILL WIPE ALL USERS AND RESULTS !!!"
         echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        echo "Data path: $DATA_DIR"
         if confirm "Are you sure you want a factory reset? [y/N]" "n"; then
+            if [ -z "$DATA_DIR" ] || [ "$DATA_DIR" = "/" ]; then
+                echo "[!] Refusing to reset unsafe data path: '${DATA_DIR:-<empty>}'"
+                exit 1
+            fi
             sudo systemctl stop "$SERVICE_NAME" || true
-            sudo rm -rf /var/lib/hashcat-wpa-server/*
+            if sudo test -d "$DATA_DIR"; then
+                sudo find "$DATA_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+            fi
             sudo systemctl start "$SERVICE_NAME" || true
             echo "[+] Factory reset complete."
         fi
@@ -356,7 +365,13 @@ case "$command" in
         sudo journalctl -u "$SERVICE_NAME" -f
         ;;
     uninstall)
-        sudo bash "$(script_path uninstall_app.sh)" --wizard "$@"
+        sudo \
+            HASHCAT_WPA_APP_ROOT="$APP_ROOT" \
+            HASHCAT_WPA_APP_USER="$APP_USER" \
+            HASHCAT_WPA_DATA_DIR="$DATA_DIR" \
+            HASHCAT_WPA_LOG_DIR="$LOG_DIR" \
+            HASHCAT_WPA_SERVICE_NAME="$SERVICE_NAME" \
+            "$(script_path uninstall_app.sh)" --wizard "$@"
         ;;
     dashboard)
         dashboard_urls

@@ -69,6 +69,8 @@ Updates keep persistent users, captures, databases, wordlists, and settings unde
 - `crackserver uninstall`
 
 `crackserver uninstall` is an interactive wizard and keeps `/var/lib/hashcat-wpa-server` by default. Use `crackserver uninstall --yes --purge-data` only when you also want to delete users, captures, results, settings, and logs.
+Use `crackserver uninstall --yes --dry-run` to preview the app, service, CLI, data, and log paths that would be touched.
+`crackserver reset` only wipes the configured data directory, prints the path first, and refuses unsafe empty or root paths.
 For CLI uploads with shell-special characters, quote the password. If it starts with `-`, use the equals form: `crackserver upload --password='-starts-with-dash' capture.22000`.
 
 ## Data Persistence

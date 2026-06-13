@@ -1,5 +1,7 @@
 import shutil
 import subprocess
+import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -22,6 +24,13 @@ class CrackserverCliTests(unittest.TestCase):
             stderr=subprocess.STDOUT,
             timeout=30,
         )
+
+    @staticmethod
+    def bash_path(path):
+        raw = str(Path(path).resolve())
+        if len(raw) >= 3 and raw[1:3] == ":\\":
+            return "/" + raw[0].lower() + raw[2:].replace("\\", "/")
+        return raw.replace("\\", "/")
 
     def test_upload_accepts_equals_options_and_dash_prefixed_password(self):
         script = r'''
@@ -56,6 +65,84 @@ cat "$tmp/curl.args"
 
         self.assertEqual(result.returncode, 2, result.stdout)
         self.assertIn("Unknown upload option: --not-real", result.stdout)
+
+    def test_uninstall_passes_runtime_paths_through_sudo_env(self):
+        with tempfile.TemporaryDirectory(prefix="hashcat-crackserver-uninstall-") as temp_name:
+            root = Path(temp_name)
+            data_dir = root / "data with spaces"
+            log_dir = root / "logs with spaces"
+            env_file = root / "env.sh"
+            calls_file = root / "sudo.calls"
+            env_file.write_text(
+                textwrap.dedent(f"""
+                    sudo() {{
+                      printf '%s\\n' "$*" > "{self.bash_path(calls_file)}"
+                    }}
+                """),
+                encoding="utf-8",
+            )
+            script = textwrap.dedent(f"""
+                BASH_ENV="{self.bash_path(env_file)}" \\
+                HASHCAT_WPA_APP_ROOT="$PWD" \\
+                HASHCAT_WPA_DATA_DIR="{self.bash_path(data_dir)}" \\
+                HASHCAT_WPA_LOG_DIR="{self.bash_path(log_dir)}" \\
+                HASHCAT_WPA_SERVICE_NAME="hashcat-test.service" \\
+                bash ./bash/crackserver uninstall --yes --dry-run
+                cat "{self.bash_path(calls_file)}"
+            """)
+
+            result = self.run_bash(script)
+
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("HASHCAT_WPA_APP_ROOT=", result.stdout)
+        self.assertIn(f"HASHCAT_WPA_DATA_DIR={self.bash_path(data_dir)}", result.stdout)
+        self.assertIn(f"HASHCAT_WPA_LOG_DIR={self.bash_path(log_dir)}", result.stdout)
+        self.assertIn("HASHCAT_WPA_SERVICE_NAME=hashcat-test.service", result.stdout)
+        self.assertIn("--wizard --yes --dry-run", result.stdout)
+
+    def test_reset_uses_configured_data_dir_instead_of_hardcoded_var_lib(self):
+        with tempfile.TemporaryDirectory(prefix="hashcat-crackserver-reset-") as temp_name:
+            root = Path(temp_name)
+            data_dir = root / "data with spaces"
+            data_dir.mkdir()
+            env_file = root / "env.sh"
+            calls_file = root / "sudo.calls"
+            env_file.write_text(
+                textwrap.dedent(f"""
+                    sudo() {{
+                      printf '%s\\n' "$*" >> "{self.bash_path(calls_file)}"
+                      if [ "$1" = "test" ]; then
+                        shift
+                        command test "$@"
+                        return $?
+                      fi
+                      return 0
+                    }}
+                """),
+                encoding="utf-8",
+            )
+            script = textwrap.dedent(f"""
+                printf 'y\\n' | BASH_ENV="{self.bash_path(env_file)}" \\
+                HASHCAT_WPA_DATA_DIR="{self.bash_path(data_dir)}" \\
+                HASHCAT_WPA_SERVICE_NAME="hashcat-test.service" \\
+                bash ./bash/crackserver reset
+                cat "{self.bash_path(calls_file)}"
+            """)
+
+            result = self.run_bash(script)
+
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn(f"Data path: {self.bash_path(data_dir)}", result.stdout)
+        self.assertIn(f"find {self.bash_path(data_dir)} -mindepth 1 -maxdepth 1", result.stdout)
+        self.assertNotIn("/var/lib/hashcat-wpa-server", result.stdout)
+
+    def test_package_sudoers_allows_uninstall_path_overrides(self):
+        postinst = (self.repo_root / "debian" / "postinst").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "NOPASSWD: SETENV: /opt/hashcat-wpa-server/bash/uninstall_app.sh",
+            postinst,
+        )
 
 
 if __name__ == "__main__":
