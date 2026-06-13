@@ -90,6 +90,59 @@ class PwnagotchiPluginTests(unittest.TestCase):
         self.assertIn("main.plugins.pwnagotchi_hashcat_wpa.batch_size = 8", config_text)
         self.assertEqual(self.plugin._read_plugin_config()["password"], weird_password)
 
+    def test_save_webhook_blank_password_keeps_existing_secret(self):
+        existing_password = " existing:secret with spaces "
+        self.plugin.options.update({
+            "url": "https://old.example.com",
+            "username": "old-user",
+            "password": existing_password,
+        })
+        self.plugin._write_plugin_config(dict(self.plugin.options))
+        request = SimpleNamespace(
+            method="POST",
+            form={
+                "url": "https://upload.example.com",
+                "username": "admin",
+                "password": "",
+            },
+        )
+
+        body = self.plugin.on_webhook("save", request)
+
+        self.assertIn("Config saved", body)
+        self.assertEqual(self.plugin.options["password"], existing_password)
+        self.assertEqual(self.plugin._read_plugin_config()["password"], existing_password)
+
+    def test_save_webhook_blank_password_uses_default_only_for_fresh_config(self):
+        request = SimpleNamespace(
+            method="POST",
+            form={
+                "url": "https://upload.example.com",
+                "username": "admin",
+                "password": "",
+            },
+        )
+
+        body = self.plugin.on_webhook("save", request)
+
+        self.assertIn("Config saved", body)
+        self.assertEqual(self.plugin.options["password"], "changeme")
+        self.assertEqual(self.plugin._read_plugin_config()["password"], "changeme")
+
+    def test_web_ui_does_not_render_saved_password_value(self):
+        secret = "dont-render-this-secret"
+        self.plugin.options.update({
+            "url": "https://upload.example.com",
+            "username": "admin",
+            "password": secret,
+        })
+
+        body = self.plugin.on_webhook("", SimpleNamespace(method="GET", form={}))
+
+        self.assertIn('placeholder="Leave blank to keep saved password"', body)
+        self.assertIn('type="password" value=""', body)
+        self.assertNotIn(secret, body)
+
     def test_read_config_accepts_legacy_auto_upload_option(self):
         Path(self.plugin._CONFIG_PATH).write_text(
             "\n".join([

@@ -617,7 +617,6 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         upload_url = html.escape(self._upload_url() or f'{self._PLACEHOLDER_URL}/api/upload')
         heartbeat_url = html.escape(self._heartbeat_url() or f'{self._PLACEHOLDER_URL}/api/pwnagotchi/heartbeat')
         username = html.escape(self.options.get('username') or 'admin')
-        password = html.escape(self.options.get('password') or 'changeme')
         status_text, status_color = self._status()
         status_text = html.escape(status_text)
         notice_html = self._render_notice(notice)
@@ -779,7 +778,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         <input id="username" name="username" value="{username}" autocomplete="username">
 
         <label for="password">Password</label>
-        <input id="password" name="password" type="password" value="{password}" autocomplete="current-password">
+        <input id="password" name="password" type="password" value="" placeholder="Leave blank to keep saved password" autocomplete="current-password">
 
         <button type="submit">Save config</button>
         <a class="button secondary" href="/plugins/pwnagotchi_hashcat_wpa/test">Test connection</a>
@@ -848,7 +847,9 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
                 notice = {'ok': False, 'label': 'Check the URL', 'message': 'Use a full URL like http://100.x.x.x:9111 or https://upload.example.com.'}
             else:
                 values = dict(self._ensure_option_defaults())
-                values.update({'enabled': True, 'url': url, 'username': username or 'admin', 'password': password or 'changeme'})
+                values.update({'enabled': True, 'url': url, 'username': username or values.get('username') or 'admin'})
+                if password:
+                    values['password'] = password
                 try:
                     self._write_plugin_config(values)
                     self._apply_runtime_config(values)
