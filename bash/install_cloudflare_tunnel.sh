@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # stdin so it is not saved in the app settings file.
 PUBLIC_HOSTNAME="${1:-}"
 TOKEN="${CLOUDFLARE_TUNNEL_TOKEN:-}"
+DRY_RUN="${HASHCAT_WPA_DRY_RUN:-0}"
 
 if [ -z "$TOKEN" ] && [ ! -t 0 ]; then
     TOKEN="$(cat | tr -d '\r\n')"
@@ -34,9 +35,16 @@ install_cloudflared() {
         return
     fi
 
-    if ! asset="$(cloudflared_asset_for_arch)"; then
+    if asset="$(cloudflared_asset_for_arch)"; then
+        :
+    else
         echo "Unsupported architecture for automatic cloudflared install: $(uname -m)"
         exit 1
+    fi
+
+    if [ "$DRY_RUN" = "1" ]; then
+        echo "[dry-run] download ${asset} and install it to /usr/local/bin/cloudflared"
+        return
     fi
 
     tmp="$(mktemp)"
@@ -46,6 +54,15 @@ install_cloudflared() {
 }
 
 install_cloudflared
+
+if [ "$DRY_RUN" = "1" ]; then
+    echo "[dry-run] verify systemd is available for cloudflared.service"
+    echo "[dry-run] stop and uninstall any existing cloudflared.service"
+    echo "[dry-run] cloudflared service install <redacted-token>"
+    echo "[dry-run] systemctl enable --now cloudflared"
+    echo "Cloudflare Tunnel connector would be installed for https://${PUBLIC_HOSTNAME}"
+    exit 0
+fi
 
 if ! command -v systemctl >/dev/null 2>&1 || ! pidof systemd >/dev/null 2>&1; then
     echo "Systemd is not running, so the Cloudflare Tunnel service cannot be installed automatically."
