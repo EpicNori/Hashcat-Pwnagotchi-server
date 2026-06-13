@@ -1,3 +1,4 @@
+import hashlib
 import os
 import shlex
 import shutil
@@ -12,6 +13,7 @@ from flask import request, render_template, redirect, url_for
 from flask.json import jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.datastructures import CombinedMultiDict
+from werkzeug.utils import secure_filename
 
 from app import app, db, limiter
 from app.config import APP_UPDATE_PROGRESS_FILE, NVIDIA_INSTALL_PROGRESS_FILE
@@ -29,6 +31,8 @@ from app.word_magic import create_digits_wordlist, estimate_runtime_fmt, create_
 from app.word_magic.wordlist import download_wordlist, find_wordlist_by_name, WordListDefault
 
 hashcat_worker = HashcatWorker(app)
+MAX_CAPTURE_UPLOAD_NAME_CHARS = 120
+MAX_CAPTURE_UPLOAD_FOLDER_CHARS = 72
 
 
 def active_task_filter():
@@ -480,6 +484,32 @@ def resolve_capture_path(saved_filename: str) -> Path:
     return resolve_existing_capture_path(saved_filename)
 
 
+def safe_capture_upload_name(original_filename: str | None) -> str:
+    raw_filename = str(original_filename or "capture").replace("\\", "/").rsplit("/", 1)[-1]
+    safe_filename = secure_filename(raw_filename) or "capture"
+    suffix = Path(safe_filename).suffix.lower()
+    stem = safe_filename[:-len(suffix)] if suffix else safe_filename
+    stem = stem.strip("._-") or "capture"
+
+    if safe_filename == raw_filename and len(safe_filename) <= MAX_CAPTURE_UPLOAD_NAME_CHARS:
+        return safe_filename
+
+    digest = hashlib.sha256(str(original_filename or "").encode("utf-8", errors="replace")).hexdigest()[:12]
+    max_stem_length = max(16, MAX_CAPTURE_UPLOAD_NAME_CHARS - len(suffix) - len(digest) - 1)
+    return f"{stem[:max_stem_length].rstrip('._-') or 'capture'}-{digest}{suffix}"
+
+
+def safe_capture_upload_folder(username: str | None) -> str:
+    raw_username = str(username or "user")
+    safe_username = secure_filename(raw_username) or "user"
+    if safe_username == raw_username and len(safe_username) <= MAX_CAPTURE_UPLOAD_FOLDER_CHARS:
+        return safe_username
+
+    digest = hashlib.sha256(raw_username.encode("utf-8", errors="replace")).hexdigest()[:10]
+    max_name_length = max(8, MAX_CAPTURE_UPLOAD_FOLDER_CHARS - len(digest) - 1)
+    return f"{safe_username[:max_name_length].rstrip('._-') or 'user'}-{digest}"
+
+
 def iter_split_capture_files(split_folder: Path):
     valid_suffixes = set(HashcatMode.valid_modes())
     for candidate in sorted(split_folder.iterdir()):
@@ -488,7 +518,11 @@ def iter_split_capture_files(split_folder: Path):
 
 
 def save_capture_for_user(file_storage, username: str) -> tuple[str, Path]:
-    saved_filename = cap_uploads.save(file_storage, folder=username)
+    saved_filename = cap_uploads.save(
+        file_storage,
+        folder=safe_capture_upload_folder(username),
+        name=safe_capture_upload_name(file_storage.filename),
+    )
     filename = normalize_task_filename(saved_filename)
     cap_path = resolve_capture_path(filename)
     if cap_path.suffix.lstrip('.').lower() not in set(HashcatMode.valid_upload_suffixes()):

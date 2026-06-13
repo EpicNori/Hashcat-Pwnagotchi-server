@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+from sqlalchemy import Text
 
 _TEST_HOME = Path(tempfile.mkdtemp(prefix="hashcat-wpa-server-tests-"))
 os.environ["HASHCAT_WPA_SERVER_HOME"] = str(_TEST_HOME)
@@ -37,6 +38,8 @@ def basic_auth(username="admin", password="changeme"):
 class FakeHashcatWorker:
     def __init__(self):
         self.submitted = []
+        self.locks = {}
+        self.locks_onetime = set()
 
     def submit_capture(self, file_22000, uploaded_form, task):
         self.submitted.append({
@@ -177,6 +180,25 @@ class LaunchReadyFlowTests(unittest.TestCase):
             ["  leading and trailing  ", "colon:inside:password", very_long_password],
         )
 
+    def test_upload_models_do_not_cap_free_text_launch_metadata(self):
+        unbounded_columns = [
+            PwnagotchiStatus.__table__.c.hostname,
+            PwnagotchiStatus.__table__.c.plugin_version,
+            PwnagotchiStatus.__table__.c.last_event,
+            PwnagotchiStatus.__table__.c.last_message,
+            PwnagotchiStatus.__table__.c.last_upload_filename,
+            UploadedTask.__table__.c.filename,
+            UploadedTask.__table__.c.wordlist,
+            UploadedTask.__table__.c.rule,
+            UploadedTask.__table__.c.hashcat_args,
+            UploadedTask.__table__.c.status,
+            UploadedTask.__table__.c.essid,
+            UploadedTask.__table__.c.found_key,
+        ]
+
+        for column in unbounded_columns:
+            self.assertIsInstance(column.type, Text, column.name)
+
     def test_admin_registration_accepts_long_account_passwords(self):
         long_password = "A1!-" + ("long-password-" * 80) + "end"
         self.login_admin()
@@ -286,6 +308,73 @@ class LaunchReadyFlowTests(unittest.TestCase):
             status = PwnagotchiStatus.query.filter_by(username="admin").first()
             self.assertIsNotNone(status)
             self.assertEqual(status.upload_count, 1)
+
+    def test_api_upload_shortens_unsafe_long_capture_filename(self):
+        sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
+        long_name = "../" + ("Capture With Spaces " * 24) + ".22000"
+
+        response = self.client.post(
+            "/api/upload",
+            data={
+                "wordlist": NONE_STR,
+                "rule": NONE_STR,
+                "workload": Workload.Normal.value,
+                "brain_client_feature": "2",
+                "capture": (io.BytesIO(sample_capture.read_bytes()), long_name),
+            },
+            headers=basic_auth(),
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        body = response.get_json()
+        stored_filename = body["uploaded"][0]["filename"]
+        stored_basename = stored_filename.rsplit("/", 1)[-1]
+        self.assertTrue(stored_filename.startswith("admin/"))
+        self.assertNotIn("..", stored_filename)
+        self.assertNotIn("\\", stored_filename)
+        self.assertLessEqual(len(stored_basename), views.MAX_CAPTURE_UPLOAD_NAME_CHARS)
+        self.assertTrue(stored_basename.endswith(".22000"))
+        self.assertTrue(views.resolve_capture_path(stored_filename).exists())
+
+        with app.app_context():
+            task = UploadedTask.query.one()
+            status = PwnagotchiStatus.query.filter_by(username="admin").first()
+            self.assertEqual(task.filename, stored_filename)
+            self.assertEqual(status.last_upload_filename, stored_filename)
+
+    def test_api_upload_sanitizes_capture_folder_for_unusual_username(self):
+        sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
+        username = "../operator name"
+        password = "A1!-" + ("folder-pass-" * 20)
+        with app.app_context():
+            user = User(username=username)
+            user.set_password(password)
+            user.roles = [Role.by_enum(RoleEnum.USER)]
+            db.session.add(user)
+            db.session.commit()
+
+        response = self.client.post(
+            "/api/upload",
+            data={
+                "wordlist": NONE_STR,
+                "rule": NONE_STR,
+                "workload": Workload.Normal.value,
+                "brain_client_feature": "2",
+                "capture": (io.BytesIO(sample_capture.read_bytes()), sample_capture.name),
+            },
+            headers=basic_auth(username, password),
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        stored_filename = response.get_json()["uploaded"][0]["filename"]
+        stored_folder = stored_filename.split("/", 1)[0]
+        self.assertNotIn("..", stored_filename)
+        self.assertNotIn("\\", stored_filename)
+        self.assertNotEqual(stored_folder, username)
+        self.assertLessEqual(len(stored_folder), views.MAX_CAPTURE_UPLOAD_FOLDER_CHARS)
+        self.assertTrue(views.resolve_capture_path(stored_filename).exists())
 
     def test_api_upload_accepts_long_special_basic_auth_password(self):
         sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
@@ -573,6 +662,70 @@ class LaunchReadyFlowTests(unittest.TestCase):
         text = response.get_data(as_text=True)
         self.assertIn("/static/pwnagotchi-device.svg", text)
         self.assertNotIn("pwnagotchi.ai/images", text)
+
+    def test_long_launch_metadata_renders_and_exports_without_truncation(self):
+        long_filename = "admin/" + "capture-" + ("x" * 320) + ".22000"
+        long_essid = "wifi-" + ("segment-" * 120)
+        long_status = "Running " + ("status detail " * 160)
+        long_wordlist = "wordlist-" + ("name-" * 120)
+        long_rule = "rule-" + ("detail-" * 120)
+        long_args = "--custom " + ("argument-value " * 160)
+        long_password = "P@ss:" + ("LongPassword123!" * 320)
+        long_hostname = "pwnagotchi-" + ("host-" * 90)
+        long_event = "heartbeat-" + ("event-" * 90)
+        long_message = "message " + ("upload telemetry detail " * 90)
+        long_plugin_version = "version-" + ("build-" * 90)
+
+        with app.app_context():
+            admin = User.query.filter_by(username="admin").first()
+            db.session.add(UploadedTask(
+                user_id=admin.id,
+                filename=long_filename,
+                bssid="fc690c158264",
+                essid=long_essid,
+                wordlist=long_wordlist,
+                rule=long_rule,
+                hashcat_args=long_args,
+                status=long_status,
+                found_key=f"hashZ:{long_password}",
+                completed=True,
+            ))
+            db.session.commit()
+
+        heartbeat = self.client.post(
+            "/api/pwnagotchi/heartbeat",
+            json={
+                "event": long_event,
+                "hostname": long_hostname,
+                "plugin_version": long_plugin_version,
+                "message": long_message,
+            },
+            headers=basic_auth(),
+        )
+        self.assertEqual(heartbeat.status_code, 200, heartbeat.get_data(as_text=True))
+
+        self.login_admin()
+        profile = self.client.get("/user_profile")
+        self.assertEqual(profile.status_code, 200)
+        profile_text = profile.get_data(as_text=True)
+        self.assertIn(long_filename, profile_text)
+        self.assertIn(long_essid, profile_text)
+        self.assertIn(long_wordlist, profile_text)
+        self.assertIn(long_rule, profile_text)
+        self.assertIn(long_status, profile_text)
+        self.assertIn(long_password, profile_text)
+
+        export = self.client.get("/download_all_results")
+        self.assertEqual(export.status_code, 200)
+        self.assertIn(f"{long_essid} | fc690c158264 | {long_password}\n", export.get_data(as_text=True))
+
+        pwnagotchi_page = self.client.get("/pwnagotchi")
+        self.assertEqual(pwnagotchi_page.status_code, 200)
+        pwnagotchi_text = pwnagotchi_page.get_data(as_text=True)
+        self.assertIn(long_hostname, pwnagotchi_text)
+        self.assertIn(long_event, pwnagotchi_text)
+        self.assertIn(long_message, pwnagotchi_text)
+        self.assertIn(long_plugin_version, pwnagotchi_text)
 
     def test_download_export_keeps_multiple_passwords_verbatim(self):
         long_password = "Xy9!" * 180
