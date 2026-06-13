@@ -144,6 +144,14 @@ cat "$tmp/curl.args"
             postinst,
         )
 
+    def test_service_unit_does_not_hardcode_bootstrap_password(self):
+        service = (self.repo_root / "debian" / "hashcat-wpa-server.service").read_text(encoding="utf-8")
+
+        self.assertIn('Environment="HASHCAT_WPA_SERVER_HOME=/var/lib/hashcat-wpa-server"', service)
+        self.assertIn('Environment="HOME=/var/lib/hashcat-wpa-server"', service)
+        self.assertNotIn("HASHCAT_ADMIN_PASSWORD", service)
+        self.assertNotIn("changeme", service)
+
 
 if __name__ == "__main__":
     unittest.main()

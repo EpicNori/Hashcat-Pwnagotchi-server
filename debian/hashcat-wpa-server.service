@@ -7,8 +7,7 @@ Type=simple
 User=hashcat
 Group=hashcat
 WorkingDirectory=/opt/hashcat-wpa-server
-Environment="HASHCAT_ADMIN_USER=admin"
-Environment="HASHCAT_ADMIN_PASSWORD=changeme"
+Environment="HASHCAT_WPA_SERVER_HOME=/var/lib/hashcat-wpa-server"
 Environment="HOME=/var/lib/hashcat-wpa-server"
 
 # Ensure gunicorn runs from our venv (ipv4 only to prevent crashes if OS disables ipv6)
