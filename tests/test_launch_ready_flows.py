@@ -466,6 +466,7 @@ class LaunchReadyFlowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("GPU driver check started", response.get_data(as_text=True))
         self.assertIn("install_gpu_drivers.sh", FakeProcess.calls[0].command[1])
+        self.assertEqual(FakeProcess.calls[0].command[-1], "check")
         self.assertTrue(FakeProcess.calls[0].stdin.closed)
 
     def test_update_settings_redirects_to_wait_page_after_start(self):

@@ -1326,7 +1326,7 @@ def admin_settings():
         else:
             try:
                 result = run_management_action(
-                    ["sudo", get_management_script_path("install_gpu_drivers.sh")],
+                    ["sudo", get_management_script_path("install_gpu_drivers.sh"), "check"],
                     timeout=5,
                 )
                 if result["state"] == "running":

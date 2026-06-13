@@ -13,7 +13,7 @@ class GpuDriverInstallerTests(unittest.TestCase):
         git_bash = Path(r"C:\Program Files\Git\bin\bash.exe")
         cls.bash = str(git_bash) if git_bash.exists() else shutil.which("bash")
 
-    def run_installer(self, lspci_output, fake_packages, os_release):
+    def run_installer(self, lspci_output, fake_packages, os_release, ubuntu_drivers_devices=""):
         if self.bash is None:
             self.skipTest("bash is not available")
         with tempfile.TemporaryDirectory(prefix="hashcat-gpu-test-") as temp_name:
@@ -51,6 +51,7 @@ class GpuDriverInstallerTests(unittest.TestCase):
                 export HASHCAT_WPA_IGNORE_HOST_PCI=1
                 export HASHCAT_WPA_IGNORE_HOST_GPU_TOOLS=1
                 export HASHCAT_WPA_TEST_LSPCI_OUTPUT="{lspci_output}"
+                export HASHCAT_WPA_TEST_UBUNTU_DRIVERS_DEVICES="{ubuntu_drivers_devices}"
                 export HASHCAT_WPA_FAKE_APT_PACKAGES="{fake_packages}"
                 export HASHCAT_WPA_TEST_OS_RELEASE="{bash_path(os_release_file)}"
                 export HASHCAT_WPA_NVIDIA_PROGRESS_FILE="{bash_path(progress_file)}"
@@ -66,17 +67,39 @@ class GpuDriverInstallerTests(unittest.TestCase):
                 timeout=30,
             )
 
-    def test_nvidia_gpu_uses_ubuntu_driver_tool(self):
+    def test_nvidia_gpu_installs_ubuntu_recommended_driver_package(self):
         result = self.run_installer(
             "01:00.0 VGA compatible controller: NVIDIA Corporation GeForce RTX 4070",
-            "pciutils ubuntu-drivers-common nvidia-driver-570",
+            "pciutils ubuntu-drivers-common nvidia-driver-535 nvidia-driver-570",
             'ID=ubuntu\nVERSION_ID="24.04"\nVERSION_CODENAME=noble\nID_LIKE=debian\n',
+            "driver   : nvidia-driver-570 - distro non-free recommended",
         )
 
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn("NVIDIA GPU detected", result.stdout)
-        self.assertIn("ubuntu-drivers install --gpgpu", result.stdout)
+        self.assertIn("apt-get install -y nvidia-driver-570", result.stdout)
         self.assertIn("PROGRESS=success|100|NVIDIA driver installation completed", result.stdout)
+
+    def test_nvidia_gpu_uses_newest_available_ubuntu_driver_fallback(self):
+        result = self.run_installer(
+            "01:00.0 3D controller: NVIDIA Corporation AD104GL [RTX 4000 SFF Ada Generation]",
+            "pciutils ubuntu-drivers-common nvidia-driver-535 nvidia-driver-575",
+            'ID=ubuntu\nVERSION_ID="24.04"\nVERSION_CODENAME=noble\nID_LIKE=debian\n',
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("apt-get install -y nvidia-driver-575", result.stdout)
+        self.assertIn("PROGRESS=success|100|NVIDIA driver installation completed", result.stdout)
+
+    def test_debian_nvidia_requires_driver_package_not_only_firmware(self):
+        result = self.run_installer(
+            "01:00.0 VGA compatible controller: NVIDIA Corporation GeForce RTX 4070",
+            "pciutils firmware-misc-nonfree",
+            'ID=debian\nVERSION_ID="12"\nVERSION_CODENAME=bookworm\nID_LIKE=debian\n',
+        )
+
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("nvidia-driver package is not available", result.stdout)
 
     def test_amd_gpu_installs_rocm_opencl_runtime(self):
         result = self.run_installer(

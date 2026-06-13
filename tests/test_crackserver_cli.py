@@ -144,6 +144,18 @@ cat "$tmp/curl.args"
             postinst,
         )
 
+    def test_package_sudoers_allows_explicit_gpu_driver_check(self):
+        postinst = (self.repo_root / "debian" / "postinst").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "NOPASSWD: /opt/hashcat-wpa-server/bash/install_gpu_drivers.sh check",
+            postinst,
+        )
+        self.assertIn(
+            "NOPASSWD: /opt/hashcat-wpa-server/bash/install_gpu_drivers.sh status",
+            postinst,
+        )
+
     def test_service_unit_does_not_hardcode_bootstrap_password(self):
         service = (self.repo_root / "debian" / "hashcat-wpa-server.service").read_text(encoding="utf-8")
 

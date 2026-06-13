@@ -87,6 +87,8 @@ case "$1" in
             echo "hashcat ALL=(ALL) NOPASSWD: /usr/bin/tailscale" >> /etc/sudoers.d/hashcat-tailscale
             echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/install_cloudflare_tunnel.sh" >> /etc/sudoers.d/hashcat-tailscale
             echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/install_gpu_drivers.sh" >> /etc/sudoers.d/hashcat-tailscale
+            echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/install_gpu_drivers.sh check" >> /etc/sudoers.d/hashcat-tailscale
+            echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/install_gpu_drivers.sh status" >> /etc/sudoers.d/hashcat-tailscale
             echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/install_nvidia_drivers.sh" >> /etc/sudoers.d/hashcat-tailscale
             echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/update_app.sh" >> /etc/sudoers.d/hashcat-tailscale
             echo "hashcat ALL=(ALL) NOPASSWD: SETENV: /opt/hashcat-wpa-server/bash/uninstall_app.sh" >> /etc/sudoers.d/hashcat-tailscale

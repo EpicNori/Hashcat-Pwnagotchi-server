@@ -66,6 +66,99 @@ install_existing_packages() {
     run_cmd apt-get install -y "${packages[@]}"
 }
 
+require_root_for_install() {
+    if [ "$DRY_RUN" = "1" ]; then
+        return 0
+    fi
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "[!] GPU driver installation needs root privileges. Run this via sudo."
+        write_progress failed 0 "GPU driver installation needs sudo/root privileges"
+        return 1
+    fi
+}
+
+apt_package_names_matching() {
+    local pattern="$1"
+    if [ -n "${HASHCAT_WPA_FAKE_APT_PACKAGES:-}" ]; then
+        # shellcheck disable=SC2086
+        printf '%s\n' ${HASHCAT_WPA_FAKE_APT_PACKAGES} | grep -E "$pattern" || true
+        return 0
+    fi
+    apt-cache search --names-only "$pattern" 2>/dev/null | awk '{print $1}'
+}
+
+best_available_nvidia_driver_package() {
+    local package_names
+    package_names="$(apt_package_names_matching '^nvidia-driver-[0-9]+(-open|-server|-server-open)?$' | sort -V)"
+    [ -n "$package_names" ] || return 1
+    printf '%s\n' "$package_names" | awk '
+        /^nvidia-driver-[0-9]+$/ { best_regular = $0 }
+        { best_any = $0 }
+        END {
+            if (best_regular) {
+                print best_regular
+            } else if (best_any) {
+                print best_any
+            } else {
+                exit 1
+            }
+        }
+    '
+}
+
+ubuntu_drivers_devices_output() {
+    if [ -n "${HASHCAT_WPA_TEST_UBUNTU_DRIVERS_DEVICES:-}" ]; then
+        printf '%s\n' "$HASHCAT_WPA_TEST_UBUNTU_DRIVERS_DEVICES"
+        return 0
+    fi
+    if command -v ubuntu-drivers >/dev/null 2>&1; then
+        ubuntu-drivers devices 2>/dev/null || true
+    fi
+}
+
+recommended_ubuntu_nvidia_driver_package() {
+    local output line package_name
+    output="$(ubuntu_drivers_devices_output)"
+    [ -n "$output" ] || return 1
+    while IFS= read -r line; do
+        case "$line" in
+            *recommended*)
+                package_name="$(printf '%s\n' "$line" | sed -nE 's/.*driver[[:space:]]*:[[:space:]]*([^[:space:]]+).*/\1/p')"
+                case "$package_name" in
+                    nvidia-driver-*|nvidia-headless-*|nvidia-open*)
+                        printf '%s\n' "$package_name"
+                        return 0
+                        ;;
+                esac
+                ;;
+        esac
+    done <<EOF
+$output
+EOF
+    return 1
+}
+
+install_ubuntu_nvidia_driver_package() {
+    local package_name
+    if package_name="$(recommended_ubuntu_nvidia_driver_package)"; then
+        if apt_has_package "$package_name"; then
+            write_progress running 60 "Installing recommended NVIDIA package ${package_name}"
+            run_cmd apt-get install -y "$package_name"
+            return 0
+        fi
+        echo "[!] Ubuntu recommended NVIDIA package ${package_name} is not available in apt. Trying fallbacks."
+    fi
+
+    if package_name="$(best_available_nvidia_driver_package)"; then
+        write_progress running 65 "Installing available NVIDIA package ${package_name}"
+        run_cmd apt-get install -y "$package_name"
+        return 0
+    fi
+
+    write_progress running 70 "Running Ubuntu NVIDIA driver auto-installer"
+    run_cmd ubuntu-drivers install --gpgpu || run_cmd ubuntu-drivers autoinstall
+}
+
 nvidia_runtime_ready() {
     local smi
     smi="$(nvidia_smi_cmd 2>/dev/null || true)"
@@ -151,6 +244,7 @@ install_nvidia_stack() {
         return 0
     fi
 
+    require_root_for_install
     load_os_release
     echo "[*] NVIDIA GPU detected. Installing Linux NVIDIA driver stack."
     write_progress running 10 "Installing NVIDIA driver prerequisites"
@@ -158,14 +252,24 @@ install_nvidia_stack() {
 
     if [ "${ID:-}" = "ubuntu" ] || os_id_like_contains "ubuntu"; then
         run_cmd apt-get install -y pciutils ubuntu-drivers-common
-        write_progress running 55 "Installing recommended Ubuntu NVIDIA compute driver"
-        run_cmd ubuntu-drivers install --gpgpu || run_cmd ubuntu-drivers autoinstall || install_existing_packages \
-            nvidia-driver nvidia-driver-575 nvidia-driver-570 nvidia-driver-565 nvidia-driver-560 \
-            nvidia-driver-550 nvidia-driver-535 nvidia-driver-525 nvidia-driver-470
+        if ! install_ubuntu_nvidia_driver_package; then
+            write_progress failed 100 "NVIDIA driver package installation failed"
+            return 1
+        fi
     elif [ "${ID:-}" = "debian" ] || [ "${ID:-}" = "kali" ] || os_id_like_contains "debian"; then
         run_cmd apt-get install -y pciutils "linux-headers-$(uname -r)" || true
         write_progress running 55 "Installing Debian NVIDIA driver packages"
-        install_existing_packages nvidia-driver firmware-misc-nonfree || install_existing_packages nvidia-driver
+        if apt_has_package nvidia-driver; then
+            if apt_has_package firmware-misc-nonfree; then
+                run_cmd apt-get install -y nvidia-driver firmware-misc-nonfree
+            else
+                run_cmd apt-get install -y nvidia-driver
+            fi
+        else
+            echo "[!] The Debian nvidia-driver package is not available. Enable the non-free/non-free-firmware repository and retry."
+            write_progress failed 100 "Debian NVIDIA driver package is not available"
+            return 1
+        fi
     else
         echo "[!] NVIDIA GPU detected, but automatic installation only supports Debian-family Linux right now."
         write_progress not-applicable 100 "Automatic NVIDIA installation is not supported on this distribution"
@@ -196,6 +300,7 @@ install_amd_stack() {
         return 0
     fi
 
+    require_root_for_install
     load_os_release
     echo "[*] AMD GPU detected. Installing ROCm/OpenCL runtime for Hashcat."
     write_progress running 10 "Installing AMD GPU prerequisites"
