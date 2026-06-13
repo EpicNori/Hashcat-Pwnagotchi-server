@@ -19,7 +19,7 @@ curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/ma
 ```
 
 The installer also attempts to auto-install NVIDIA drivers when compatible NVIDIA GPU hardware is detected on supported Debian-family systems.
-The same installer/update scripts support both `amd64` and `arm64`; ARM hosts use the built-in CPU-safe Hashcat mode while NVIDIA driver auto-install remains limited to regular `amd64` Debian/Ubuntu systems.
+The same installer/update scripts support both `amd64` and `arm64`; ARM hosts install a CPU OpenCL runtime and use the built-in CPU-safe Hashcat mode while NVIDIA driver auto-install remains limited to regular `amd64` Debian/Ubuntu systems.
 
 After installation, the dashboard is available at `http://127.0.0.1:9111`.
 

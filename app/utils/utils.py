@@ -136,7 +136,7 @@ def get_linux_pci_gpus():
             else:
                 name = line.strip()
             devices.append({
-                "id": str(len(devices) + 1),
+                "id": f"pci-{len(devices) + 1}",
                 "name": name,
                 "memory": "Unknown",
                 "is_gpu": True,

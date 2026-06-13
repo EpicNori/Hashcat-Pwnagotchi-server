@@ -49,6 +49,18 @@ os_id_like_contains() {
     [[ " ${ID_LIKE:-} " == *" ${needle} "* ]]
 }
 
+install_optional_package() {
+    local package_name="$1"
+    local purpose="$2"
+
+    if apt-cache show "$package_name" >/dev/null 2>&1; then
+        apt-get install -y "$package_name"
+    else
+        echo "[!] Optional package '$package_name' is not available from the configured apt repositories."
+        echo "[!] Skipping $purpose."
+    fi
+}
+
 detect_machine_arch() {
     local machine
     machine="$(uname -m 2>/dev/null || true)"
@@ -169,7 +181,9 @@ apt-get install -f -y || true
 echo "[*] Updating package list and installing build dependencies..."
 write_progress running 15 "Installing application dependencies"
 apt-get update
-apt-get install -y curl git dpkg-dev debhelper pciutils python3 python3-venv systemd hashcat hcxtools
+apt-get install -y curl git dpkg-dev debhelper pciutils python3 python3-venv systemd hashcat hcxtools ocl-icd-libopencl1
+install_optional_package "pocl-opencl-icd" "CPU OpenCL runtime installation"
+install_optional_package "clinfo" "OpenCL diagnostics installation"
 install_nvidia_drivers_if_needed
 
 echo "[*] Cloning the extremely fast hashcat-wpa-server..."

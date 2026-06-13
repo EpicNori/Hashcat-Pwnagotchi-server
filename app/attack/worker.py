@@ -1,6 +1,5 @@
 import concurrent.futures
 import os
-import re
 import threading
 import time
 from asyncio import CancelledError
@@ -352,11 +351,25 @@ def _hashcat_benchmark_async():
     """
     Called in background process.
     """
-    out, err = subprocess_call(['hashcat', '-m2500', "-b", "--machine-readable", "--quiet", "--force"])
-    pattern = re.compile(r"\d+:2500:.*:.*:\d+\.\d+:\d+")
+    benchmark_mode = "22000"
+    from app.utils.settings import apply_hashcat_limits
+    benchmark_args = apply_hashcat_limits([
+        f"-m{benchmark_mode}",
+        "-b",
+        "--machine-readable",
+        "--quiet",
+        "--force",
+    ])
+    out, _ = subprocess_call(["hashcat", *benchmark_args])
     total_speed = 0
-    for line in filter(pattern.fullmatch, out.splitlines()):
-        device_speed = int(line.split(':')[-1])
+    for line in out.splitlines():
+        parts = line.split(":")
+        if len(parts) < 6 or parts[1] != benchmark_mode:
+            continue
+        try:
+            device_speed = int(parts[-1])
+        except ValueError:
+            continue
         total_speed += device_speed
     if total_speed > 0:
         snapshot = "{date},{speed}\n".format(date=date_formatted(), speed=total_speed)

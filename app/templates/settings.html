@@ -194,13 +194,13 @@
                                 </div>
                             </div>
                             <p id="nvidia-progress-message" class="help-block">{{ install_progress.nvidia.message }}</p>
-                            {% if not gpu_visible %}
-                            <form method="POST">
-                                {{ nvidia_form.hidden_tag() }}
-                                {{ nvidia_form.submit_check_nvidia(class_="btn btn-warning", id="nvidia-install-btn") }}
-                            </form>
+                            {% if not gpu_ready %}
+                                <form method="POST">
+                                    {{ nvidia_form.hidden_tag() }}
+                                    {{ nvidia_form.submit_check_nvidia(class_="btn btn-warning", id="nvidia-install-btn") }}
+                                </form>
                             {% else %}
-                            <p class="text-muted small">A GPU is visible, so driver installation is not needed right now.</p>
+                            <p class="text-muted small">A GPU is already usable by Hashcat, so driver installation is not needed right now.</p>
                             {% endif %}
                         </div>
                         <div class="col-md-6">

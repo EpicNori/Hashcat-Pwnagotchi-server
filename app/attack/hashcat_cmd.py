@@ -51,6 +51,40 @@ HASHCAT_SAFE_RETRY_PREFIXES = (
     "--kernel-accel=",
     "--kernel-loops=",
 )
+HASHCAT_STDOUT_REMOVE_NEXT = {
+    "-d",
+    "--backend-devices",
+    "-D",
+    "--opencl-device-types",
+    "--backend-vector-width",
+    "-w",
+    "--workload-profile",
+    "--kernel-accel",
+    "--kernel-loops",
+    "--brain-client-features",
+    "--brain-password",
+}
+HASHCAT_STDOUT_REMOVE_EXACT = {
+    "--backend-ignore-cuda",
+    "--backend-ignore-hip",
+    "--backend-ignore-opencl",
+    "--backend-ignore-metal",
+    "--self-test-disable",
+    "--force",
+    "--brain-client",
+    "--status",
+    "--machine-readable",
+}
+HASHCAT_STDOUT_REMOVE_PREFIXES = (
+    "--backend-devices=",
+    "--opencl-device-types=",
+    "--backend-vector-width=",
+    "--workload-profile=",
+    "--kernel-accel=",
+    "--kernel-loops=",
+    "--brain-client-features=",
+    "--brain-password=",
+)
 
 
 def is_transient_status(status: str) -> bool:
@@ -110,6 +144,24 @@ def _safe_retry_command(hashcat_cmd_list):
             continue
         safer.append(arg)
     return safer, removed
+
+
+def _stdout_safe_hashcat_args(hashcat_args):
+    filtered = []
+    skip_next = False
+    for arg in hashcat_args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in HASHCAT_STDOUT_REMOVE_NEXT:
+            skip_next = True
+            continue
+        if arg in HASHCAT_STDOUT_REMOVE_EXACT:
+            continue
+        if any(arg.startswith(prefix) for prefix in HASHCAT_STDOUT_REMOVE_PREFIXES):
+            continue
+        filtered.append(arg)
+    return filtered
 
 
 class HashcatCmd:
@@ -183,7 +235,7 @@ class HashcatCmdStdout(HashcatCmd):
     def build(self) -> List[str]:
         hashcat_executable = resolve_hashcat_executable() or "hashcat"
         command = [hashcat_executable]
-        command.extend(self.hashcat_args)
+        command.extend(_stdout_safe_hashcat_args(self.hashcat_args))
         for rule in self.rules:
             if rule is not None:
                 command.append(f"--rules={rule.path}")
