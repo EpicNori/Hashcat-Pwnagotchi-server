@@ -124,6 +124,9 @@ main.plugins.pwnagotchi_hashcat_wpa.enabled = true
 main.plugins.pwnagotchi_hashcat_wpa.url = "http://100.x.x.x:9111"
 main.plugins.pwnagotchi_hashcat_wpa.username = "admin"
 main.plugins.pwnagotchi_hashcat_wpa.password = "changeme"
+main.plugins.pwnagotchi_hashcat_wpa.handshake_dir = "/home/pi/handshakes"
+main.plugins.pwnagotchi_hashcat_wpa.upload_existing = true
+main.plugins.pwnagotchi_hashcat_wpa.batch_size = 8
 ```
 
 Recommended access choices:

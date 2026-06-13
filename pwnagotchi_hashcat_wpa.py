@@ -25,6 +25,9 @@ _SUPPORTED_SUFFIXES = ('.cap', '.pcap', '.pcapng', '.hccapx', '.pmkid', '.2500',
 _DEFAULT_HANDSHAKE_DIR = '/home/pi/handshakes'
 _STATE_PATH = '/root/.pwnagotchi_hashcat_wpa_uploaded'
 _DEFAULT_BATCH_SIZE = 8
+_CONFIG_ALIASES = {
+    'auto_upload': 'upload_existing',
+}
 
 
 def _log_event(ok, message):
@@ -56,14 +59,24 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
     }
 
     def __init__(self):
+        self.options = dict(self._DEFAULTS)
         self.ready = False
         self._pending_files = collections.OrderedDict()
         self._uploaded_fingerprints = set()
         self._last_status = 'Hashcat WPA ready'
         self._display_key = 'hashcat_wpa_status'
 
+    def _ensure_option_defaults(self):
+        options = getattr(self, 'options', None)
+        if not isinstance(options, dict):
+            options = {}
+        for key, value in self._DEFAULTS.items():
+            options.setdefault(key, value)
+        self.options = options
+        return options
+
     def _base_url(self):
-        return (self.options.get('url') or '').rstrip('/')
+        return (self._ensure_option_defaults().get('url') or '').rstrip('/')
 
     def _upload_url(self):
         base = self._base_url()
@@ -77,16 +90,18 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         return self._base_url() in ('', self._PLACEHOLDER_URL)
 
     def _is_configured(self):
+        options = self._ensure_option_defaults()
         return (
             not self._is_placeholder_url()
-            and bool(self.options.get('username'))
-            and bool(self.options.get('password'))
+            and bool(options.get('username'))
+            and bool(options.get('password'))
         )
 
     def _status(self):
+        options = self._ensure_option_defaults()
         if self._is_placeholder_url():
             return 'Needs server URL', '#f59e0b'
-        if not self.options.get('username') or not self.options.get('password'):
+        if not options.get('username') or not options.get('password'):
             return 'Needs login', '#f59e0b'
         return 'Ready', '#22c55e'
 
@@ -110,19 +125,19 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         return 'READY'
 
     def _option_bool(self, key, default=False):
-        value = self.options.get(key, default)
+        value = self._ensure_option_defaults().get(key, default)
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
 
     def _option_int(self, key, default):
         try:
-            return max(1, int(self.options.get(key, default)))
+            return max(1, int(self._ensure_option_defaults().get(key, default)))
         except (TypeError, ValueError):
             return default
 
     def _handshake_dir(self):
-        return self.options.get('handshake_dir') or _DEFAULT_HANDSHAKE_DIR
+        return self._ensure_option_defaults().get('handshake_dir') or _DEFAULT_HANDSHAKE_DIR
 
     def _file_fingerprint(self, path):
         try:
@@ -302,6 +317,9 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
 
     def _write_config_text(self, content):
         tmp_path = self._CONFIG_PATH + '.tmp'
+        config_dir = os.path.dirname(self._CONFIG_PATH)
+        if config_dir:
+            os.makedirs(config_dir, exist_ok=True)
         with open(tmp_path, 'w', encoding='utf-8') as fh:
             fh.write(content)
         os.replace(tmp_path, self._CONFIG_PATH)
@@ -309,7 +327,67 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
     def _format_value(self, value):
         if isinstance(value, bool):
             return 'true' if value else 'false'
-        return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"') + '"'
+        if isinstance(value, int):
+            return str(value)
+        escaped = []
+        for char in str(value):
+            if char == '\\':
+                escaped.append('\\\\')
+            elif char == '"':
+                escaped.append('\\"')
+            elif char == '\b':
+                escaped.append('\\b')
+            elif char == '\t':
+                escaped.append('\\t')
+            elif char == '\n':
+                escaped.append('\\n')
+            elif char == '\f':
+                escaped.append('\\f')
+            elif char == '\r':
+                escaped.append('\\r')
+            elif ord(char) < 32:
+                escaped.append(f'\\u{ord(char):04x}')
+            else:
+                escaped.append(char)
+        return '"' + ''.join(escaped) + '"'
+
+    def _unescape_config_string(self, value):
+        escapes = {
+            'b': '\b',
+            't': '\t',
+            'n': '\n',
+            'f': '\f',
+            'r': '\r',
+            '"': '"',
+            '\\': '\\',
+        }
+        result = []
+        index = 0
+        while index < len(value):
+            char = value[index]
+            if char != '\\' or index + 1 >= len(value):
+                result.append(char)
+                index += 1
+                continue
+            marker = value[index + 1]
+            if marker in escapes:
+                result.append(escapes[marker])
+                index += 2
+                continue
+            if marker in ('u', 'U'):
+                width = 4 if marker == 'u' else 8
+                start = index + 2
+                raw = value[start:start + width]
+                if len(raw) == width:
+                    try:
+                        result.append(chr(int(raw, 16)))
+                        index = start + width
+                        continue
+                    except ValueError:
+                        pass
+            result.append(marker)
+            index += 2
+        return ''.join(result)
 
     def _parse_config_value(self, value):
         value = value.strip()
@@ -317,7 +395,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
             return value.lower() == 'true'
         if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
             value = value[1:-1]
-            return value.replace('\\"', '"').replace('\\\\', '\\')
+            return self._unescape_config_string(value)
         return value
 
     def _iter_config_assignments(self, content, prefix=''):
@@ -341,17 +419,20 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
             start, end = bounds
             block = content[start:end]
             for key, value in self._iter_config_assignments(block):
+                key = _CONFIG_ALIASES.get(key, key)
                 if key in self._DEFAULTS:
                     config[key] = self._parse_config_value(value)
             return config
 
         prefix = f'main.plugins.{self._PLUGIN_KEY}.'
         for key, value in self._iter_config_assignments(content, prefix=prefix):
+            key = _CONFIG_ALIASES.get(key, key)
             if key in self._DEFAULTS:
                 config[key] = self._parse_config_value(value)
         return config
 
     def _apply_runtime_config(self, values):
+        self._ensure_option_defaults()
         self.options.update(values)
         self.ready = self._is_configured()
         logging.info(
@@ -430,6 +511,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
 
     def _ensure_default_config(self):
         try:
+            self._ensure_option_defaults()
             content = self._read_config()
             missing = self._missing_default_values(content)
             if missing:
@@ -442,6 +524,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
             logging.warning("[HashcatWPAServer] Could not add default config: %s", exc)
 
     def on_loaded(self):
+        self._ensure_option_defaults()
         self._load_uploaded_state()
         self._ensure_default_config()
         if self.ready:
@@ -764,7 +847,8 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
             if not url.startswith(('http://', 'https://')):
                 notice = {'ok': False, 'label': 'Check the URL', 'message': 'Use a full URL like http://100.x.x.x:9111 or https://upload.example.com.'}
             else:
-                values = {'enabled': True, 'url': url, 'username': username or 'admin', 'password': password or 'changeme'}
+                values = dict(self._ensure_option_defaults())
+                values.update({'enabled': True, 'url': url, 'username': username or 'admin', 'password': password or 'changeme'})
                 try:
                     self._write_plugin_config(values)
                     self._apply_runtime_config(values)
