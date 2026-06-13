@@ -17,7 +17,7 @@ _TEST_HOME.mkdir(parents=True, exist_ok=True)
 from app import app, db
 from app.config import ADMIN_SETTINGS_PATH
 from app.domain import NONE_STR, Workload
-from app.login import User, create_first_users
+from app.login import Role, RoleEnum, User, create_first_users
 from app.uploader import PwnagotchiStatus, UploadedTask
 from app.utils.settings import read_settings
 from app.utils.file_io import (
@@ -205,6 +205,33 @@ class LaunchReadyFlowTests(unittest.TestCase):
             status = PwnagotchiStatus.query.filter_by(username="admin").first()
             self.assertIsNotNone(status)
             self.assertEqual(status.upload_count, 1)
+
+    def test_api_upload_accepts_long_special_basic_auth_password(self):
+        sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
+        long_password = " A1!:" + ("weird-pass-" * 200) + "\nline2: end "
+        with app.app_context():
+            user = User(username="api-long-password")
+            user.set_password(long_password)
+            user.roles = [Role.by_enum(RoleEnum.USER)]
+            db.session.add(user)
+            db.session.commit()
+
+        response = self.client.post(
+            "/api/upload",
+            data={
+                "wordlist": NONE_STR,
+                "rule": NONE_STR,
+                "workload": Workload.Normal.value,
+                "brain_client_feature": "2",
+                "capture": (io.BytesIO(sample_capture.read_bytes()), sample_capture.name),
+            },
+            headers=basic_auth("api-long-password", long_password),
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertEqual(response.get_json()["status"], "success")
+        self.assertEqual(len(self.fake_worker.submitted), 1)
 
     def test_web_upload_form_schedules_capture(self):
         sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
