@@ -177,17 +177,17 @@ def split_hashcat_device_args(hashcat_args: list):
 def enabled_hashcat_device_ids(settings=None):
     settings = settings or read_settings()
     device_intensities = {str(k): int(v) for k, v in settings.get("device_intensities", {"1": 100}).items()}
-    available_device_ids = {
+    available_device_ids = [
         str(device.get("id"))
         for device in get_hashcat_devices()
         if str(device.get("id", "")).isdigit() and device.get("hashcat_usable", True)
-    }
+    ]
     
     # identify enabled devices
     active_devices = [
-        str(device_id)
-        for device_id, val in device_intensities.items()
-        if int(val) > 0 and str(device_id) in available_device_ids
+        device_id
+        for device_id in available_device_ids
+        if int(device_intensities.get(device_id, 100)) > 0
     ]
     return active_devices
 

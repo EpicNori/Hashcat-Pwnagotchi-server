@@ -1,4 +1,5 @@
 import os
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,14 +12,18 @@ os.environ["HASHCAT_WPA_SKIP_STARTUP_MAINTENANCE"] = "1"
 _TEST_HOME.mkdir(parents=True, exist_ok=True)
 
 from app.utils import utils as device_utils
+from app.config import ADMIN_SETTINGS_PATH
+from app.utils import settings as device_settings
 
 
 class DeviceDetectionTests(unittest.TestCase):
     def setUp(self):
         device_utils.get_hashcat_devices.cache_clear()
+        ADMIN_SETTINGS_PATH.unlink(missing_ok=True)
 
     def tearDown(self):
         device_utils.get_hashcat_devices.cache_clear()
+        ADMIN_SETTINGS_PATH.unlink(missing_ok=True)
 
     def test_nvidia_smi_only_gpu_is_not_marked_hashcat_usable(self):
         def fail_hashcat_detection(_args, cwd=None):
@@ -57,6 +62,38 @@ Backend Device ID #0
         gpu = next(device for device in devices if device["id"] == "0")
         self.assertTrue(gpu["is_gpu"])
         self.assertTrue(gpu["hashcat_usable"])
+
+    def test_new_zero_index_hashcat_gpu_is_enabled_by_default(self):
+        devices = [
+            {"id": "0", "name": "NVIDIA GeForce RTX 4070", "memory": "12 GB", "is_gpu": True, "hashcat_usable": True},
+        ]
+
+        with mock.patch.object(device_settings, "get_hashcat_devices", return_value=devices), \
+                mock.patch.object(device_settings, "is_arm_host", return_value=False):
+            self.assertEqual(device_settings.enabled_hashcat_device_ids(), ["0"])
+            self.assertEqual(device_settings.default_hashcat_device_ids(), ["0"])
+            self.assertEqual(device_settings.apply_hashcat_limits(["--quiet"]), [
+                "--quiet",
+                "-d",
+                "0",
+                "--workload-profile=4",
+            ])
+
+    def test_explicit_zero_intensity_disables_new_hashcat_gpu(self):
+        devices = [
+            {"id": "0", "name": "NVIDIA GeForce RTX 4070", "memory": "12 GB", "is_gpu": True, "hashcat_usable": True},
+        ]
+        ADMIN_SETTINGS_PATH.write_text(
+            json.dumps({
+                "device_intensities": {"0": 0},
+                "cpu_percent": 100,
+                "default_devices": ["0"],
+            }),
+            encoding="utf-8",
+        )
+
+        with mock.patch.object(device_settings, "get_hashcat_devices", return_value=devices):
+            self.assertEqual(device_settings.enabled_hashcat_device_ids(), [])
 
 
 if __name__ == "__main__":
