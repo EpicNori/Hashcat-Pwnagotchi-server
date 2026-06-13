@@ -27,7 +27,7 @@ class TunnelScriptTests(unittest.TestCase):
         secret = "cf-secret-token-123"
         result = self.run_bash(
             f"printf '%s\\n' '{secret}' | HASHCAT_WPA_DRY_RUN=1 "
-            "bash ./bash/install_cloudflare_tunnel.sh upload.example.com\n"
+            "bash ./bash/install_cloudflare_tunnel.sh UPLOAD.Example.COM\n"
         )
 
         self.assertEqual(result.returncode, 0, result.stdout)
@@ -35,6 +35,25 @@ class TunnelScriptTests(unittest.TestCase):
         self.assertIn("https://upload.example.com", result.stdout)
         self.assertIn("[dry-run] systemctl enable --now cloudflared", result.stdout)
         self.assertNotIn(secret, result.stdout)
+
+    def test_cloudflare_rejects_invalid_public_hostnames(self):
+        invalid_hostnames = [
+            "https://upload.example.com",
+            "bad..example.com",
+            "bad-.example.com",
+            "-bad.example.com",
+            "upload",
+        ]
+
+        for hostname in invalid_hostnames:
+            with self.subTest(hostname=hostname):
+                result = self.run_bash(
+                    "printf '%s\\n' 'cf-secret-token-123' | HASHCAT_WPA_DRY_RUN=1 "
+                    f"bash ./bash/install_cloudflare_tunnel.sh '{hostname}'\n"
+                )
+
+                self.assertEqual(result.returncode, 2, result.stdout)
+                self.assertNotIn("cloudflared service install", result.stdout)
 
     def test_cloudflare_requires_token_even_in_dry_run(self):
         result = self.run_bash(

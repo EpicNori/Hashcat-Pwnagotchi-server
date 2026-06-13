@@ -1,5 +1,6 @@
 import hashlib
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -33,6 +34,7 @@ from app.word_magic.wordlist import download_wordlist, find_wordlist_by_name, Wo
 hashcat_worker = HashcatWorker(app)
 MAX_CAPTURE_UPLOAD_NAME_CHARS = 120
 MAX_CAPTURE_UPLOAD_FOLDER_CHARS = 72
+PUBLIC_HOSTNAME_LABEL_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 
 
 def active_task_filter():
@@ -1179,7 +1181,7 @@ def hashcat_potfile():
 
 from flask_wtf import FlaskForm
 from wtforms import BooleanField, IntegerField, SubmitField, PasswordField, StringField, RadioField
-from wtforms.validators import DataRequired, NumberRange, EqualTo, Optional, Regexp, Length
+from wtforms.validators import DataRequired, NumberRange, EqualTo, Optional, Length, ValidationError
 from app.utils.settings import read_settings, write_settings, update_admin_setting
 
 from wtforms import StringField
@@ -1208,12 +1210,36 @@ class TailscaleForm(FlaskForm):
     auth_key = StringField('Tailscale Auth Key (optional)', validators=[Optional()])
     submit_tailscale = SubmitField('Install / Connect Tailscale')
 
+
+def normalize_public_hostname_value(hostname: str | None) -> str:
+    normalized = (hostname or "").strip().lower()
+    if not normalized:
+        raise ValidationError("Public hostname is required.")
+    if len(normalized) > 253:
+        raise ValidationError("Public hostname is too long.")
+    if any(char.isspace() for char in normalized) or any(char in normalized for char in (":", "/", "\\", "@", "[", "]")):
+        raise ValidationError("Use a hostname only, like upload.example.com.")
+    labels = normalized.split(".")
+    if len(labels) < 2:
+        raise ValidationError("Use a fully-qualified hostname like upload.example.com.")
+    for label in labels:
+        if not label or len(label) > 63:
+            raise ValidationError("Hostname labels must be 1 to 63 characters.")
+        if not PUBLIC_HOSTNAME_LABEL_RE.fullmatch(label):
+            raise ValidationError("Hostname labels must start and end with a letter or number.")
+    return normalized
+
+
+def validate_public_hostname(form, field):
+    field.data = normalize_public_hostname_value(field.data)
+
+
 class PublicWebsiteForm(FlaskForm):
     public_hostname = StringField(
         'Public hostname',
         validators=[
             DataRequired(),
-            Regexp(r'^[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]$', message='Use a hostname like upload.example.com.')
+            validate_public_hostname,
         ],
         description='The hostname you configured in Cloudflare Zero Trust.'
     )
@@ -1337,11 +1363,12 @@ def admin_settings():
         return redirect(url_for('admin_settings'))
 
     if public_form.submit_public_website.data and public_form.validate():
-        public_url = f"https://{public_form.public_hostname.data.strip().lower()}"
+        public_hostname = normalize_public_hostname_value(public_form.public_hostname.data)
+        public_url = f"https://{public_hostname}"
         token = (public_form.tunnel_token.data or "").strip()
         try:
             result = run_management_action(
-                ["sudo", get_management_script_path("install_cloudflare_tunnel.sh"), public_form.public_hostname.data.strip().lower()],
+                ["sudo", get_management_script_path("install_cloudflare_tunnel.sh"), public_hostname],
                 stdin_text=token,
                 timeout=20,
             )

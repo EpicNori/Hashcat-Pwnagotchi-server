@@ -11,6 +11,49 @@ PUBLIC_HOSTNAME="${1:-}"
 TOKEN="${CLOUDFLARE_TUNNEL_TOKEN:-}"
 DRY_RUN="${HASHCAT_WPA_DRY_RUN:-0}"
 
+normalize_public_hostname() {
+    local raw_hostname="$1"
+    local hostname label
+    local -a labels=()
+
+    hostname="${raw_hostname#"${raw_hostname%%[![:space:]]*}"}"
+    hostname="${hostname%"${hostname##*[![:space:]]}"}"
+    hostname="${hostname,,}"
+
+    if [ -z "$hostname" ]; then
+        echo "Public hostname is required." >&2
+        return 1
+    fi
+    if [ "${#hostname}" -gt 253 ]; then
+        echo "Public hostname is too long." >&2
+        return 1
+    fi
+    case "$hostname" in
+        *://*|*/*|*\\*|*:*|*@*|*" "*|*$'\t'*|*\[*|*\]*)
+            echo "Use a hostname only, like upload.example.com." >&2
+            return 1
+            ;;
+    esac
+    if [[ "$hostname" != *.* ]]; then
+        echo "Use a fully-qualified hostname like upload.example.com." >&2
+        return 1
+    fi
+
+    IFS='.' read -r -a labels <<< "$hostname"
+    for label in "${labels[@]}"; do
+        if [ -z "$label" ] || [ "${#label}" -gt 63 ]; then
+            echo "Invalid public hostname label: ${label:-<empty>}." >&2
+            return 1
+        fi
+        if ! [[ "$label" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
+            echo "Invalid public hostname label: ${label}." >&2
+            return 1
+        fi
+    done
+
+    printf '%s\n' "$hostname"
+}
+
 if [ -z "$TOKEN" ] && [ ! -t 0 ]; then
     TOKEN="$(cat | tr -d '\r\n')"
 fi
@@ -22,6 +65,10 @@ fi
 
 if [ -z "$PUBLIC_HOSTNAME" ]; then
     echo "Usage: install_cloudflare_tunnel.sh <public-hostname>"
+    exit 2
+fi
+
+if ! PUBLIC_HOSTNAME="$(normalize_public_hostname "$PUBLIC_HOSTNAME")"; then
     exit 2
 fi
 

@@ -511,17 +511,52 @@ class LaunchReadyFlowTests(unittest.TestCase):
             response = self.client.post(
                 "/settings",
                 data={
-                    "public_hostname": "upload.example.com",
+                    "public_hostname": "UPLOAD.Example.COM",
                     "tunnel_token": "secret-token",
                     "submit_public_website": "Install / Start Public Website",
                 },
                 follow_redirects=False,
-            )
+        )
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(read_settings().get("public_plugin_url"), "https://upload.example.com")
-        self.assertEqual(FakeProcess.calls[0].input, "secret-token")
-        self.assertIn("install_cloudflare_tunnel.sh", FakeProcess.calls[0].command[1])
+        cloudflare_call = next(
+            call for call in FakeProcess.calls
+            if "install_cloudflare_tunnel.sh" in " ".join(str(part) for part in call.command)
+        )
+        self.assertEqual(cloudflare_call.input, "secret-token")
+        self.assertEqual(cloudflare_call.command[-1], "upload.example.com")
+
+    def test_cloudflare_settings_rejects_invalid_public_hostname(self):
+        self.login_admin()
+        FakeProcess.configure(returncode=0, output="Cloudflare Tunnel connector is installed.\n")
+        devices = [{"id": "cpu", "name": "Host CPU", "memory": "1024 MB", "is_gpu": False, "hashcat_usable": True}]
+        progress = {
+            "update": {"state": "idle", "progress": 0, "message": "Waiting"},
+            "nvidia": {"state": "idle", "progress": 0, "message": "Waiting"},
+        }
+
+        with mock.patch("app.utils.utils.get_hashcat_devices", return_value=devices), \
+                mock.patch("app.views.get_autostart_status", return_value="disabled"), \
+                mock.patch("app.views.get_update_status", return_value=("idle", "No update running", "")), \
+                mock.patch("app.views.get_install_progress", return_value=progress), \
+                mock.patch("app.views.get_tailscale_snapshot", return_value={"status": "Not installed", "running": False, "ip": "", "plugin_url": ""}), \
+                mock.patch("app.views.get_cloudflare_snapshot", return_value={"status": "Not installed", "installed": False, "running": False, "plugin_url": ""}), \
+                mock.patch("app.views.subprocess.Popen", side_effect=lambda command, **kwargs: FakeProcess(command, **kwargs)):
+            response = self.client.post(
+                "/settings",
+                data={
+                    "public_hostname": "https://upload.example.com/path",
+                    "tunnel_token": "secret-token",
+                    "submit_public_website": "Install / Start Public Website",
+                },
+                follow_redirects=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Use a hostname only", response.get_data(as_text=True))
+        self.assertEqual(FakeProcess.calls, [])
+        self.assertNotEqual(read_settings().get("public_plugin_url"), "https://upload.example.com")
 
     def test_cloudflare_settings_saves_url_when_setup_is_still_running(self):
         self.login_admin()
