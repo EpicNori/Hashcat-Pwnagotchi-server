@@ -280,6 +280,35 @@ class LaunchReadyFlowTests(unittest.TestCase):
         finally:
             app.config["RATELIMIT_ENABLED"] = original
 
+    def test_admin_can_start_benchmark(self):
+        self.login_admin()
+
+        with mock.patch.object(views.hashcat_worker, "benchmark", return_value=None, create=True) as benchmark:
+            response = self.client.get("/benchmark")
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertEqual(response.get_json(), "Started benchmark.")
+        benchmark.assert_called_once_with()
+
+    def test_non_admin_cannot_start_system_benchmark(self):
+        with app.app_context():
+            user = User(username="benchmark-user")
+            user.set_password("benchmark-password")
+            user.roles = [Role.by_enum(RoleEnum.USER)]
+            db.session.add(user)
+            db.session.commit()
+            user_id = str(user.id)
+
+        with self.client.session_transaction() as session:
+            session["_user_id"] = user_id
+            session["_fresh"] = True
+
+        with mock.patch.object(views.hashcat_worker, "benchmark", return_value=None, create=True) as benchmark:
+            response = self.client.get("/benchmark")
+
+        self.assertEqual(response.status_code, 403)
+        benchmark.assert_not_called()
+
     def test_api_upload_schedules_capture_without_running_hashcat(self):
         sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
         payload = {

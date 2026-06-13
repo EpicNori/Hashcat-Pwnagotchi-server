@@ -1031,6 +1031,7 @@ def register():
 
 @app.route("/benchmark")
 @login_required
+@roles_required(RoleEnum.ADMIN)
 def benchmark():
     hashcat_worker.benchmark()
     return jsonify("Started benchmark.")
