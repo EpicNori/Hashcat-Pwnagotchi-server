@@ -49,6 +49,7 @@ class FakeHashcatWorker:
             "bssid": task.bssid,
             "workload": uploaded_form.workload.data,
             "hashcat_args": uploaded_form.hashcat_args(secret=False),
+            "hashcat_args_secret": uploaded_form.hashcat_args(secret=True),
         })
 
 
@@ -931,6 +932,47 @@ class LaunchReadyFlowTests(unittest.TestCase):
                 UploadedTask.completed == False,
             ).one()
             self.assertEqual(requeued.workload, Workload.Rainbow.value)
+
+    def test_requeue_restores_brain_secret_only_for_worker_args(self):
+        sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
+        with app.app_context():
+            admin = User.query.filter_by(username="admin").first()
+            task = UploadedTask(
+                user_id=admin.id,
+                filename="admin/test_capture_hashcat_essid.22000",
+                bssid="fc690c158264",
+                essid="hashcat-essid",
+                hashcat_args="--brain-client --brain-client-features=3 --brain-password=old-secret",
+                completed=True,
+                found_key=None,
+            )
+            db.session.add(task)
+            db.session.commit()
+            task_id = task.id
+
+        self.login_admin()
+        with mock.patch("app.views.resolve_task_attack_file", return_value=sample_capture), \
+                mock.patch("app.views.read_hashcat_brain_password", return_value="fresh-secret"):
+            response = self.client.get(f"/requeue/{task_id}", follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertEqual(len(self.fake_worker.submitted), 1)
+        submitted = self.fake_worker.submitted[0]
+        self.assertEqual(submitted["hashcat_args"], [
+            "--brain-client",
+            "--brain-client-features=3",
+        ])
+        self.assertEqual(submitted["hashcat_args_secret"], [
+            "--brain-client",
+            "--brain-client-features=3",
+            "--brain-password=fresh-secret",
+        ])
+        with app.app_context():
+            requeued = UploadedTask.query.filter(
+                UploadedTask.id != task_id,
+                UploadedTask.completed == False,
+            ).one()
+            self.assertNotIn("old-secret", requeued.hashcat_args)
 
     def test_pwnagotchi_heartbeat_updates_status(self):
         response = self.client.post(

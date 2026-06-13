@@ -453,15 +453,18 @@ def form_for_stored_task(task: UploadedTask):
             continue
         filtered_hashcat_args.append(arg)
 
-    if "--brain-client" in filtered_hashcat_args and not any(arg.startswith("--brain-password=") for arg in filtered_hashcat_args):
-        filtered_hashcat_args.append(f"--brain-password={read_hashcat_brain_password()}")
+    def hashcat_args(secret=False):
+        args = list(filtered_hashcat_args)
+        if secret and "--brain-client" in args and not any(arg.startswith("--brain-password=") for arg in args):
+            args.append(f"--brain-password={read_hashcat_brain_password()}")
+        return args
 
     return SimpleNamespace(
         timeout=SimpleNamespace(data=None),
         workload=SimpleNamespace(data=workload),
         get_wordlist_path=lambda: wordlist_path,
         get_rule=lambda: rule,
-        hashcat_args=lambda secret=False: list(filtered_hashcat_args),
+        hashcat_args=hashcat_args,
     )
 
 
@@ -1172,7 +1175,7 @@ def requeue_completed_task(task: UploadedTask):
         rule=task.rule,
         bssid=task.bssid,
         essid=task.essid,
-        hashcat_args=' '.join(split_hashcat_args(task.hashcat_args)),
+        hashcat_args=shlex.join(uploaded_form.hashcat_args(secret=False)),
         workload=Workload.normalize(getattr(task, "workload", Workload.Normal.value)),
         queue_position=next_queue_position()
     )
