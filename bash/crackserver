@@ -7,6 +7,9 @@ DATA_DIR="${HASHCAT_WPA_DATA_DIR:-/var/lib/hashcat-wpa-server}"
 LOG_DIR="${HASHCAT_WPA_LOG_DIR:-/var/log/hashcat-wpa-server}"
 SERVICE_NAME="${HASHCAT_WPA_SERVICE_NAME:-hashcat-wpa-server.service}"
 DEFAULT_URL="http://127.0.0.1:9111"
+NONE_VALUE="None"
+DEFAULT_WORKLOAD="3"
+DEFAULT_BRAIN_FEATURE="2"
 
 script_path() {
     echo "$APP_ROOT/bash/$1"
@@ -70,6 +73,53 @@ require_option_value() {
     fi
 }
 
+trim_value() {
+    local value="$1"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    printf '%s' "$value"
+}
+
+normalize_workload() {
+    local value
+    value="$(trim_value "${1:-}")"
+    case "${value,,}" in
+        ""|normal|default|wordlist|3)
+            echo "$DEFAULT_WORKLOAD"
+            ;;
+        rainbow|pmk|4)
+            echo "4"
+            ;;
+        *)
+            echo "[!] Unknown workload: ${1}" >&2
+            echo "    Use 'normal', 'rainbow', '3', or '4'." >&2
+            exit 2
+            ;;
+    esac
+}
+
+truthy() {
+    case "${1,,}" in
+        1|true|yes|y|on) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+append_devices_csv() {
+    local csv="$1"
+    local -n target_ref="$2"
+    local part
+    local -a parts=()
+    local IFS=','
+    read -r -a parts <<< "$csv"
+    for part in "${parts[@]}"; do
+        part="$(trim_value "$part")"
+        if [ -n "$part" ]; then
+            target_ref+=("$part")
+        fi
+    done
+}
+
 set_login() {
     need_installed
     local username="${1:-}"
@@ -109,14 +159,49 @@ with app.app_context():
 ' "$username"
 }
 
+show_upload_help() {
+    cat <<'EOF'
+Usage: crackserver upload [options] <capture...>
+
+Connection:
+  --url URL                   Default: http://127.0.0.1:9111
+  --user USER                 Default: admin
+  --password PASSWORD         Otherwise prompted
+  --password=PASSWORD         Safest form for shell-special passwords
+
+Job:
+  --wordlist SERVER_PATH      Server-side wordlist path, or None
+  --rule RULE                 Rule name such as best64.rule, or None
+  --workload normal|rainbow   Default: normal
+  --brain                     Enable Hashcat Brain for this upload
+  --brain-feature 1|2|3       Default: 2
+  --device ID                 Repeat for multiple Hashcat device IDs
+  --devices ID,ID             Comma-separated Hashcat device IDs
+EOF
+}
+
 upload_files() {
-    local url="$DEFAULT_URL"
+    local url="${CRACKSERVER_URL:-$DEFAULT_URL}"
     local username="${CRACKSERVER_USER:-admin}"
     local password="${CRACKSERVER_PASSWORD:-}"
+    local wordlist="${CRACKSERVER_WORDLIST:-$NONE_VALUE}"
+    local rule="${CRACKSERVER_RULE:-$NONE_VALUE}"
+    local workload="${CRACKSERVER_WORKLOAD:-$DEFAULT_WORKLOAD}"
+    local brain="${CRACKSERVER_BRAIN:-0}"
+    local brain_feature="${CRACKSERVER_BRAIN_CLIENT_FEATURE:-$DEFAULT_BRAIN_FEATURE}"
     local files=()
+    local devices=()
+
+    if [ -n "${CRACKSERVER_DEVICES:-}" ]; then
+        append_devices_csv "$CRACKSERVER_DEVICES" devices
+    fi
 
     while [ "$#" -gt 0 ]; do
         case "$1" in
+            -h|--help)
+                show_upload_help
+                return 0
+                ;;
             --url=*)
                 url="${1#--url=}"
                 require_option_value "--url" "$url"
@@ -147,6 +232,73 @@ upload_files() {
                 password="${2:-}"
                 shift 2
                 ;;
+            --wordlist=*)
+                wordlist="${1#--wordlist=}"
+                require_option_value "--wordlist" "$wordlist"
+                shift
+                ;;
+            --wordlist)
+                require_option_value "$1" "${2:-}"
+                wordlist="${2:-}"
+                shift 2
+                ;;
+            --rule=*)
+                rule="${1#--rule=}"
+                require_option_value "--rule" "$rule"
+                shift
+                ;;
+            --rule)
+                require_option_value "$1" "${2:-}"
+                rule="${2:-}"
+                shift 2
+                ;;
+            --workload=*)
+                workload="$(normalize_workload "${1#--workload=}")"
+                shift
+                ;;
+            --workload)
+                require_option_value "$1" "${2:-}"
+                workload="$(normalize_workload "${2:-}")"
+                shift 2
+                ;;
+            --brain)
+                brain="1"
+                shift
+                ;;
+            --no-brain)
+                brain="0"
+                shift
+                ;;
+            --brain-feature=*|--brain-client-feature=*)
+                brain_feature="${1#*=}"
+                require_option_value "--brain-feature" "$brain_feature"
+                shift
+                ;;
+            --brain-feature|--brain-client-feature)
+                require_option_value "$1" "${2:-}"
+                brain_feature="${2:-}"
+                shift 2
+                ;;
+            --device=*)
+                require_option_value "--device" "${1#--device=}"
+                devices+=("${1#--device=}")
+                shift
+                ;;
+            --device)
+                require_option_value "$1" "${2:-}"
+                devices+=("${2:-}")
+                shift 2
+                ;;
+            --devices=*)
+                require_option_value "--devices" "${1#--devices=}"
+                append_devices_csv "${1#--devices=}" devices
+                shift
+                ;;
+            --devices)
+                require_option_value "$1" "${2:-}"
+                append_devices_csv "${2:-}" devices
+                shift 2
+                ;;
             --)
                 shift
                 while [ "$#" -gt 0 ]; do
@@ -166,7 +318,7 @@ upload_files() {
     done
 
     if [ "${#files[@]}" -eq 0 ]; then
-        echo "Usage: crackserver upload [--url http://host:9111] [--user admin] [--password pass] <capture...>"
+        show_upload_help
         exit 2
     fi
     if [ -z "$password" ]; then
@@ -174,7 +326,19 @@ upload_files() {
         echo
     fi
 
-    local curl_args=()
+    workload="$(normalize_workload "$workload")"
+
+    local curl_args=(-F "wordlist=${wordlist}" -F "rule=${rule}" -F "workload=${workload}" -F "brain_client_feature=${brain_feature}")
+    if truthy "$brain"; then
+        curl_args+=(-F "brain=y")
+    fi
+    local device
+    for device in "${devices[@]}"; do
+        device="$(trim_value "$device")"
+        if [ -n "$device" ]; then
+            curl_args+=(-F "devices=${device}")
+        fi
+    done
     for file in "${files[@]}"; do
         if [ ! -f "$file" ]; then
             echo "[!] Capture not found: $file"
@@ -280,7 +444,12 @@ Cracking:
     --url URL                   Default: http://127.0.0.1:9111
     --user USER                 Default: admin
     --password PASSWORD         Otherwise prompted
-    --password=PASSWORD         Use this form for passwords beginning with '-'
+    --password=PASSWORD         Safest form for shell-special passwords
+    --wordlist SERVER_PATH      Server-side wordlist path, or None
+    --rule RULE                 Rule name such as best64.rule, or None
+    --workload normal|rainbow   Default: normal
+    --brain                     Enable Hashcat Brain
+    --device ID / --devices IDs Select specific Hashcat devices
 
 Remote access:
   tailscale [auth-key]          Install/connect Tailscale

@@ -57,14 +57,70 @@ cat "$tmp/curl.args"
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn("--user\nadmin:-dash: with spaces and : colon\n", result.stdout)
         self.assertIn("-F\ncapture=", result.stdout)
+        self.assertIn("wordlist=None\n", result.stdout)
+        self.assertIn("rule=None\n", result.stdout)
+        self.assertIn("workload=3\n", result.stdout)
+        self.assertIn("brain_client_feature=2\n", result.stdout)
         self.assertIn("weird capture.22000\n", result.stdout)
         self.assertTrue(result.stdout.rstrip().endswith("https://upload.example.com/root/api/upload"))
+
+    def test_upload_sends_full_job_options_to_api(self):
+        script = r'''
+set -euo pipefail
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+capture="$tmp/test.22000"
+printf 'sample capture' > "$capture"
+cat > "$tmp/env.sh" <<SH
+curl() {
+  printf '%s\n' "\$@" > "$tmp/curl.args"
+}
+SH
+BASH_ENV="$tmp/env.sh" bash ./bash/crackserver upload \
+  --url http://127.0.0.1:9111 \
+  --user operator \
+  --password='complex: pass with spaces' \
+  --wordlist /var/lib/hashcat-wpa-server/wordlists/custom.txt \
+  --rule best64.rule \
+  --workload rainbow \
+  --brain \
+  --brain-feature 3 \
+  --device 1 \
+  --devices 2,3 \
+  "$capture"
+cat "$tmp/curl.args"
+'''
+
+        result = self.run_bash(script)
+
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("--user\noperator:complex: pass with spaces\n", result.stdout)
+        self.assertIn("wordlist=/var/lib/hashcat-wpa-server/wordlists/custom.txt\n", result.stdout)
+        self.assertIn("rule=best64.rule\n", result.stdout)
+        self.assertIn("workload=4\n", result.stdout)
+        self.assertIn("brain_client_feature=3\n", result.stdout)
+        self.assertIn("brain=y\n", result.stdout)
+        self.assertIn("devices=1\n", result.stdout)
+        self.assertIn("devices=2\n", result.stdout)
+        self.assertIn("devices=3\n", result.stdout)
+        self.assertIn("capture=", result.stdout)
 
     def test_upload_rejects_unknown_options(self):
         result = self.run_bash("bash ./bash/crackserver upload --not-real\n")
 
         self.assertEqual(result.returncode, 2, result.stdout)
         self.assertIn("Unknown upload option: --not-real", result.stdout)
+
+    def test_upload_rejects_unknown_workload(self):
+        with tempfile.TemporaryDirectory(prefix="hashcat-crackserver-upload-") as temp_name:
+            capture = Path(temp_name) / "test.22000"
+            capture.write_text("sample capture", encoding="utf-8")
+            script = f"bash ./bash/crackserver upload --password pass --workload impossible {self.bash_path(capture)}\n"
+
+            result = self.run_bash(script)
+
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("Unknown workload: impossible", result.stdout)
 
     def test_uninstall_passes_runtime_paths_through_sudo_env(self):
         with tempfile.TemporaryDirectory(prefix="hashcat-crackserver-uninstall-") as temp_name:

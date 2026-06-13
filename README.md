@@ -72,6 +72,12 @@ Updates keep persistent users, captures, databases, wordlists, and settings unde
 Use `crackserver uninstall --yes --dry-run` to preview the app, service, CLI, data, and log paths that would be touched.
 `crackserver reset` only wipes the configured data directory, prints the path first, and refuses unsafe empty or root paths.
 For CLI uploads with shell-special characters, quote the password. If it starts with `-`, use the equals form: `crackserver upload --password='-starts-with-dash' capture.22000`.
+CLI uploads can also mirror the GUI job choices:
+
+```bash
+crackserver upload --workload normal --wordlist None --rule None capture.22000
+crackserver upload --workload rainbow --brain --brain-feature 3 --devices 1,2 capture.22000
+```
 
 ## Data Persistence
 

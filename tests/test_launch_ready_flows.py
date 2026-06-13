@@ -48,6 +48,7 @@ class FakeHashcatWorker:
             "essid": task.essid,
             "bssid": task.bssid,
             "workload": uploaded_form.workload.data,
+            "hashcat_args": uploaded_form.hashcat_args(secret=False),
         })
 
 
@@ -308,6 +309,40 @@ class LaunchReadyFlowTests(unittest.TestCase):
             status = PwnagotchiStatus.query.filter_by(username="admin").first()
             self.assertIsNotNone(status)
             self.assertEqual(status.upload_count, 1)
+
+    def test_api_upload_accepts_cli_style_job_options(self):
+        sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
+        devices = [
+            {"id": "1", "name": "GPU One", "memory": "8 GB", "is_gpu": True, "hashcat_usable": True},
+            {"id": "2", "name": "GPU Two", "memory": "8 GB", "is_gpu": True, "hashcat_usable": True},
+        ]
+
+        with mock.patch("app.utils.utils.get_hashcat_devices", return_value=devices):
+            response = self.client.post(
+                "/api/upload",
+                data={
+                    "wordlist": NONE_STR,
+                    "rule": NONE_STR,
+                    "workload": Workload.Rainbow.value,
+                    "brain": "y",
+                    "brain_client_feature": "3",
+                    "devices": ["1", "2"],
+                    "capture": (io.BytesIO(sample_capture.read_bytes()), sample_capture.name),
+                },
+                headers=basic_auth(),
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertEqual(len(self.fake_worker.submitted), 1)
+        submitted = self.fake_worker.submitted[0]
+        self.assertEqual(submitted["workload"], Workload.Rainbow.value)
+        self.assertEqual(submitted["hashcat_args"], [
+            "-d",
+            "1,2",
+            "--brain-client",
+            "--brain-client-features=3",
+        ])
 
     def test_api_upload_shortens_unsafe_long_capture_filename(self):
         sample_capture = Path(app.static_folder) / "test_capture_hashcat_essid.22000"
