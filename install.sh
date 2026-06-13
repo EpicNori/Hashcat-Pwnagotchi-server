@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -o pipefail
 
 NVIDIA_DRIVER_STATUS="not-needed"
 PROGRESS_FILE="${HASHCAT_WPA_PROGRESS_FILE:-/var/log/hashcat-wpa-server/app_update.progress}"

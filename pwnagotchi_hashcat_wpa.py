@@ -696,7 +696,7 @@ class PwnagotchiHashcatWPA(plugins.Plugin):
         <input id="username" name="username" value="{username}" autocomplete="username">
 
         <label for="password">Password</label>
-        <input id="password" name="password" value="{password}" autocomplete="current-password">
+        <input id="password" name="password" type="password" value="{password}" autocomplete="current-password">
 
         <button type="submit">Save config</button>
         <a class="button secondary" href="/plugins/pwnagotchi_hashcat_wpa/test">Test connection</a>

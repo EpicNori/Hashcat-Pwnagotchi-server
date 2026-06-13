@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -o pipefail
 
 # This script is called via root/sudo from the web interface or CLI.
 # Prefer stdin so auth keys do not have to appear in process arguments.

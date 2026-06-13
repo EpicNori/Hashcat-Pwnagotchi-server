@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -o pipefail
 
 # CrackServer Safe Update Utility
 # This script ONLY updates the application logic and binaries.
@@ -8,6 +9,7 @@ set -e
 
 SERVICE_NAME="hashcat-wpa-server.service"
 PROGRESS_FILE="${HASHCAT_WPA_PROGRESS_FILE:-/var/log/hashcat-wpa-server/app_update.progress}"
+MANUAL_RESTART_REQUIRED=0
 
 write_progress() {
     local state="$1"
@@ -20,6 +22,8 @@ write_progress() {
 restart_service() {
     if ! pidof systemd >/dev/null; then
         echo "[!] Systemd is not running, so the background service cannot be restarted automatically."
+        echo "[!] Restart the manual gunicorn process to load the updated code."
+        MANUAL_RESTART_REQUIRED=1
         return 0
     fi
 
@@ -58,5 +62,11 @@ curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/ma
 
 restart_service
 
-echo "[*] Update complete. All user data and settings have been preserved."
-write_progress success 100 "Application update completed successfully"
+if [ "$MANUAL_RESTART_REQUIRED" -eq 1 ]; then
+    echo "[*] Update complete. All user data and settings have been preserved."
+    echo "[!] Manual restart required because systemd is not running."
+    write_progress success 100 "Update complete. Restart the manual gunicorn process to load it."
+else
+    echo "[*] Update complete. All user data and settings have been preserved."
+    write_progress success 100 "Application update completed successfully"
+fi
