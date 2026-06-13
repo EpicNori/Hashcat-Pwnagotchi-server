@@ -56,6 +56,7 @@ class FakeProcess:
         self.kwargs = kwargs
         self.returncode = self.next_returncode
         self.output = self.next_output
+        self.stdin = SimpleNamespace(closed=False, close=lambda: setattr(self.stdin, "closed", True))
         FakeProcess.calls.append(self)
 
     def communicate(self, input=None, timeout=None):
@@ -299,6 +300,7 @@ class LaunchReadyFlowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Public website connector is still starting", response.get_data(as_text=True))
         self.assertEqual(read_settings().get("public_plugin_url"), "https://upload.example.com")
+        self.assertTrue(FakeProcess.calls[0].stdin.closed)
 
     def test_cloudflare_settings_keeps_url_unset_on_script_failure(self):
         self.login_admin()
@@ -337,6 +339,7 @@ class LaunchReadyFlowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("NVIDIA driver check started", response.get_data(as_text=True))
         self.assertIn("install_nvidia_drivers.sh", FakeProcess.calls[0].command[1])
+        self.assertTrue(FakeProcess.calls[0].stdin.closed)
 
     def test_update_settings_redirects_to_wait_page_after_start(self):
         self.login_admin()

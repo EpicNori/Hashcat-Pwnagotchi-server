@@ -305,7 +305,12 @@ def run_management_action(command, *, stdin_text: str = "", timeout: int = 20) -
         try:
             proc.communicate(input=stdin_text or "", timeout=timeout)
         except subprocess.TimeoutExpired:
-            return {"state": "running", "log_path": log_path}
+            try:
+                if proc.stdin:
+                    proc.stdin.close()
+            except Exception:
+                pass
+            return {"state": "running", "log_path": log_path, "process": proc}
 
     if proc.returncode != 0:
         tail = tail_text_file(log_path)
