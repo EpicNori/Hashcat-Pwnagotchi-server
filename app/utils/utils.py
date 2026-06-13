@@ -351,7 +351,10 @@ def get_hashcat_devices():
                 "id": index,
                 "name": name,
                 "memory": mem,
-                "is_gpu": True
+                "is_gpu": True,
+                # nvidia-smi proves the kernel driver can see the card, but
+                # Hashcat still needs a working CUDA/OpenCL runtime.
+                "hashcat_usable": False,
             })
     except Exception:
         pass

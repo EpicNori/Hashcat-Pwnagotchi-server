@@ -106,6 +106,13 @@ best_available_nvidia_driver_package() {
     '
 }
 
+best_available_nvidia_opencl_package() {
+    local package_names
+    package_names="$(apt_package_names_matching '^nvidia-opencl-icd(-[0-9]+(-server)?)?$' | sort -V)"
+    [ -n "$package_names" ] || return 1
+    printf '%s\n' "$package_names" | tail -n 1
+}
+
 ubuntu_drivers_devices_output() {
     if [ -n "${HASHCAT_WPA_TEST_UBUNTU_DRIVERS_DEVICES:-}" ]; then
         printf '%s\n' "$HASHCAT_WPA_TEST_UBUNTU_DRIVERS_DEVICES"
@@ -159,10 +166,37 @@ install_ubuntu_nvidia_driver_package() {
     run_cmd ubuntu-drivers install --gpgpu || run_cmd ubuntu-drivers autoinstall
 }
 
+install_nvidia_opencl_runtime_packages() {
+    local package_name
+
+    write_progress running 75 "Installing NVIDIA OpenCL runtime packages"
+    install_existing_packages ocl-icd-libopencl1 clinfo || true
+
+    if package_name="$(best_available_nvidia_opencl_package)"; then
+        run_cmd apt-get install -y "$package_name"
+        return 0
+    fi
+
+    echo "[!] No separate nvidia-opencl-icd package was available. The NVIDIA driver package may provide the runtime on this distribution."
+}
+
+hashcat_sees_nvidia_runtime() {
+    local output
+
+    if ! command -v hashcat >/dev/null 2>&1; then
+        return 0
+    fi
+
+    output="$(hashcat -I 2>/dev/null || true)"
+    printf '%s\n' "$output" | grep -Eiq 'NVIDIA|CUDA|GeForce|Quadro|Tesla|RTX|GTX'
+}
+
 nvidia_runtime_ready() {
     local smi
     smi="$(nvidia_smi_cmd 2>/dev/null || true)"
-    [ -n "$smi" ] && "$smi" -L >/dev/null 2>&1
+    [ -n "$smi" ] || return 1
+    "$smi" -L >/dev/null 2>&1 || return 1
+    hashcat_sees_nvidia_runtime
 }
 
 amd_runtime_ready() {
@@ -275,6 +309,8 @@ install_nvidia_stack() {
         write_progress not-applicable 100 "Automatic NVIDIA installation is not supported on this distribution"
         return 0
     fi
+
+    install_nvidia_opencl_runtime_packages
 
     echo "[+] NVIDIA driver installation completed. Reboot may be required before Hashcat sees the GPU."
     write_progress success 100 "NVIDIA driver installation completed"
