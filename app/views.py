@@ -116,9 +116,24 @@ def get_autostart_status():
 
 
 def get_update_status():
-    update_log = Path("/var/log/hashcat-wpa-server/updater.log")
+    update_log = get_runtime_logs_dir() / "updater.log"
     status = "idle"
     summary = "No update log available yet."
+    progress_snapshot = read_progress_snapshot(
+        get_progress_file("update"),
+        "Waiting for the app update to start.",
+    )
+    progress_state = str(progress_snapshot.get("state", "idle")).lower()
+
+    if progress_state == "running":
+        status = "running"
+        summary = progress_snapshot.get("message") or "Update is currently running in the background."
+    elif progress_state == "failed":
+        status = "failed"
+        summary = progress_snapshot.get("message") or "The last update reported an error."
+    elif progress_state == "success":
+        status = "success"
+        summary = progress_snapshot.get("message") or "The last update finished successfully."
 
     try:
         result = subprocess.run(
@@ -134,20 +149,43 @@ def get_update_status():
             summary = "Update is currently running in the background."
     except Exception:
         pass
+    try:
+        result = subprocess.run(
+            ["systemctl", "list-units", "--plain", "--no-legend", "hashcat-server-updater*.service"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False
+        )
+        for line in (result.stdout or "").splitlines():
+            parts = line.split()
+            if len(parts) >= 4 and parts[2] == "active":
+                status = "running"
+                summary = "Update is currently running in the background."
+                break
+    except Exception:
+        pass
 
     if update_log.exists():
         try:
             lines = update_log.read_text(errors="ignore").splitlines()
             tail_lines = lines[-12:]
             log_excerpt = "\n".join(tail_lines) if tail_lines else "Log file is empty."
-            joined = "\n".join(lines[-25:])
-            if "failed to start after update" in joined.lower() or "[!]" in joined:
+            joined = "\n".join(lines[-25:]).lower()
+            if "failed to start after update" in joined or "the update failed" in joined:
                 status = "failed"
                 summary = "The last update reported an error."
-            elif "[+] hashcat-wpa-server.service is active." in joined or "[*] Update complete." in joined:
+            elif status != "running" and (
+                "[+] hashcat-wpa-server.service is active." in joined
+                or "[*] update complete." in joined
+                or "application update finished" in joined
+            ):
                 status = "success"
-                summary = "The last update finished and the service reported active."
-            elif status != "running":
+                if "manual restart required" in joined:
+                    summary = "The update finished; restart the manual gunicorn process to load it."
+                else:
+                    summary = "The last update finished successfully."
+            elif status not in ("running", "success", "failed"):
                 summary = "Last update log found, but completion could not be confirmed."
             return status, summary, log_excerpt
         except Exception as e:

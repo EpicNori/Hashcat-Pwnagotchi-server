@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -352,6 +353,52 @@ class LaunchReadyFlowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/update_wait", response.headers["Location"])
         self.assertIn("update_app.sh", FakeProcess.calls[0].command[1])
+
+    def test_update_status_detects_transient_systemd_updater(self):
+        log_dir = _TEST_HOME / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        def fake_run(command, **kwargs):
+            if command[:2] == ["systemctl", "is-active"]:
+                return SimpleNamespace(stdout="inactive\n", stderr="", returncode=3)
+            if command[:2] == ["systemctl", "list-units"]:
+                return SimpleNamespace(
+                    stdout="hashcat-server-updater-123.service loaded active running Update\n",
+                    stderr="",
+                    returncode=0,
+                )
+            return SimpleNamespace(stdout="", stderr="", returncode=0)
+
+        with mock.patch("app.views.get_runtime_logs_dir", return_value=log_dir), \
+                mock.patch("app.views.subprocess.run", side_effect=fake_run):
+            status, summary, _ = views.get_update_status()
+
+        self.assertEqual(status, "running")
+        self.assertIn("running", summary.lower())
+
+    def test_update_status_treats_manual_restart_warning_as_success(self):
+        log_dir = _TEST_HOME / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        (log_dir / "app_update.progress").write_text(
+            "success|100|Update complete. Restart the manual gunicorn process to load it.\n",
+            encoding="utf-8",
+        )
+        (log_dir / "updater.log").write_text(
+            "\n".join([
+                "[!] Systemd is not running, so the background service cannot be restarted automatically.",
+                "[!] Manual restart required because systemd is not running.",
+                "[*] Update complete. All user data and settings have been preserved.",
+            ]),
+            encoding="utf-8",
+        )
+
+        with mock.patch("app.views.get_runtime_logs_dir", return_value=log_dir), \
+                mock.patch("app.views.subprocess.run", return_value=SimpleNamespace(stdout="inactive\n", stderr="", returncode=3)):
+            status, summary, excerpt = views.get_update_status()
+
+        self.assertEqual(status, "success")
+        self.assertIn("manual gunicorn", summary)
+        self.assertIn("Manual restart required", excerpt)
 
     def test_uninstall_settings_starts_background_uninstall(self):
         self.login_admin()
