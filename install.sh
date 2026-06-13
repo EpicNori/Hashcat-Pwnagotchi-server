@@ -2,7 +2,7 @@
 set -e
 set -o pipefail
 
-NVIDIA_DRIVER_STATUS="not-needed"
+GPU_DRIVER_STATUS="not-run"
 PROGRESS_FILE="${HASHCAT_WPA_PROGRESS_FILE:-/var/log/hashcat-wpa-server/app_update.progress}"
 NVIDIA_PROGRESS_FILE="${HASHCAT_WPA_NVIDIA_PROGRESS_FILE:-/var/log/hashcat-wpa-server/nvidia_install.progress}"
 
@@ -12,14 +12,6 @@ write_progress() {
     local message="$3"
     mkdir -p "$(dirname "$PROGRESS_FILE")"
     printf '%s|%s|%s\n' "$state" "$percent" "$message" > "$PROGRESS_FILE"
-}
-
-write_nvidia_progress() {
-    local state="$1"
-    local percent="$2"
-    local message="$3"
-    mkdir -p "$(dirname "$NVIDIA_PROGRESS_FILE")"
-    printf '%s|%s|%s\n' "$state" "$percent" "$message" > "$NVIDIA_PROGRESS_FILE"
 }
 
 ensure_service_running() {
@@ -45,15 +37,6 @@ ensure_service_running() {
     exit 1
 }
 
-os_id_like_contains() {
-    local needle="$1"
-    [[ " ${ID_LIKE:-} " == *" ${needle} "* ]]
-}
-
-is_wsl_host() {
-    grep -qiE '(microsoft|wsl)' /proc/sys/kernel/osrelease /proc/version 2>/dev/null
-}
-
 install_optional_package() {
     local package_name="$1"
     local purpose="$2"
@@ -75,108 +58,6 @@ detect_machine_arch() {
         armv7l|armhf) echo "arm" ;;
         *) echo "$machine" ;;
     esac
-}
-
-supports_debian_nvidia_autoinstall() {
-    [ "$(detect_machine_arch)" = "amd64" ]
-}
-
-has_nvidia_gpu() {
-    if ! command -v lspci >/dev/null 2>&1; then
-        return 1
-    fi
-
-    lspci -nn | grep -Eqi '((VGA|3D|Display).*(NVIDIA|GeForce|Quadro|Tesla))|((NVIDIA|GeForce|Quadro|Tesla).*(VGA|3D|Display))'
-}
-
-install_nvidia_drivers_if_needed() {
-    if is_wsl_host; then
-        if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
-            NVIDIA_DRIVER_STATUS="already-installed"
-            echo "[*] NVIDIA GPU runtime is available through the Windows WSL driver bridge."
-            write_nvidia_progress success 100 "NVIDIA WSL GPU runtime is available"
-        else
-            NVIDIA_DRIVER_STATUS="wsl-driver-required"
-            echo "[!] WSL detected. Install or update the NVIDIA CUDA-capable Windows driver on the Windows host."
-            echo "[!] Do not install Linux NVIDIA kernel drivers inside WSL; restart WSL with: wsl --shutdown"
-            write_nvidia_progress not-applicable 100 "Install the NVIDIA WSL driver on the Windows host"
-        fi
-        return 0
-    fi
-
-    if command -v nvidia-smi >/dev/null 2>&1 && lsmod | grep -q '^nvidia'; then
-        NVIDIA_DRIVER_STATUS="already-installed"
-        echo "[*] NVIDIA GPU runtime already appears to be installed."
-        write_nvidia_progress success 100 "NVIDIA drivers are already installed"
-        return 0
-    fi
-
-    if ! has_nvidia_gpu; then
-        write_nvidia_progress not-applicable 100 "No NVIDIA GPU detected"
-        return 0
-    fi
-
-    echo "[*] NVIDIA GPU detected. Attempting automatic driver installation..."
-    write_nvidia_progress running 10 "Detecting the Linux distribution"
-
-    if ! supports_debian_nvidia_autoinstall; then
-        echo "[!] NVIDIA GPU detected, but automatic driver installation is only supported on amd64 Debian/Ubuntu hosts."
-        echo "[!] ARM systems need a vendor-specific GPU stack. The server will use ARM CPU-safe Hashcat mode instead."
-        NVIDIA_DRIVER_STATUS="manual-required"
-        write_nvidia_progress not-applicable 100 "NVIDIA auto-install is not supported on this architecture"
-        return 0
-    fi
-
-    if [ -r /etc/os-release ]; then
-        # shellcheck disable=SC1091
-        . /etc/os-release
-    fi
-
-    if [ "${ID:-}" = "ubuntu" ] || os_id_like_contains "ubuntu"; then
-        write_nvidia_progress running 35 "Installing Ubuntu driver helpers"
-        apt-get install -y ubuntu-drivers-common
-        write_nvidia_progress running 60 "Installing NVIDIA drivers"
-        if ubuntu-drivers autoinstall; then
-            NVIDIA_DRIVER_STATUS="installed"
-            write_nvidia_progress success 100 "NVIDIA drivers installed successfully"
-            return 0
-        fi
-
-        echo "[!] ubuntu-drivers autoinstall failed, falling back to apt package installation..."
-        write_nvidia_progress running 70 "Retrying with the NVIDIA package"
-        if apt-get install -y nvidia-driver; then
-            NVIDIA_DRIVER_STATUS="installed"
-            write_nvidia_progress success 100 "NVIDIA drivers installed successfully"
-            return 0
-        fi
-    elif [ "${ID:-}" = "debian" ] || [ "${ID:-}" = "kali" ] || os_id_like_contains "debian"; then
-        write_nvidia_progress running 35 "Installing kernel headers and NVIDIA packages"
-        apt-get install -y "linux-headers-$(uname -r)" || true
-        write_nvidia_progress running 60 "Installing NVIDIA drivers"
-        if apt-get install -y nvidia-driver firmware-misc-nonfree; then
-            NVIDIA_DRIVER_STATUS="installed"
-            write_nvidia_progress success 100 "NVIDIA drivers installed successfully"
-            return 0
-        fi
-
-        echo "[!] Full Debian-family NVIDIA package set failed, retrying with the base driver package..."
-        write_nvidia_progress running 70 "Retrying the base NVIDIA driver package"
-        if apt-get install -y nvidia-driver; then
-            NVIDIA_DRIVER_STATUS="installed"
-            write_nvidia_progress success 100 "NVIDIA drivers installed successfully"
-            return 0
-        fi
-    else
-        echo "[!] NVIDIA GPU detected, but this installer only knows how to auto-install drivers on Debian-family Linux."
-        NVIDIA_DRIVER_STATUS="manual-required"
-        write_nvidia_progress not-applicable 100 "Automatic NVIDIA installation is not supported on this Linux distribution"
-        return 0
-    fi
-
-    echo "[!] NVIDIA GPU detected, but the driver installation step did not complete successfully."
-    echo "[!] The server was installed, but you may need to install the NVIDIA driver manually before GPU cracking works."
-    NVIDIA_DRIVER_STATUS="manual-required"
-    write_nvidia_progress failed 0 "Automatic NVIDIA driver installation did not complete successfully"
 }
 
 # Ensure script is being run as root
@@ -203,7 +84,6 @@ apt-get update
 apt-get install -y curl git dpkg-dev debhelper pciutils python3 python3-venv systemd hashcat hcxtools ocl-icd-libopencl1
 install_optional_package "pocl-opencl-icd" "CPU OpenCL runtime installation"
 install_optional_package "clinfo" "OpenCL diagnostics installation"
-install_nvidia_drivers_if_needed
 
 echo "[*] Cloning the extremely fast hashcat-wpa-server..."
 write_progress running 35 "Downloading the latest application source"
@@ -214,6 +94,15 @@ cd hashcat-wpa-build-env
 
 git clone https://github.com/EpicNori/Hashcat-Pwnagotchi-server.git
 cd Hashcat-Pwnagotchi-server
+
+echo "[*] Checking NVIDIA/AMD GPU driver readiness..."
+write_progress running 45 "Checking NVIDIA/AMD GPU driver readiness"
+if HASHCAT_WPA_NVIDIA_PROGRESS_FILE="$NVIDIA_PROGRESS_FILE" HASHCAT_WPA_APP_USER=hashcat bash bash/install_gpu_drivers.sh check; then
+    GPU_DRIVER_STATUS="checked"
+else
+    GPU_DRIVER_STATUS="manual-required"
+    echo "[!] GPU driver check did not complete. The server install will continue."
+fi
 
 echo "[*] Compiling the automated Debian package..."
 write_progress running 55 "Building the application package"
@@ -263,16 +152,11 @@ else
 fi
 write_progress success 100 "Linux install completed successfully"
 
-if [ "$NVIDIA_DRIVER_STATUS" = "installed" ]; then
-    echo "[+] NVIDIA drivers were installed automatically for detected GPU hardware."
-    echo "[+] A reboot may still be required before Hashcat can use the GPU."
-elif [ "$NVIDIA_DRIVER_STATUS" = "already-installed" ]; then
-    echo "[+] NVIDIA GPU runtime was already available on this machine."
-elif [ "$NVIDIA_DRIVER_STATUS" = "wsl-driver-required" ]; then
-    echo "[!] WSL detected. GPU acceleration needs the CUDA-capable NVIDIA driver on the Windows host."
-    echo "[!] After installing or updating the Windows driver, run: wsl --shutdown"
-elif [ "$NVIDIA_DRIVER_STATUS" = "manual-required" ]; then
-    echo "[!] NVIDIA GPU detected, but driver setup still needs manual attention before GPU cracking will work."
+if [ "$GPU_DRIVER_STATUS" = "checked" ]; then
+    echo "[+] NVIDIA/AMD GPU driver check completed."
+    echo "[+] A reboot may still be required before Hashcat can use a newly installed GPU runtime."
+elif [ "$GPU_DRIVER_STATUS" = "manual-required" ]; then
+    echo "[!] GPU driver setup needs manual attention before GPU cracking will work."
 fi
 
 echo "[+] "

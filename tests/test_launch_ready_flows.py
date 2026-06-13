@@ -322,23 +322,23 @@ class LaunchReadyFlowTests(unittest.TestCase):
         self.assertIn("Failed to start public website connector", response.get_data(as_text=True))
         self.assertNotEqual(read_settings().get("public_plugin_url"), "https://upload.example.com")
 
-    def test_nvidia_settings_reports_background_driver_check(self):
+    def test_gpu_settings_reports_background_driver_check(self):
         self.login_admin()
         FakeProcess.configure(returncode=0, output="Installing drivers\n", timeout=True)
-        devices = [{"id": "0", "name": "NVIDIA Test GPU", "memory": "8 GB", "is_gpu": True, "hashcat_usable": False}]
+        devices = [{"id": "0", "name": "AMD Radeon Test GPU", "memory": "8 GB", "is_gpu": True, "hashcat_usable": False}]
 
         with mock.patch("app.utils.utils.get_hashcat_devices", return_value=devices), \
                 mock.patch("app.views.get_runtime_logs_dir", return_value=_TEST_HOME / "logs"), \
                 mock.patch("app.views.subprocess.Popen", side_effect=lambda command, **kwargs: FakeProcess(command, **kwargs)):
             response = self.client.post(
                 "/settings",
-                data={"submit_check_nvidia": "Check NVIDIA Drivers"},
+                data={"submit_check_nvidia": "Check GPU Drivers"},
                 follow_redirects=True,
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("NVIDIA driver check started", response.get_data(as_text=True))
-        self.assertIn("install_nvidia_drivers.sh", FakeProcess.calls[0].command[1])
+        self.assertIn("GPU driver check started", response.get_data(as_text=True))
+        self.assertIn("install_gpu_drivers.sh", FakeProcess.calls[0].command[1])
         self.assertTrue(FakeProcess.calls[0].stdin.closed)
 
     def test_update_settings_redirects_to_wait_page_after_start(self):

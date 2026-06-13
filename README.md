@@ -18,8 +18,8 @@ For Debian, Ubuntu, and Kali:
 curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/install.sh | sudo bash
 ```
 
-The installer also attempts to auto-install NVIDIA drivers when compatible NVIDIA GPU hardware is detected on supported Debian-family systems.
-The same installer/update scripts support both `amd64` and `arm64`; ARM hosts install a CPU OpenCL runtime and use the built-in CPU-safe Hashcat mode while NVIDIA driver auto-install remains limited to regular `amd64` Debian/Ubuntu systems.
+The installer also attempts to auto-install GPU runtimes when compatible NVIDIA or AMD hardware is detected on supported Debian-family systems. NVIDIA uses the Debian/Ubuntu driver stack, while AMD uses ROCm/OpenCL packages.
+The same installer/update scripts support both `amd64` and `arm64`; ARM hosts install a CPU OpenCL runtime and use the built-in CPU-safe Hashcat mode while automatic NVIDIA/AMD GPU driver setup remains limited to regular `amd64` Debian/Ubuntu systems.
 
 After installation, the dashboard is available at `http://127.0.0.1:9111`.
 
@@ -79,7 +79,7 @@ User data is intentionally kept separate from application code:
 - User data: `/var/lib/hashcat-wpa-server/`
 - Runtime logs: `/var/log/hashcat-wpa-server/`
 
-Run `crackserver doctor` after installation to verify architecture, Hashcat backend visibility, and the active ARM/amd64 runtime path.
+Run `crackserver driver-check` to install or repair supported NVIDIA/AMD GPU runtimes, then run `crackserver doctor` to verify architecture, Hashcat backend visibility, and the active ARM/amd64 runtime path.
 
 Safe updates replace the application layer only.
 

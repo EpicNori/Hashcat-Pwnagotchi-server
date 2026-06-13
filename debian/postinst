@@ -32,6 +32,11 @@ case "$1" in
         if ! id "hashcat" >/dev/null 2>&1; then
             useradd --system --home-dir /var/lib/hashcat-wpa-server --no-create-home --shell /usr/sbin/nologin hashcat
         fi
+        for gpu_group in render video; do
+            if getent group "$gpu_group" >/dev/null 2>&1; then
+                usermod -aG "$gpu_group" hashcat || true
+            fi
+        done
 
         # Create required directories
         mkdir -p /opt/hashcat-wpa-server
@@ -81,6 +86,7 @@ case "$1" in
             echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/install_tailscale.sh" > /etc/sudoers.d/hashcat-tailscale
             echo "hashcat ALL=(ALL) NOPASSWD: /usr/bin/tailscale" >> /etc/sudoers.d/hashcat-tailscale
             echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/install_cloudflare_tunnel.sh" >> /etc/sudoers.d/hashcat-tailscale
+            echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/install_gpu_drivers.sh" >> /etc/sudoers.d/hashcat-tailscale
             echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/install_nvidia_drivers.sh" >> /etc/sudoers.d/hashcat-tailscale
             echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/update_app.sh" >> /etc/sudoers.d/hashcat-tailscale
             echo "hashcat ALL=(ALL) NOPASSWD: /opt/hashcat-wpa-server/bash/uninstall_app.sh" >> /etc/sudoers.d/hashcat-tailscale

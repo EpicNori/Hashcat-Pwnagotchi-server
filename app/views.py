@@ -377,7 +377,7 @@ def get_install_progress() -> dict:
         ),
         "nvidia": read_progress_snapshot(
             get_progress_file("nvidia"),
-            "Waiting for the NVIDIA install to start.",
+            "Waiting for the GPU driver install to start.",
         ),
     }
 
@@ -1171,7 +1171,7 @@ class PublicWebsiteForm(FlaskForm):
     submit_public_website = SubmitField('Install / Start Public Website')
 
 class NvidiaDriversForm(FlaskForm):
-    submit_check_nvidia = SubmitField('Check NVIDIA Drivers')
+    submit_check_nvidia = SubmitField('Check GPU Drivers')
 
 class UpdateAppForm(FlaskForm):
     submit_update = SubmitField('Update App & Restart')
@@ -1306,19 +1306,19 @@ def admin_settings():
 
     if nvidia_form.submit_check_nvidia.data and nvidia_form.validate():
         if gpu_ready:
-            flask.flash('A GPU is already usable by Hashcat, so NVIDIA driver installation was skipped.', category='info')
+            flask.flash('A GPU is already usable by Hashcat, so driver installation was skipped.', category='info')
         else:
             try:
                 result = run_management_action(
-                    ["sudo", get_management_script_path("install_nvidia_drivers.sh")],
+                    ["sudo", get_management_script_path("install_gpu_drivers.sh")],
                     timeout=5,
                 )
                 if result["state"] == "running":
-                    flask.flash('NVIDIA driver check started in the background. If drivers are missing, the installer will try to add them. A reboot may still be required before the GPU appears.', category='success')
+                    flask.flash('GPU driver check started in the background. If NVIDIA or AMD runtimes are missing, the installer will try to add them. A reboot may still be required before the GPU appears.', category='success')
                 else:
-                    flask.flash('NVIDIA driver check completed. Refresh the page to see updated GPU readiness.', category='success')
+                    flask.flash('GPU driver check completed. Refresh the page to see updated GPU readiness.', category='success')
             except Exception as e:
-                flask.flash(f'Failed to start NVIDIA driver check: {e}', category='error')
+                flask.flash(f'Failed to start GPU driver check: {e}', category='error')
         return redirect(url_for('admin_settings'))
 
     if update_form.submit_update.data and update_form.validate():

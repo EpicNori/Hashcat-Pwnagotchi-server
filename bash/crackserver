@@ -231,8 +231,8 @@ setup_wizard() {
         sudo "$(script_path autostart_service.sh)" enable || echo "[!] Autostart could not be enabled on this host."
     fi
 
-    if confirm "Check NVIDIA driver/GPU readiness now? [Y/n]" "y"; then
-        sudo "$(script_path install_nvidia_drivers.sh)" check
+    if confirm "Check NVIDIA/AMD GPU driver readiness now? [Y/n]" "y"; then
+        sudo "$(script_path install_gpu_drivers.sh)" check
     fi
 
     echo ""
@@ -283,7 +283,7 @@ Cracking:
 Remote access:
   tailscale [auth-key]          Install/connect Tailscale
   cloudflare <host> [token]     Install/start Cloudflare Tunnel connector
-  driver-check                  Check/install Linux NVIDIA drivers when supported
+  driver-check                  Check/install Linux NVIDIA/AMD GPU drivers when supported
   driver-status                 Show GPU/driver readiness
 
 Uninstall:
@@ -335,10 +335,10 @@ case "$command" in
         sudo "$(script_path autostart_service.sh)" disable
         ;;
     driver-check)
-        sudo "$(script_path install_nvidia_drivers.sh)" check
+        sudo "$(script_path install_gpu_drivers.sh)" check
         ;;
     driver-status)
-        sudo "$(script_path install_nvidia_drivers.sh)" status
+        sudo "$(script_path install_gpu_drivers.sh)" status
         ;;
     tailscale|tunnel-tailscale)
         tailscale_connect "$@"
