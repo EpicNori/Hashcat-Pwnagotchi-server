@@ -77,6 +77,21 @@ docker compose -f docker/docker-compose.yml restart
 docker compose -f docker/docker-compose.yml down
 ```
 
+## CasaOS / ZimaOS
+
+CasaOS Custom Install can use the dedicated compose file at `docker/docker-compose.casaos.yml`. It includes `x-casaos` metadata, stores data under `/DATA/AppData/$AppID`, exposes the dashboard on port `9111`, and builds the Docker image locally from this GitHub repository so no paid registry or GitHub Actions build is required.
+
+Before installing, set a strong `HASHCAT_ADMIN_PASSWORD` in CasaOS app settings or in the CasaOS environment. The CasaOS compose file intentionally refuses to start without it.
+
+The first CasaOS install can take several minutes because it builds the image on the CasaOS server:
+
+```bash
+HASHCAT_ADMIN_PASSWORD='change-me-now' AppID=hashcat-pwnagotchi-server \
+docker compose -f docker/docker-compose.casaos.yml up -d --build
+```
+
+This CasaOS app definition is CPU-safe and declares `amd64` support. NVIDIA GPU use on CasaOS requires host NVIDIA drivers plus NVIDIA Container Toolkit, then an advanced compose edit to add GPU access.
+
 ## Update Workflow
 
 ```bash

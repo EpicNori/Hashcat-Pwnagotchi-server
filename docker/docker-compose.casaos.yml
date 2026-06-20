@@ -1,0 +1,77 @@
+name: hashcat-pwnagotchi-server
+
+services:
+  hashcat-pwnagotchi-server:
+    image: hashcat-pwnagotchi-server:1.1.2-alpha
+    build:
+      context: https://github.com/EpicNori/Hashcat-Pwnagotchi-server.git#main
+      dockerfile: docker/Dockerfile
+      args:
+        branch: latest
+    container_name: hashcat-pwnagotchi-server
+    environment:
+      HASHCAT_ADMIN_USER: ${HASHCAT_ADMIN_USER:-admin}
+      HASHCAT_ADMIN_PASSWORD: ${HASHCAT_ADMIN_PASSWORD:?Set HASHCAT_ADMIN_PASSWORD in CasaOS app settings before install}
+      HASHCAT_WPA_SERVER_HOME: /data
+      HASHCAT_WPA_DATA_DIR: /data
+      HASHCAT_WPA_LOG_DIR: /var/log/hashcat-wpa-server
+      HOME: /data
+      TERM: xterm
+      TZ: ${TZ:-UTC}
+    ports:
+      - target: 80
+        published: "9111"
+        protocol: tcp
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/data
+        target: /data
+      - type: bind
+        source: /DATA/AppData/$AppID/logs
+        target: /var/log/hashcat-wpa-server
+    restart: unless-stopped
+    x-casaos:
+      envs:
+        - container: HASHCAT_ADMIN_USER
+          description:
+            en_US: Initial administrator username.
+        - container: HASHCAT_ADMIN_PASSWORD
+          description:
+            en_US: Required initial administrator password. Set a strong value before installing.
+        - container: TZ
+          description:
+            en_US: Time zone.
+      ports:
+        - container: "80"
+          description:
+            en_US: Web dashboard HTTP port.
+      volumes:
+        - container: /data
+          description:
+            en_US: Persistent database, captures, recovery state, brain password, and user wordlists.
+        - container: /var/log/hashcat-wpa-server
+          description:
+            en_US: Runtime logs.
+
+x-casaos:
+  architectures:
+    - amd64
+  main: hashcat-pwnagotchi-server
+  author: EpicNori
+  category: Utilities
+  description:
+    en_US: |
+      Hashcat Pwnagotchi Server is a WPA/WPA2 cracking dashboard for Pwnagotchi uploads, capture management, Hashcat job routing, and result review.
+  developer: EpicNori
+  icon: https://cdn.jsdelivr.net/gh/EpicNori/Hashcat-Pwnagotchi-server@main/app/static/pwnagotchi-device.svg
+  tagline:
+    en_US: WPA/WPA2 cracking dashboard for Pwnagotchi captures
+  tips:
+    before_install:
+      en_US: |
+        Set HASHCAT_ADMIN_PASSWORD to a strong password before installing. This CasaOS compose file builds the image locally from the GitHub repository, so the first install can take several minutes and requires internet access. It is CPU-safe by default. NVIDIA GPU passthrough requires NVIDIA drivers and NVIDIA Container Toolkit on the CasaOS host, then an advanced compose edit to add GPU access.
+  title:
+    en_US: Hashcat Pwnagotchi Server
+  index: /
+  port_map: "9111"
+  version: "1.1.2-alpha"
