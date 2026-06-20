@@ -10,6 +10,7 @@ A Linux WPA/WPA2 cracking dashboard built around Hashcat. It provides a web UI f
 
 - [Features](#features)
 - [Install](#install)
+  - [Easy Docker / CasaOS Install](#easy-docker--casaos-install)
   - [Debian, Ubuntu, Kali](#debian-ubuntu-kali)
   - [Windows / WSL 2](#windows--wsl-2)
   - [Docker](#docker)
@@ -39,6 +40,28 @@ A Linux WPA/WPA2 cracking dashboard built around Hashcat. It provides a web UI f
 - Tailscale integration for private VPN deployments
 
 ## Install
+
+### Easy Docker / CasaOS Install
+
+This is the simplest path if you already have Docker or CasaOS running. Open the terminal on the server and run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/docker/easy-install.sh | bash
+```
+
+The script asks for an admin password, downloads the project, builds the Docker image locally, starts the container, and prints the dashboard URL.
+
+For NVIDIA GPU mode, use:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/docker/easy-install.sh | HASHCAT_WPA_DOCKER_GPU=1 bash
+```
+
+Open the dashboard at:
+
+```text
+http://SERVER_IP:9111
+```
 
 ### Debian, Ubuntu, Kali
 
@@ -219,7 +242,7 @@ Add these environment variables:
 | `TERM` | `xterm` |
 | `TZ` | `Europe/Berlin` or your timezone |
 
-Leave `Geräte` empty for CPU-only mode. GPU passthrough on CasaOS is host-specific and should be configured only after the CPU container starts successfully.
+Leave `Devices` empty for CPU-only mode. GPU passthrough on CasaOS is host-specific and should be configured only after the CPU container starts successfully.
 
 #### CasaOS compose install flow
 
