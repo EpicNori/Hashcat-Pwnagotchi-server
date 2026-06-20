@@ -2,7 +2,12 @@ name: hashcat-pwnagotchi-server
 
 services:
   hashcat-pwnagotchi-server:
-    image: ghcr.io/epicnori/hashcat-pwnagotchi-server:1.1.2-alpha
+    image: hashcat-pwnagotchi-server:1.1.2-alpha
+    build:
+      context: https://github.com/EpicNori/Hashcat-Pwnagotchi-server.git#main
+      dockerfile: docker/Dockerfile
+      args:
+        branch: latest
     container_name: hashcat-pwnagotchi-server
     environment:
       HASHCAT_ADMIN_USER: ${HASHCAT_ADMIN_USER:-admin}
@@ -64,7 +69,7 @@ x-casaos:
   tips:
     before_install:
       en_US: |
-        Set HASHCAT_ADMIN_PASSWORD to a strong password before installing. This CasaOS compose file uses the prebuilt GHCR image and is CPU-safe by default. NVIDIA GPU passthrough requires NVIDIA drivers and NVIDIA Container Toolkit on the CasaOS host, then an advanced compose edit to add GPU access.
+        Set HASHCAT_ADMIN_PASSWORD to a strong password before installing. This CasaOS compose file builds the image locally from the GitHub repository, so the first install can take several minutes and requires internet access. It is CPU-safe by default. NVIDIA GPU passthrough requires NVIDIA drivers and NVIDIA Container Toolkit on the CasaOS host, then an advanced compose edit to add GPU access.
   title:
     en_US: Hashcat Pwnagotchi Server
   index: /
