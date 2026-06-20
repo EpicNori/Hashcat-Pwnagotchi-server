@@ -42,6 +42,41 @@ Open the dashboard at `http://localhost:9111`. If systemd is disabled in your WS
 
 For NVIDIA GPUs on WSL, install the CUDA-capable NVIDIA driver on Windows, then run `wsl --shutdown` and start Ubuntu again. Do not install Linux NVIDIA kernel drivers inside WSL; WSL exposes the GPU through the Windows driver bridge.
 
+## Docker Quick Start
+
+The Docker setup runs the web server, Nginx, Hashcat brain, persistent database, captures, and logs inside containers. It works as a CPU-safe default and can be started with NVIDIA GPU access when the Docker host has the NVIDIA Container Toolkit installed.
+
+CPU / generic Docker server:
+
+```bash
+HASHCAT_ADMIN_USER=admin HASHCAT_ADMIN_PASSWORD='change-me-now' \
+docker compose -f docker/docker-compose.yml up -d --build
+```
+
+NVIDIA GPU server:
+
+```bash
+HASHCAT_ADMIN_USER=admin HASHCAT_ADMIN_PASSWORD='change-me-now' \
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml up -d --build
+```
+
+Open `http://SERVER_IP:9111`. Data is stored in the named Docker volumes `hashcat-wpa-data` and `hashcat-wpa-logs` by default. To bind them to host folders instead:
+
+```bash
+HASHCAT_WPA_DOCKER_DATA="$PWD/docker-data" \
+HASHCAT_WPA_DOCKER_LOGS="$PWD/docker-logs" \
+HASHCAT_ADMIN_USER=admin HASHCAT_ADMIN_PASSWORD='change-me-now' \
+docker compose -f docker/docker-compose.yml up -d --build
+```
+
+Useful Docker commands:
+
+```bash
+docker compose -f docker/docker-compose.yml logs -f
+docker compose -f docker/docker-compose.yml restart
+docker compose -f docker/docker-compose.yml down
+```
+
 ## Update Workflow
 
 ```bash

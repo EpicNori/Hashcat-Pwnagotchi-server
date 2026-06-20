@@ -21,7 +21,7 @@ WORDLISTS_DIR = ROOT_PRIVATE_DIR / "wordlists"
 WORDLISTS_USER_DIR = HASHCAT_WPA_CACHE_DIR / "wordlists"  # user custom wordlists
 RULES_DIR = ROOT_PRIVATE_DIR / "rules"
 MASKS_DIR = ROOT_PRIVATE_DIR / "masks"
-LOGS_DIR = ROOT_PRIVATE_DIR / "logs"
+LOGS_DIR = Path(os.environ.get("HASHCAT_WPA_LOG_DIR") or (ROOT_PRIVATE_DIR / "logs"))
 
 DATABASE_DIR = HASHCAT_WPA_CACHE_DIR / "database"
 RECOVERY_DIR = HASHCAT_WPA_CACHE_DIR / "recovery"
