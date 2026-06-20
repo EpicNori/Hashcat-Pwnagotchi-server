@@ -44,7 +44,7 @@ For NVIDIA GPUs on WSL, install the CUDA-capable NVIDIA driver on Windows, then 
 
 ## Docker Quick Start
 
-The Docker setup runs the web server, Nginx, Hashcat brain, persistent database, captures, and logs inside containers. It works as a CPU-safe default and can be started with NVIDIA GPU access when the Docker host has the NVIDIA Container Toolkit installed.
+The Docker setup runs the web server, Nginx, Hashcat brain, persistent database, captures, and logs inside containers. It works as a CPU-safe default and can be started with NVIDIA GPU access when the Docker host has the NVIDIA Container Toolkit installed. Set a strong `HASHCAT_ADMIN_PASSWORD`; Compose intentionally refuses to start without it.
 
 CPU / generic Docker server:
 

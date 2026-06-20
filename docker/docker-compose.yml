@@ -16,7 +16,7 @@ services:
       - "${HASHCAT_WPA_PORT:-9111}:80"
     environment:
       HASHCAT_ADMIN_USER: ${HASHCAT_ADMIN_USER:-admin}
-      HASHCAT_ADMIN_PASSWORD: ${HASHCAT_ADMIN_PASSWORD:-changeme}
+      HASHCAT_ADMIN_PASSWORD: ${HASHCAT_ADMIN_PASSWORD:?Set HASHCAT_ADMIN_PASSWORD before starting the container}
       HASHCAT_WPA_SERVER_HOME: /data
       HASHCAT_WPA_DATA_DIR: /data
       HASHCAT_WPA_LOG_DIR: /var/log/hashcat-wpa-server
