@@ -1,33 +1,33 @@
-# Usage:
-#   mkdir -p ~/.hashcat/wpa-server
-#   cd ./docker
-#   docker-compose build --build-arg branch=latest (or intel-cpu)
-#   docker-compose up -d
-
-version: '3.7'
+# CPU-safe default:
+#   docker compose -f docker/docker-compose.yml up -d --build
+#
+# NVIDIA GPU:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml up -d --build
 
 services:
   hashcat-wpa-server:
-    image: "hashcat-wpa-server:latest"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              capabilities: [ gpu ]
+    image: hashcat-wpa-server:latest
     build:
       context: ..
       dockerfile: docker/Dockerfile
       args:
-        branch: latest
+        branch: ${HASHCAT_DOCKER_TAG:-latest}
     ports:
-     - "9111:80"
+      - "${HASHCAT_WPA_PORT:-9111}:80"
     environment:
-       - "HASHCAT_ADMIN_USER=${HASHCAT_ADMIN_USER}"
-       - "HASHCAT_ADMIN_PASSWORD=${HASHCAT_ADMIN_PASSWORD}"
-       - "TERM=xterm"
+      HASHCAT_ADMIN_USER: ${HASHCAT_ADMIN_USER:-admin}
+      HASHCAT_ADMIN_PASSWORD: ${HASHCAT_ADMIN_PASSWORD:?Set HASHCAT_ADMIN_PASSWORD before starting the container}
+      HASHCAT_WPA_SERVER_HOME: /data
+      HASHCAT_WPA_DATA_DIR: /data
+      HASHCAT_WPA_LOG_DIR: /var/log/hashcat-wpa-server
+      HOME: /data
+      TERM: xterm
+      TZ: ${TZ:-UTC}
     volumes:
-      - type: bind
-        source: ${HOME}/.hashcat/wpa-server
-        target: /root/.hashcat/wpa-server
-    restart: always
+      - ${HASHCAT_WPA_DOCKER_DATA:-hashcat-wpa-data}:/data
+      - ${HASHCAT_WPA_DOCKER_LOGS:-hashcat-wpa-logs}:/var/log/hashcat-wpa-server
+    restart: unless-stopped
+
+volumes:
+  hashcat-wpa-data:
+  hashcat-wpa-logs:

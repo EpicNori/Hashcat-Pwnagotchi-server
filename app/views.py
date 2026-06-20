@@ -297,7 +297,7 @@ def get_cloudflare_snapshot():
 
 
 def get_runtime_logs_dir() -> Path:
-    return Path("/var/log/hashcat-wpa-server")
+    return Path(os.environ.get("HASHCAT_WPA_LOG_DIR") or "/var/log/hashcat-wpa-server")
 
 
 def tail_text_file(path: Path, max_lines: int = 8) -> str:
