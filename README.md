@@ -136,19 +136,17 @@ CasaOS Custom Install can use [docker/docker-compose.casaos.yml](docker/docker-c
 
 The first CasaOS install can take several minutes because the image builds on the CasaOS server.
 
-#### What to put in the Custom Install window
+#### Option A: Compose / YAML Custom Install
 
-Use these values:
+Use this if CasaOS shows a large compose or YAML paste box.
 
 - App name / title: `Hashcat Pwnagotchi Server`
-- App ID / container name, if CasaOS asks: `hashcat-pwnagotchi-server`
-- Web UI port: `9111`
-- Architecture: `amd64`
-- Environment variables:
+- App ID, if CasaOS asks: `hashcat-pwnagotchi-server`
+- Compose / YAML box: paste the contents of [docker/docker-compose.casaos.yml](docker/docker-compose.casaos.yml)
+- Environment variables, if CasaOS asks separately:
   - `HASHCAT_ADMIN_USER=admin`
   - `HASHCAT_ADMIN_PASSWORD=<your strong password>`
   - `TZ=<your timezone>`, for example `Europe/Berlin`
-- Compose / YAML box: paste the contents of [docker/docker-compose.casaos.yml](docker/docker-compose.casaos.yml)
 
 If CasaOS validates the compose before showing environment fields and complains that `HASHCAT_ADMIN_PASSWORD` is missing, replace this line in the pasted YAML:
 
@@ -164,7 +162,66 @@ HASHCAT_ADMIN_PASSWORD: "change-me-now"
 
 Do not leave `change-me-now` as the real password.
 
-#### CasaOS install flow
+#### Option B: Manual App Installation Form
+
+Use this if CasaOS shows individual fields like `Docker-Image`, `Tag`, `Web UI`, `Port`, `Speicher`, and `Umgebungsvariablen`.
+
+Because this form requires an existing image name and does not build from GitHub by itself, build the image once on the CasaOS server first:
+
+```bash
+cd /DATA/AppData
+git clone https://github.com/EpicNori/Hashcat-Pwnagotchi-server.git
+cd Hashcat-Pwnagotchi-server
+docker build -f docker/Dockerfile -t hashcat-pwnagotchi-server:1.1.2-alpha .
+```
+
+Then fill the CasaOS form like this:
+
+| CasaOS field | Value |
+| --- | --- |
+| `Docker-Image` | `hashcat-pwnagotchi-server` |
+| `Tag` | `1.1.2-alpha` |
+| `Title` | `Hashcat Pwnagotchi Server` |
+| `Icon-URL` | `https://cdn.jsdelivr.net/gh/EpicNori/Hashcat-Pwnagotchi-server@main/app/static/pwnagotchi-device.svg` |
+| `Web UI` | `http://<CASAOS_IP>:9111/` |
+| `Netzwerk` | `bridge` |
+| `Containername` | `hashcat-pwnagotchi-server` |
+| `Neustartrichtlinie` | `unless-stopped` |
+| `Privilegiert` | off |
+| `CPU-Anteile` | `Mittel` or `Hoch` |
+| `Speicherlimit` | at least `2048 MB`; `4096 MB` is better |
+| `Container-Befehl` | leave empty |
+| `Container-Funktionen (cap-add)` | leave empty |
+
+Add this port mapping:
+
+| Host port | Container port | Protocol |
+| --- | --- | --- |
+| `9111` | `80` | `TCP` |
+
+Add these storage mounts:
+
+| Host path | Container path |
+| --- | --- |
+| `/DATA/AppData/hashcat-pwnagotchi-server/data` | `/data` |
+| `/DATA/AppData/hashcat-pwnagotchi-server/logs` | `/var/log/hashcat-wpa-server` |
+
+Add these environment variables:
+
+| Name | Value |
+| --- | --- |
+| `HASHCAT_ADMIN_USER` | `admin` |
+| `HASHCAT_ADMIN_PASSWORD` | `<your strong password>` |
+| `HASHCAT_WPA_SERVER_HOME` | `/data` |
+| `HASHCAT_WPA_DATA_DIR` | `/data` |
+| `HASHCAT_WPA_LOG_DIR` | `/var/log/hashcat-wpa-server` |
+| `HOME` | `/data` |
+| `TERM` | `xterm` |
+| `TZ` | `Europe/Berlin` or your timezone |
+
+Leave `Geräte` empty for CPU-only mode. GPU passthrough on CasaOS is host-specific and should be configured only after the CPU container starts successfully.
+
+#### CasaOS compose install flow
 
 1. Open CasaOS.
 2. Go to App Store.
