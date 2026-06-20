@@ -4,27 +4,61 @@
 [![Platform](https://img.shields.io/badge/platform-Linux-orange.svg)](https://github.com/EpicNori/Hashcat-Pwnagotchi-server)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-A Linux WPA/WPA2 cracking dashboard built around Hashcat. It gives you a web UI for uploads, task routing, device monitoring, result review, Pwnagotchi uploads, and safe in-place updates while keeping user data separate from application code.
+A Linux WPA/WPA2 cracking dashboard built around Hashcat. It provides a web UI for capture uploads, task routing, device monitoring, result review, Pwnagotchi uploads, and safe in-place updates while keeping user data separate from application code.
 
-## Acknowledgement
+## Contents
 
-Special thanks to **Danylo Ulianych** and the upstream project [dizcza/hashcat-wpa-server](https://github.com/dizcza/hashcat-wpa-server), which this repository builds upon.
+- [Features](#features)
+- [Install](#install)
+  - [Debian, Ubuntu, Kali](#debian-ubuntu-kali)
+  - [Windows / WSL 2](#windows--wsl-2)
+  - [Docker](#docker)
+  - [CasaOS / ZimaOS Custom Install](#casaos--zimaos-custom-install)
+- [Updates](#updates)
+- [Data Persistence](#data-persistence)
+- [CLI](#cli)
+- [Pwnagotchi Plugin](#pwnagotchi-plugin)
+- [Supported Capture Formats](#supported-capture-formats)
+- [Attack Modes](#attack-modes)
+- [Wordlists](#wordlists)
+- [Development](#development)
+- [Acknowledgement](#acknowledgement)
 
-## Quick Start
+## Features
 
-For Debian, Ubuntu, and Kali:
+- Auto-detects CPUs and GPUs for task routing
+- Per-device targeting and intensity controls
+- Optional spare-device queue scheduling
+- Queue reordering controls for scheduled handshakes
+- Safe update flow that preserves user data
+- Web UI for uploads, cracking progress, results, and user management
+- Default device and work-mode policy for API and Pwnagotchi uploads
+- Built-in fallback wordlist installation from the dashboard
+- Optional user-provided wordlist generator scripts
+- Public Website setup through Cloudflare Tunnel for HTTPS uploads without a VPN client on the Pwnagotchi
+- Tailscale integration for private VPN deployments
+
+## Install
+
+### Debian, Ubuntu, Kali
 
 ```bash
 curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/install.sh | sudo bash
 ```
 
-The installer also attempts to auto-install GPU runtimes when compatible NVIDIA or AMD hardware is detected on supported Debian-family systems. NVIDIA uses the Debian/Ubuntu driver stack, while AMD uses ROCm/OpenCL packages.
-The same installer/update scripts support both `amd64` and `arm64`; ARM hosts install a CPU OpenCL runtime and use the built-in CPU-safe Hashcat mode while automatic NVIDIA/AMD GPU driver setup remains limited to regular `amd64` Debian/Ubuntu systems.
-Tailscale is optional; if its bootstrap script is unavailable during install, the server setup continues and you can retry later with `crackserver tailscale` or from Admin Settings.
+After installation, open:
 
-After installation, the dashboard is available at `http://127.0.0.1:9111`.
+```text
+http://127.0.0.1:9111
+```
 
-## Windows / WSL Quick Start
+The installer attempts to auto-install GPU runtimes when compatible NVIDIA or AMD hardware is detected on supported Debian-family systems. NVIDIA uses the Debian/Ubuntu driver stack, while AMD uses ROCm/OpenCL packages.
+
+The installer and update scripts support both `amd64` and `arm64`. ARM hosts install a CPU OpenCL runtime and use the built-in CPU-safe Hashcat mode. Automatic NVIDIA/AMD GPU driver setup remains limited to regular `amd64` Debian/Ubuntu systems.
+
+Tailscale is optional. If its bootstrap script is unavailable during install, the server setup continues and you can retry later with `crackserver tailscale` or from Admin Settings.
+
+### Windows / WSL 2
 
 On Windows, run the server inside WSL 2 with Ubuntu. From an Administrator PowerShell, install Ubuntu first:
 
@@ -32,19 +66,27 @@ On Windows, run the server inside WSL 2 with Ubuntu. From an Administrator Power
 wsl --install -d Ubuntu
 ```
 
-After rebooting if Windows asks for it and finishing the first Ubuntu user setup, run this one-liner from PowerShell:
+After rebooting if Windows asks for it and finishing the first Ubuntu user setup, run:
 
 ```powershell
 wsl -d Ubuntu -u root -- bash -lc "apt-get update && apt-get install -y curl ca-certificates && curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/install.sh | bash"
 ```
 
-Open the dashboard at `http://localhost:9111`. If systemd is disabled in your WSL distro, the installer prints a manual `gunicorn` command to start the server.
+Open:
+
+```text
+http://localhost:9111
+```
+
+If systemd is disabled in your WSL distro, the installer prints a manual `gunicorn` command to start the server.
 
 For NVIDIA GPUs on WSL, install the CUDA-capable NVIDIA driver on Windows, then run `wsl --shutdown` and start Ubuntu again. Do not install Linux NVIDIA kernel drivers inside WSL; WSL exposes the GPU through the Windows driver bridge.
 
-## Docker Quick Start
+### Docker
 
-The Docker setup runs the web server, Nginx, Hashcat brain, persistent database, captures, and logs inside containers. It works as a CPU-safe default and can be started with NVIDIA GPU access when the Docker host has the NVIDIA Container Toolkit installed. Set a strong `HASHCAT_ADMIN_PASSWORD`; Compose intentionally refuses to start without it.
+The Docker setup runs the web server, Nginx, Hashcat brain, persistent database, captures, and logs inside containers. It works as a CPU-safe default and can be started with NVIDIA GPU access when the Docker host has the NVIDIA Container Toolkit installed.
+
+Set a strong `HASHCAT_ADMIN_PASSWORD`. Compose intentionally refuses to start without it.
 
 CPU / generic Docker server:
 
@@ -60,7 +102,18 @@ HASHCAT_ADMIN_USER=admin HASHCAT_ADMIN_PASSWORD='change-me-now' \
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml up -d --build
 ```
 
-Open `http://SERVER_IP:9111`. Data is stored in the named Docker volumes `hashcat-wpa-data` and `hashcat-wpa-logs` by default. To bind them to host folders instead:
+Open:
+
+```text
+http://SERVER_IP:9111
+```
+
+Default Docker volumes:
+
+- `hashcat-wpa-data` mounted at `/data`
+- `hashcat-wpa-logs` mounted at `/var/log/hashcat-wpa-server`
+
+Bind data and logs to host folders instead:
 
 ```bash
 HASHCAT_WPA_DOCKER_DATA="$PWD/docker-data" \
@@ -77,13 +130,51 @@ docker compose -f docker/docker-compose.yml restart
 docker compose -f docker/docker-compose.yml down
 ```
 
-## CasaOS / ZimaOS
+### CasaOS / ZimaOS Custom Install
 
-CasaOS Custom Install can use the dedicated compose file at `docker/docker-compose.casaos.yml`. It includes `x-casaos` metadata, stores data under `/DATA/AppData/$AppID`, exposes the dashboard on port `9111`, and builds the Docker image locally from this GitHub repository so no paid registry or GitHub Actions build is required.
+CasaOS Custom Install can use [docker/docker-compose.casaos.yml](docker/docker-compose.casaos.yml). It includes `x-casaos` metadata, stores data under `/DATA/AppData/$AppID`, exposes the dashboard on port `9111`, and builds the Docker image locally from this GitHub repository. No paid registry, GHCR image, or GitHub Actions build is required.
 
-Before installing, set a strong `HASHCAT_ADMIN_PASSWORD` in CasaOS app settings or in the CasaOS environment. The CasaOS compose file intentionally refuses to start without it.
+The first CasaOS install can take several minutes because the image builds on the CasaOS server.
 
-The first CasaOS install can take several minutes because it builds the image on the CasaOS server:
+#### What to put in the Custom Install window
+
+Use these values:
+
+- App name / title: `Hashcat Pwnagotchi Server`
+- App ID / container name, if CasaOS asks: `hashcat-pwnagotchi-server`
+- Web UI port: `9111`
+- Architecture: `amd64`
+- Environment variables:
+  - `HASHCAT_ADMIN_USER=admin`
+  - `HASHCAT_ADMIN_PASSWORD=<your strong password>`
+  - `TZ=<your timezone>`, for example `Europe/Berlin`
+- Compose / YAML box: paste the contents of [docker/docker-compose.casaos.yml](docker/docker-compose.casaos.yml)
+
+If CasaOS validates the compose before showing environment fields and complains that `HASHCAT_ADMIN_PASSWORD` is missing, replace this line in the pasted YAML:
+
+```yaml
+HASHCAT_ADMIN_PASSWORD: ${HASHCAT_ADMIN_PASSWORD:?Set HASHCAT_ADMIN_PASSWORD in CasaOS app settings before install}
+```
+
+with a strong password:
+
+```yaml
+HASHCAT_ADMIN_PASSWORD: "change-me-now"
+```
+
+Do not leave `change-me-now` as the real password.
+
+#### CasaOS install flow
+
+1. Open CasaOS.
+2. Go to App Store.
+3. Choose Custom Install.
+4. Paste the compose from [docker/docker-compose.casaos.yml](docker/docker-compose.casaos.yml).
+5. Set `HASHCAT_ADMIN_PASSWORD` to a strong password.
+6. Start the install and wait for the first local build to finish.
+7. Open `http://CASAOS_IP:9111`.
+
+Manual test command on a CasaOS host:
 
 ```bash
 HASHCAT_ADMIN_PASSWORD='change-me-now' AppID=hashcat-pwnagotchi-server \
@@ -92,7 +183,9 @@ docker compose -f docker/docker-compose.casaos.yml up -d --build
 
 This CasaOS app definition is CPU-safe and declares `amd64` support. NVIDIA GPU use on CasaOS requires host NVIDIA drivers plus NVIDIA Container Toolkit, then an advanced compose edit to add GPU access.
 
-## Update Workflow
+## Updates
+
+For Debian/package installations:
 
 ```bash
 crackserver update
@@ -100,30 +193,63 @@ crackserver update
 
 Updates keep persistent users, captures, databases, wordlists, and settings under `/var/lib/hashcat-wpa-server/`.
 
-## Global CLI
+Docker and CasaOS users should rebuild/recreate the container from the current repository when updating. Persistent data stays in the configured Docker volume or `/DATA/AppData/$AppID`.
 
-- `crackserver setup`
-- `crackserver set-login`
-- `crackserver upload <capture...>`
-- `crackserver tailscale`
-- `crackserver cloudflare <hostname>`
-- `crackserver start`
-- `crackserver stop`
-- `crackserver restart`
-- `crackserver status`
-- `crackserver update`
-- `crackserver driver-check`
-- `crackserver driver-status`
-- `crackserver doctor`
-- `crackserver dashboard`
-- `crackserver logs`
-- `crackserver uninstall`
+## Data Persistence
+
+Native Linux install:
+
+- App code: `/opt/hashcat-wpa-server`
+- User data: `/var/lib/hashcat-wpa-server/`
+- Runtime logs: `/var/log/hashcat-wpa-server/`
+
+Docker install:
+
+- User data: `/data`
+- Runtime logs: `/var/log/hashcat-wpa-server`
+
+CasaOS install:
+
+- User data: `/DATA/AppData/$AppID/data`
+- Runtime logs: `/DATA/AppData/$AppID/logs`
+
+Run `crackserver driver-check` to install or repair supported NVIDIA/AMD GPU runtimes, then run `crackserver doctor` to verify architecture, Hashcat backend visibility, and the active ARM/amd64 runtime path.
+
+Safe updates replace the application layer only.
+
+## CLI
+
+```bash
+crackserver setup
+crackserver set-login
+crackserver upload <capture...>
+crackserver tailscale
+crackserver cloudflare <hostname>
+crackserver start
+crackserver stop
+crackserver restart
+crackserver status
+crackserver update
+crackserver driver-check
+crackserver driver-status
+crackserver doctor
+crackserver dashboard
+crackserver logs
+crackserver uninstall
+```
 
 `crackserver uninstall` is an interactive wizard and keeps `/var/lib/hashcat-wpa-server` by default. Use `crackserver uninstall --yes --purge-data` only when you also want to delete users, captures, results, settings, and logs.
+
 Use `crackserver uninstall --yes --dry-run` to preview the app, service, CLI, data, and log paths that would be touched.
-The uninstall and reset flows refuse empty, relative, root, and broad system paths.
-`crackserver reset` only wipes the configured data directory and prints the path first.
-For CLI uploads with shell-special characters, quote the password. If it starts with `-`, use the equals form: `crackserver upload --password='-starts-with-dash' capture.22000`.
+
+The uninstall and reset flows refuse empty, relative, root, and broad system paths. `crackserver reset` only wipes the configured data directory and prints the path first.
+
+For CLI uploads with shell-special characters, quote the password. If it starts with `-`, use the equals form:
+
+```bash
+crackserver upload --password='-starts-with-dash' capture.22000
+```
+
 CLI uploads can also mirror the GUI job choices:
 
 ```bash
@@ -131,33 +257,7 @@ crackserver upload --workload normal --wordlist None --rule None capture.22000
 crackserver upload --workload rainbow --brain --brain-feature 3 --devices 1,2 capture.22000
 ```
 
-## Data Persistence
-
-User data is intentionally kept separate from application code:
-
-- App code: `/opt/hashcat-wpa-server`
-- User data: `/var/lib/hashcat-wpa-server/`
-- Runtime logs: `/var/log/hashcat-wpa-server/`
-
-Run `crackserver driver-check` to install or repair supported NVIDIA/AMD GPU runtimes, then run `crackserver doctor` to verify architecture, Hashcat backend visibility, and the active ARM/amd64 runtime path.
-
-Safe updates replace the application layer only.
-
-## Key Features
-
-- Auto-detects CPUs and GPUs for task routing
-- Per-device targeting and intensity controls
-- Optional spare-device queue scheduling
-- Queue reordering controls for scheduled handshakes
-- Safe update flow that preserves user data
-- Web UI for uploads, cracking progress, results, and user management
-- Default device and work-mode policy for API and Pwnagotchi uploads
-- Built-in fallback wordlist installation from the dashboard
-- Optional user-provided wordlist generator scripts
-- Public Website setup through Cloudflare Tunnel for HTTPS uploads without a VPN client on the Pwnagotchi
-- Tailscale integration for private VPN deployments
-
-## Pwnagotchi Plugin Install
+## Pwnagotchi Plugin
 
 The repository exposes the Pwnagotchi uploader plugin at the repo root so Jayofelony Pwnagotchi can install it through the built-in plugin manager.
 
@@ -178,7 +278,7 @@ sudo pwnagotchi plugins install pwnagotchi_hashcat_wpa
 
 The plugin installs enabled and creates safe placeholder settings. Open the Pwnagotchi plugins page, click `pwnagotchi_hashcat_wpa`, replace `100.x.x.x` with your server's LAN IP, Tailscale IP, or Cloudflare Tunnel hostname, then press **Save config** and **Test connection**.
 
-The first-start defaults are:
+First-start defaults:
 
 ```toml
 main.plugins.pwnagotchi_hashcat_wpa.enabled = true
@@ -200,7 +300,7 @@ The Admin Settings page includes a Public Website helper that installs/starts `c
 
 For the exact display-debugging workflow used on the connected Jayofelony Pwnagotchi, see [PWNAGOTCHI_DISPLAY_WORKFLOW.md](ai%20information/PWNAGOTCHI_DISPLAY_WORKFLOW.md).
 
-## Supported Formats
+## Supported Capture Formats
 
 The app accepts modern Hashcat and common capture formats:
 
@@ -218,7 +318,7 @@ The app accepts modern Hashcat and common capture formats:
 
 Uploads are converted to `.22000` when the required Linux conversion tools are available.
 
-## Upload Modes
+## Attack Modes
 
 - `Rainbow` - builds an ESSID-specific WPA PMK cache from previously cracked keys and checks it with Hashcat mode 22001
 - `Normal` - extended attack chain that continues until the task is completed, cracked, or cancelled
@@ -240,3 +340,7 @@ python -m flask --app app.run run --debug
 ```
 
 Production deployments use `gunicorn`.
+
+## Acknowledgement
+
+Special thanks to **Danylo Ulianych** and the upstream project [dizcza/hashcat-wpa-server](https://github.com/dizcza/hashcat-wpa-server), which this repository builds upon.
