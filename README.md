@@ -77,7 +77,7 @@ http://127.0.0.1:9111
 
 The installer attempts to auto-install GPU runtimes when compatible NVIDIA or AMD hardware is detected on supported Debian-family systems. NVIDIA uses the Debian/Ubuntu driver stack, while AMD uses ROCm/OpenCL packages.
 
-The installer and update scripts support both `amd64` and `arm64`. ARM hosts install a CPU OpenCL runtime and use the built-in CPU-safe Hashcat mode unless Hashcat reports a usable GPU. AMD GPU setup can reuse the same OpenCL runtime chain on ARM through Debian/Ubuntu-provided packages; AMD's upstream ROCm apt repository remains `amd64`-only and is skipped on ARM. Automatic NVIDIA driver setup remains limited to regular `amd64` Debian/Ubuntu systems.
+The installer and update scripts are architecture-based, not form-factor-based: desktops, laptops, and servers on `amd64`/`x86_64` (Intel or AMD CPUs) use the normal path, while `arm64`/`aarch64` hosts use the ARM-safe path. ARM hosts install a CPU OpenCL runtime and use the built-in CPU-safe Hashcat mode unless Hashcat reports a usable GPU. GPU acceleration is separate from the CPU architecture: NVIDIA auto-driver setup is limited to regular `amd64` Debian/Ubuntu systems, and AMD GPU setup can use Debian/Ubuntu OpenCL packages on ARM when the distro provides them. AMD's upstream ROCm apt repository remains `amd64`-only and is skipped on ARM.
 
 Tailscale is optional. If its bootstrap script is unavailable during install, the server setup continues and you can retry later with `crackserver tailscale` or from Admin Settings.
 

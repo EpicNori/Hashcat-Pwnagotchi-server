@@ -40,9 +40,9 @@ if command -v hashcat >/dev/null 2>&1; then
 fi
 
 if is_arm_arch; then
-    echo "result=ARM supported via CPU-safe Hashcat mode by default. AMD OpenCL setup can be attempted when an AMD GPU and distro packages are available."
+    echo "result=ARM/arm64 host supported via the ARM-safe Hashcat path by default; GPU acceleration depends on vendor runtimes."
 elif is_amd64_arch; then
-    echo "result=amd64 supported via normal Hashcat flow; GPU acceleration depends on installed drivers."
+    echo "result=amd64/x86_64 desktop/laptop/server host supported via the normal Hashcat path; GPU acceleration depends on installed drivers."
 else
     echo "result=unknown architecture; installer may work, but Hashcat compatibility is not guaranteed."
 fi
