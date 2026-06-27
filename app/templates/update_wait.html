@@ -5,10 +5,16 @@
 {% block content %}
 <div class="update-lockscreen">
     <div class="update-card">
-        <div class="update-spinner" aria-hidden="true"></div>
-        <h1>Updating Server</h1>
+        <div class="process-brand-row">
+            <span class="process-kicker">Hashcat WPA</span>
+            <span id="update-state-pill" class="process-state-pill process-state-{{ update_progress.state }}">{{ update_progress.state|capitalize }}</span>
+        </div>
+        <div class="update-spinner" aria-hidden="true">
+            <span class="glyphicon glyphicon-refresh"></span>
+        </div>
+        <h1>System Update</h1>
         <p id="update-state-text">The server is updating from GitHub. Controls are locked until it comes back online.</p>
-        <div class="progress update-progress">
+        <div class="progress update-progress process-progress">
             <div id="update-progress-bar"
                  class="progress-bar progress-bar-warning progress-bar-striped active"
                  role="progressbar"
@@ -19,6 +25,12 @@
                 {{ update_progress.progress }}%
             </div>
         </div>
+        <ol class="update-stepper" aria-label="Update steps">
+            <li class="active" data-progress-step="15">Prepare</li>
+            <li data-progress-step="35">Download</li>
+            <li data-progress-step="75">Install</li>
+            <li data-progress-step="95">Restart</li>
+        </ol>
         <p id="update-progress-message" class="help-block">{{ update_progress.message }}</p>
         <p id="update-connection-message" class="text-muted small">Waiting for update progress...</p>
         <a id="update-failed-link" href="{{ url_for('admin_settings') }}" class="btn btn-danger" style="display: none;">Back to Settings</a>
@@ -38,6 +50,35 @@
         var connection = document.getElementById("update-connection-message");
         var failedLink = document.getElementById("update-failed-link");
         var stateText = document.getElementById("update-state-text");
+        var statePill = document.getElementById("update-state-pill");
+        var steps = Array.prototype.slice.call(document.querySelectorAll("[data-progress-step]"));
+
+        function setStatePill(state, text) {
+            statePill.className = "process-state-pill process-state-" + state;
+            statePill.textContent = text;
+        }
+
+        function renderSteps(progress, state) {
+            steps.forEach(function(step) {
+                var threshold = Number(step.getAttribute("data-progress-step"));
+                step.classList.remove("active", "done", "failed");
+                if (state === "failed") {
+                    step.classList.add("failed");
+                } else if (progress >= threshold) {
+                    step.classList.add("done");
+                } else if (!steps.some(function(otherStep) {
+                    return Number(otherStep.getAttribute("data-progress-step")) > progress && otherStep.classList.contains("active");
+                })) {
+                    step.classList.add("active");
+                }
+            });
+            if (state === "success") {
+                steps.forEach(function(step) {
+                    step.classList.remove("active", "failed");
+                    step.classList.add("done");
+                });
+            }
+        }
 
         function setProgress(snapshot) {
             var progress = Number(snapshot.progress || 0);
@@ -52,9 +93,11 @@
             bar.textContent = progress + "%";
             message.textContent = snapshot.message || "";
             bar.className = "progress-bar";
+            renderSteps(progress, state);
 
             if (state === "success") {
                 bar.className += " progress-bar-success";
+                setStatePill("success", "Complete");
                 stateText.textContent = "Update finished. Reloading the server UI...";
                 connection.textContent = "Server is online again.";
                 finishedPolls += 1;
@@ -69,6 +112,7 @@
             finishedPolls = 0;
             if (state === "failed") {
                 bar.className += " progress-bar-danger";
+                setStatePill("failed", "Failed");
                 stateText.textContent = "The update failed.";
                 connection.textContent = "Open Settings to check the updater log.";
                 failedLink.style.display = "inline-block";
@@ -76,6 +120,7 @@
             }
 
             bar.className += " progress-bar-warning progress-bar-striped active";
+            setStatePill("running", "Running");
             connection.textContent = "The page will stay here while the app restarts.";
         }
 
@@ -93,6 +138,7 @@
             }).catch(function() {
                 finishedPolls = 0;
                 bar.className = "progress-bar progress-bar-warning progress-bar-striped active";
+                setStatePill("running", "Restarting");
                 connection.textContent = "Server is restarting or temporarily offline...";
             }).finally(function() {
                 window.setTimeout(pollUpdate, pollDelay);

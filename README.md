@@ -77,7 +77,7 @@ http://127.0.0.1:9111
 
 The installer attempts to auto-install GPU runtimes when compatible NVIDIA or AMD hardware is detected on supported Debian-family systems. NVIDIA uses the Debian/Ubuntu driver stack, while AMD uses ROCm/OpenCL packages.
 
-The installer and update scripts support both `amd64` and `arm64`. ARM hosts install a CPU OpenCL runtime and use the built-in CPU-safe Hashcat mode. Automatic NVIDIA/AMD GPU driver setup remains limited to regular `amd64` Debian/Ubuntu systems.
+The installer and update scripts support both `amd64` and `arm64`. ARM hosts install a CPU OpenCL runtime and use the built-in CPU-safe Hashcat mode unless Hashcat reports a usable GPU. AMD GPU setup can reuse the same OpenCL runtime chain on ARM through Debian/Ubuntu-provided packages; AMD's upstream ROCm apt repository remains `amd64`-only and is skipped on ARM. Automatic NVIDIA driver setup remains limited to regular `amd64` Debian/Ubuntu systems.
 
 Tailscale is optional. If its bootstrap script is unavailable during install, the server setup continues and you can retry later with `crackserver tailscale` or from Admin Settings.
 
@@ -261,7 +261,7 @@ HASHCAT_ADMIN_PASSWORD='change-me-now' AppID=hashcat-pwnagotchi-server \
 docker compose -f docker/docker-compose.casaos.yml up -d --build
 ```
 
-This CasaOS app definition is CPU-safe and declares `amd64` support. NVIDIA GPU use on CasaOS requires host NVIDIA drivers plus NVIDIA Container Toolkit, then an advanced compose edit to add GPU access.
+This CasaOS app definition is CPU-safe and declares `amd64` support because the current Docker Hashcat base image is published as `linux/amd64`. NVIDIA GPU use on CasaOS requires host NVIDIA drivers plus NVIDIA Container Toolkit, then an advanced compose edit to add GPU access.
 
 ## Updates
 

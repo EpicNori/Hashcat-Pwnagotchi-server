@@ -29,15 +29,18 @@
 
     <div class="row settings-action-grid">
         <div class="col-md-4">
-            <div class="settings-action-card">
+            <div class="settings-action-card settings-process-card" data-process-state="{{ install_progress.update.state }}">
                 <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
-                <h3>Update the Server</h3>
+                <div class="settings-process-heading">
+                    <h3>Update the Server</h3>
+                    <span id="update-progress-state" class="process-state-pill process-state-{{ install_progress.update.state }}">{{ install_progress.update.state|capitalize }}</span>
+                </div>
                 <p>Downloads the newest version from GitHub and restarts the web UI.</p>
                 <form method="POST" id="update-app-form">
                     {{ update_form.hidden_tag() }}
                     {{ update_form.submit_update(class_="btn btn-warning btn-block", id="update-install-btn") }}
                 </form>
-                <div class="progress settings-progress">
+                <div class="progress settings-progress process-progress">
                     <div id="update-progress-bar"
                          class="progress-bar progress-bar-info"
                          role="progressbar"
@@ -48,7 +51,7 @@
                         {{ install_progress.update.progress }}%
                     </div>
                 </div>
-                <p id="update-progress-message" class="help-block">{{ install_progress.update.message }}</p>
+                <p id="update-progress-message" class="help-block settings-progress-message">{{ install_progress.update.message }}</p>
             </div>
         </div>
         <div class="col-md-4">
@@ -182,8 +185,11 @@
                             <p><a href="{{ url_for('static', filename='test_capture_hashcat_essid.22000') }}" download="test_capture_hashcat_essid.22000">Download sample 22000 file</a></p>
                             <p><a href="{{ url_for('download_test_capture_pcap') }}" download="test_capture_hashcat_essid.pcap">Download sample PCAP</a></p>
                             {% set gpu_progress = install_progress.gpu or install_progress.nvidia %}
-                            <label>GPU Driver Install Progress</label>
-                            <div class="progress settings-progress">
+                            <div class="settings-process-heading compact">
+                                <label>GPU Driver Install Progress</label>
+                                <span id="gpu-progress-state" class="process-state-pill process-state-{{ gpu_progress.state }}">{{ gpu_progress.state|capitalize }}</span>
+                            </div>
+                            <div class="progress settings-progress process-progress">
                                 <div id="gpu-progress-bar"
                                      class="progress-bar progress-bar-info"
                                      role="progressbar"
@@ -194,7 +200,7 @@
                                     {{ gpu_progress.progress }}%
                                 </div>
                             </div>
-                            <p id="gpu-progress-message" class="help-block">{{ gpu_progress.message }}</p>
+                            <p id="gpu-progress-message" class="help-block settings-progress-message">{{ gpu_progress.message }}</p>
                             {% if gpu_needs_driver or not gpu_ready %}
                                 <form method="POST">
                                     {{ nvidia_form.hidden_tag() }}
@@ -255,7 +261,9 @@
 </div>
 <div id="settings-update-overlay" style="display: none;">
     <div class="settings-update-box">
-        <div class="settings-update-spinner" aria-hidden="true"></div>
+        <div class="settings-update-spinner" aria-hidden="true">
+            <span class="glyphicon glyphicon-refresh"></span>
+        </div>
         <h2>Starting Update</h2>
         <p>The server UI is locked while the updater starts. You will be moved to the update screen automatically.</p>
     </div>
@@ -356,6 +364,7 @@
         var bar = $("#" + prefix + "-progress-bar");
         var message = $("#" + prefix + "-progress-message");
         var button = $("#" + prefix + "-install-btn");
+        var stateBadge = $("#" + prefix + "-progress-state");
         if (!bar.length || !snapshot) {
             return;
         }
@@ -369,6 +378,7 @@
         var labelClass = "progress-bar-info";
 
         bar.removeClass("progress-bar-info progress-bar-success progress-bar-warning progress-bar-danger progress-bar-striped active");
+        stateBadge.removeClass("process-state-idle process-state-running process-state-success process-state-failed process-state-not-applicable");
         if (state === "running") {
             labelClass = "progress-bar-warning";
             bar.addClass("progress-bar-striped active");
@@ -390,6 +400,8 @@
         }
 
         bar.addClass(labelClass);
+        stateBadge.addClass("process-state-" + state);
+        stateBadge.text(state.replace("-", " ").replace(/\b\w/g, function(letter) { return letter.toUpperCase(); }));
         bar.css("width", progress + "%");
         bar.attr("aria-valuenow", progress);
         bar.text(progress + "%");

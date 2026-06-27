@@ -5,6 +5,9 @@ set -o pipefail
 UPDATE_LOG="/var/log/hashcat-wpa-server/updater.log"
 PROGRESS_FILE="${HASHCAT_WPA_PROGRESS_FILE:-/var/log/hashcat-wpa-server/app_update.progress}"
 NVIDIA_PROGRESS_FILE="${HASHCAT_WPA_NVIDIA_PROGRESS_FILE:-/var/log/hashcat-wpa-server/nvidia_install.progress}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/cli_theme.sh"
 
 write_progress() {
   local state="$1"
@@ -40,7 +43,7 @@ run_update_job() {
   write_progress success 100 "Application update finished"
 }
 
-echo "Starting application update..."
+cli_heading "Starting Application Update"
 # We use systemd-run to spawn the update in a NEW transient service.
 # This ensures that when we call "systemctl stop", it DOES NOT kill the update process!
 UNIT_NAME="hashcat-server-updater-$(date +%s)"
@@ -55,7 +58,7 @@ if command -v systemd-run >/dev/null 2>&1 && pidof systemd >/dev/null 2>&1; then
     --setenv=UPDATE_LOG="$UPDATE_LOG" \
     bash -c "$JOB_COMMAND" > /dev/null 2>&1
 else
-  echo "systemd-run is not available; using nohup fallback updater."
+  cli_warn "systemd-run is not available; using nohup fallback updater."
   write_progress running 5 "Starting updater without systemd"
   nohup env \
     HASHCAT_WPA_PROGRESS_FILE="$PROGRESS_FILE" \
@@ -64,5 +67,5 @@ else
     bash -c "$JOB_COMMAND" > /dev/null 2>&1 &
 fi
 
-echo "Update process spawned in the background."
+cli_success "Update process spawned in the background."
 exit 0

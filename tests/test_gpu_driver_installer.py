@@ -15,7 +15,7 @@ class GpuDriverInstallerTests(unittest.TestCase):
 
     def run_installer(self, lspci_output, fake_packages, os_release, ubuntu_drivers_devices="",
                       nvidia_smi_l_output="", hashcat_info_output="", create_hashcat=True,
-                      ignore_host_gpu_tools=True):
+                      ignore_host_gpu_tools=True, machine_arch="x86_64"):
         if self.bash is None:
             self.skipTest("bash is not available")
         with tempfile.TemporaryDirectory(prefix="hashcat-gpu-test-") as temp_name:
@@ -25,6 +25,16 @@ class GpuDriverInstallerTests(unittest.TestCase):
             progress_file = root / "gpu.progress"
             os_release_file = root / "os-release"
             os_release_file.write_text(os_release, encoding="utf-8")
+            (bin_dir / "uname").write_text(
+                "#!/bin/bash\n"
+                "case \"${1:-}\" in\n"
+                f"  -m) echo \"{machine_arch}\" ;;\n"
+                "  -r) echo \"test-kernel\" ;;\n"
+                "  *) /usr/bin/uname \"$@\" ;;\n"
+                "esac\n",
+                encoding="utf-8",
+            )
+            (bin_dir / "uname").chmod(0o755)
             (bin_dir / "lspci").write_text(
                 "#!/bin/bash\ncat <<'EOF'\n" + lspci_output + "\nEOF\n",
                 encoding="utf-8",
@@ -170,6 +180,34 @@ class GpuDriverInstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn("AMD GPU detected", result.stdout)
         self.assertIn("rocm-opencl-runtime", result.stdout)
+        self.assertIn("PROGRESS=success|100|AMD ROCm/OpenCL runtime installation completed", result.stdout)
+
+    def test_amd_gpu_arm64_reuses_distro_rocm_opencl_runtime(self):
+        result = self.run_installer(
+            "03:00.0 VGA compatible controller: Advanced Micro Devices, Inc. [AMD/ATI] Radeon RX 7900 XT",
+            "pciutils curl ca-certificates gnupg ocl-icd-libopencl1 clinfo rocm-opencl-runtime rocminfo rocm-smi",
+            'ID=ubuntu\nVERSION_ID="24.04"\nVERSION_CODENAME=noble\nID_LIKE=debian\n',
+            machine_arch="aarch64",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("AMD GPU detected", result.stdout)
+        self.assertIn("rocm-opencl-runtime", result.stdout)
+        self.assertNotIn("not supported on this architecture", result.stdout)
+        self.assertIn("PROGRESS=success|100|AMD ROCm/OpenCL runtime installation completed", result.stdout)
+
+    def test_amd_gpu_arm64_skips_upstream_rocm_repo_and_uses_opencl_fallback(self):
+        result = self.run_installer(
+            "03:00.0 VGA compatible controller: Advanced Micro Devices, Inc. [AMD/ATI] Radeon RX 7600",
+            "pciutils curl ca-certificates gnupg ocl-icd-libopencl1 clinfo mesa-opencl-icd",
+            'ID=ubuntu\nVERSION_ID="24.04"\nVERSION_CODENAME=noble\nID_LIKE=debian\n',
+            machine_arch="aarch64",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("AMD upstream ROCm repository setup is only available for amd64 packages", result.stdout)
+        self.assertIn("mesa-opencl-icd", result.stdout)
+        self.assertNotIn("write /etc/apt/sources.list.d/rocm.list", result.stdout)
         self.assertIn("PROGRESS=success|100|AMD ROCm/OpenCL runtime installation completed", result.stdout)
 
 

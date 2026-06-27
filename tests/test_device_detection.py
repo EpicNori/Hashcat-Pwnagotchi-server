@@ -79,6 +79,36 @@ Backend Device ID #0
                 "--workload-profile=4",
             ])
 
+    def test_arm_host_with_usable_gpu_keeps_device_acceleration_args(self):
+        devices = [
+            {"id": "0", "name": "AMD Radeon RX 7900 XT", "memory": "20 GB", "is_gpu": True, "hashcat_usable": True},
+        ]
+
+        with mock.patch.object(device_settings, "get_hashcat_devices", return_value=devices), \
+                mock.patch.object(device_settings, "is_arm_host", return_value=True):
+            self.assertEqual(device_settings.apply_hashcat_limits(["--quiet"]), [
+                "--quiet",
+                "-d",
+                "0",
+                "--workload-profile=4",
+            ])
+
+    def test_arm_host_without_usable_gpu_keeps_cpu_safe_hashcat_args(self):
+        devices = [
+            {"id": "1", "name": "pthread ARM CPU", "memory": "4 GB", "is_gpu": False, "hashcat_usable": True},
+        ]
+
+        with mock.patch.object(device_settings, "get_hashcat_devices", return_value=devices), \
+                mock.patch.object(device_settings, "is_arm_host", return_value=True):
+            args = device_settings.apply_hashcat_limits(["--quiet", "--backend-ignore-opencl"])
+
+        self.assertIn("--quiet", args)
+        self.assertNotIn("-d", args)
+        self.assertNotIn("--backend-ignore-opencl", args)
+        self.assertIn("-D", args)
+        self.assertEqual(args[args.index("-D") + 1], "1")
+        self.assertIn("--backend-ignore-hip", args)
+
     def test_explicit_zero_intensity_disables_new_hashcat_gpu(self):
         devices = [
             {"id": "0", "name": "NVIDIA GeForce RTX 4070", "memory": "12 GB", "is_gpu": True, "hashcat_usable": True},

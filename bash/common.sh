@@ -112,7 +112,10 @@ supports_debian_nvidia_autoinstall() {
 }
 
 supports_debian_amd_autoinstall() {
-    # ROCm/OpenCL packages are primarily published for amd64 Linux hosts.
-    # ARM boards usually need vendor-specific GPU stacks.
-    is_amd64_arch
+    # AMD's upstream ROCm apt repository is amd64-only, but Debian-family
+    # distro packages can still provide OpenCL/ROCm runtimes on ARM hosts.
+    case "$(detect_machine_arch)" in
+        amd64|arm64|arm) return 0 ;;
+        *) return 1 ;;
+    esac
 }

@@ -200,6 +200,19 @@ def default_hashcat_device_ids(settings=None, enabled_devices=None):
     return selected or list(enabled_devices[:1])
 
 
+def selected_hashcat_devices_include_gpu(device_ids: list):
+    selected_ids = {str(device_id) for device_id in device_ids or []}
+    if not selected_ids:
+        return False
+    try:
+        return any(
+            str(device.get("id")) in selected_ids and device.get("is_gpu")
+            for device in get_hashcat_devices()
+        )
+    except Exception:
+        return False
+
+
 def apply_hashcat_limits(hashcat_args: list, device_ids: list = None):
     """Modifies hashcat args based on configured settings and selected devices."""
     settings = read_settings()
@@ -211,6 +224,8 @@ def apply_hashcat_limits(hashcat_args: list, device_ids: list = None):
         active_devices = [device_id for device_id in requested_devices if device_id in enabled_devices]
     else:
         active_devices = enabled_devices
+
+    active_devices_include_gpu = selected_hashcat_devices_include_gpu(active_devices)
 
     if active_devices:
         hashcat_args.append("-d")
@@ -239,7 +254,7 @@ def apply_hashcat_limits(hashcat_args: list, device_ids: list = None):
         filtered_args.append(f"--workload-profile={tuning['workload_profile']}")
         hashcat_args = filtered_args
 
-    if is_arm_host():
+    if is_arm_host() and not active_devices_include_gpu:
         hashcat_args = strip_arm_conflicting_hashcat_args(hashcat_args)
         hashcat_args.extend(ARM_HASHCAT_SAFE_FLAGS)
         

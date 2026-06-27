@@ -9,6 +9,8 @@ DRY_RUN="${HASHCAT_WPA_DRY_RUN:-0}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/common.sh"
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/cli_theme.sh"
 
 write_progress() {
     local state="$1"
@@ -71,7 +73,7 @@ require_root_for_install() {
         return 0
     fi
     if [ "$(id -u)" -ne 0 ]; then
-        echo "[!] GPU driver installation needs root privileges. Run this via sudo."
+        cli_error "GPU driver installation needs root privileges. Run this via sudo."
         write_progress failed 0 "GPU driver installation needs sudo/root privileges"
         return 1
     fi
@@ -153,7 +155,7 @@ install_ubuntu_nvidia_driver_package() {
             run_cmd apt-get install -y "$package_name"
             return 0
         fi
-        echo "[!] Ubuntu recommended NVIDIA package ${package_name} is not available in apt. Trying fallbacks."
+        cli_warn "Ubuntu recommended NVIDIA package ${package_name} is not available in apt. Trying fallbacks."
     fi
 
     if package_name="$(best_available_nvidia_driver_package)"; then
@@ -177,7 +179,7 @@ install_nvidia_opencl_runtime_packages() {
         return 0
     fi
 
-    echo "[!] No separate nvidia-opencl-icd package was available. The NVIDIA driver package may provide the runtime on this distribution."
+    cli_warn "No separate nvidia-opencl-icd package was available. The NVIDIA driver package may provide the runtime on this distribution."
 }
 
 hashcat_sees_nvidia_runtime() {
@@ -225,18 +227,24 @@ register_rocm_repo_if_supported() {
     load_os_release
     local rocm_codename=""
 
+    if ! is_amd64_arch; then
+        cli_warn "AMD upstream ROCm repository setup is only available for amd64 packages."
+        cli_warn "Trying Debian/Ubuntu-provided AMD OpenCL packages instead."
+        return 1
+    fi
+
     case "${ID:-}:${VERSION_CODENAME:-}:${VERSION_ID:-}" in
         ubuntu:noble:*|ubuntu::24.04) rocm_codename="noble" ;;
         ubuntu:jammy:*|ubuntu::22.04) rocm_codename="jammy" ;;
         debian:trixie:*|debian::13) rocm_codename="noble" ;;
         debian:bookworm:*|debian::12|kali:*:*) rocm_codename="jammy" ;;
         *)
-            echo "[!] AMD ROCm automatic repository setup is not supported for ${PRETTY_NAME:-this Linux distribution}."
+            cli_warn "AMD ROCm automatic repository setup is not supported for ${PRETTY_NAME:-this Linux distribution}."
             return 1
             ;;
     esac
 
-    echo "[*] Registering AMD ROCm ${ROCM_VERSION} repositories for ${rocm_codename}."
+    cli_info "Registering AMD ROCm ${ROCM_VERSION} repositories for ${rocm_codename}."
     if [ "$DRY_RUN" = "1" ]; then
         echo "+ install -d -m 0755 /etc/apt/keyrings"
         echo "+ curl -fsSL https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor > /etc/apt/keyrings/rocm.gpg"
@@ -260,27 +268,28 @@ EOF
 
 install_nvidia_stack() {
     if nvidia_runtime_ready; then
-        echo "[+] NVIDIA runtime is already available."
+        cli_success "NVIDIA runtime is already available."
         write_progress success 100 "NVIDIA GPU runtime is already available"
         return 0
     fi
 
     if is_wsl_host; then
-        echo "[!] WSL detected with NVIDIA hardware, but Linux kernel drivers must not be installed inside WSL."
-        echo "[!] Install or update the CUDA-capable NVIDIA Windows driver, then run: wsl --shutdown"
+        cli_warn "WSL detected with NVIDIA hardware, but Linux kernel drivers must not be installed inside WSL."
+        cli_warn "Install or update the CUDA-capable NVIDIA Windows driver, then run: wsl --shutdown"
         write_progress not-applicable 100 "Install the NVIDIA WSL driver on the Windows host"
         return 0
     fi
 
     if ! supports_debian_nvidia_autoinstall; then
-        echo "[!] NVIDIA GPU detected, but automatic Linux driver installation is only supported on amd64 Debian/Ubuntu hosts."
+        cli_warn "NVIDIA GPU detected, but automatic Linux driver installation is only supported on amd64 Debian/Ubuntu hosts."
         write_progress not-applicable 100 "NVIDIA auto-install is not supported on this architecture"
         return 0
     fi
 
     require_root_for_install
     load_os_release
-    echo "[*] NVIDIA GPU detected. Installing Linux NVIDIA driver stack."
+    cli_heading "NVIDIA GPU Runtime"
+    cli_info "NVIDIA GPU detected. Installing Linux NVIDIA driver stack."
     write_progress running 10 "Installing NVIDIA driver prerequisites"
     run_cmd apt-get update
 
@@ -300,45 +309,46 @@ install_nvidia_stack() {
                 run_cmd apt-get install -y nvidia-driver
             fi
         else
-            echo "[!] The Debian nvidia-driver package is not available. Enable the non-free/non-free-firmware repository and retry."
+            cli_error "The Debian nvidia-driver package is not available. Enable the non-free/non-free-firmware repository and retry."
             write_progress failed 100 "Debian NVIDIA driver package is not available"
             return 1
         fi
     else
-        echo "[!] NVIDIA GPU detected, but automatic installation only supports Debian-family Linux right now."
+        cli_warn "NVIDIA GPU detected, but automatic installation only supports Debian-family Linux right now."
         write_progress not-applicable 100 "Automatic NVIDIA installation is not supported on this distribution"
         return 0
     fi
 
     install_nvidia_opencl_runtime_packages
 
-    echo "[+] NVIDIA driver installation completed. Reboot may be required before Hashcat sees the GPU."
+    cli_success "NVIDIA driver installation completed. Reboot may be required before Hashcat sees the GPU."
     write_progress success 100 "NVIDIA driver installation completed"
 }
 
 install_amd_stack() {
     if amd_runtime_ready; then
-        echo "[+] AMD ROCm/OpenCL runtime is already available."
+        cli_success "AMD ROCm/OpenCL runtime is already available."
         write_progress success 100 "AMD GPU runtime is already available"
         add_app_user_to_gpu_groups
         return 0
     fi
 
     if is_wsl_host; then
-        echo "[!] WSL detected with AMD hardware. Automatic Linux ROCm driver installation is only supported on normal Linux hosts."
+        cli_warn "WSL detected with AMD hardware. Automatic Linux ROCm driver installation is only supported on normal Linux hosts."
         write_progress not-applicable 100 "AMD WSL GPU setup requires host-specific ROCm support"
         return 0
     fi
 
     if ! supports_debian_amd_autoinstall; then
-        echo "[!] AMD GPU detected, but automatic ROCm/OpenCL installation is only supported on amd64 Debian/Ubuntu hosts."
-        write_progress not-applicable 100 "AMD ROCm auto-install is not supported on this architecture"
+        cli_warn "AMD GPU detected, but automatic ROCm/OpenCL installation is only supported on amd64/ARM Debian-family hosts."
+        write_progress not-applicable 100 "AMD ROCm/OpenCL auto-install is not supported on this architecture"
         return 0
     fi
 
     require_root_for_install
     load_os_release
-    echo "[*] AMD GPU detected. Installing ROCm/OpenCL runtime for Hashcat."
+    cli_heading "AMD GPU Runtime"
+    cli_info "AMD GPU detected. Installing ROCm/OpenCL runtime for Hashcat."
     write_progress running 10 "Installing AMD GPU prerequisites"
     run_cmd apt-get update
     install_existing_packages pciutils curl ca-certificates gnupg ocl-icd-libopencl1 clinfo || true
@@ -349,12 +359,12 @@ install_amd_stack() {
             run_cmd apt-get update
             install_existing_packages rocm-opencl-runtime rocminfo rocm-smi || install_existing_packages rocm-opencl-runtime
         else
-            install_existing_packages rocm-opencl-icd rocminfo rocm-smi || install_existing_packages mesa-opencl-icd
+            install_existing_packages rocm-opencl-icd rocminfo rocm-smi || install_existing_packages mesa-opencl-icd ocl-icd-libopencl1 clinfo
         fi
     fi
 
     add_app_user_to_gpu_groups
-    echo "[+] AMD ROCm/OpenCL runtime installation completed. Reboot may be required before Hashcat sees the GPU."
+    cli_success "AMD ROCm/OpenCL runtime installation completed. Reboot may be required before Hashcat sees the GPU."
     write_progress success 100 "AMD ROCm/OpenCL runtime installation completed"
 }
 
@@ -401,12 +411,12 @@ case "$ACTION" in
             install_amd_stack
         fi
         if [ "$detected" -eq 0 ]; then
-            echo "No NVIDIA or AMD GPU was detected on this system."
+            cli_info "No NVIDIA or AMD GPU was detected on this system."
             write_progress not-applicable 100 "No NVIDIA or AMD GPU detected"
         fi
         ;;
     *)
-        echo "Usage: install_gpu_drivers.sh [check|status]"
+        cli_error "Usage: install_gpu_drivers.sh [check|status]"
         exit 1
         ;;
 esac

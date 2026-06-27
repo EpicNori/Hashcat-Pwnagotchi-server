@@ -40,7 +40,7 @@ if command -v hashcat >/dev/null 2>&1; then
 fi
 
 if is_arm_arch; then
-    echo "result=ARM supported via CPU-safe Hashcat mode. GPU driver auto-install is intentionally skipped."
+    echo "result=ARM supported via CPU-safe Hashcat mode by default. AMD OpenCL setup can be attempted when an AMD GPU and distro packages are available."
 elif is_amd64_arch; then
     echo "result=amd64 supported via normal Hashcat flow; GPU acceleration depends on installed drivers."
 else

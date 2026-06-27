@@ -10,6 +10,9 @@ DEFAULT_URL="http://127.0.0.1:9111"
 NONE_VALUE="None"
 DEFAULT_WORKLOAD="3"
 DEFAULT_BRAIN_FEATURE="2"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/cli_theme.sh"
 CRITICAL_RESET_PATHS=(
     /
     /bin
@@ -39,9 +42,9 @@ script_path() {
 
 need_installed() {
     if [ ! -d "$APP_ROOT" ]; then
-        echo "[!] Hashcat WPA Server is not installed at $APP_ROOT."
+        cli_error "Hashcat WPA Server is not installed at $APP_ROOT."
         echo "    Install it first with:"
-        echo "    curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/install.sh | sudo bash"
+        cli_command "curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/install.sh | sudo bash"
         exit 1
     fi
 }
@@ -57,7 +60,7 @@ run_as_app_user() {
 python_app() {
     need_installed
     if [ ! -x "$APP_ROOT/venv/bin/python" ]; then
-        echo "[!] Python venv is missing at $APP_ROOT/venv/bin/python."
+        cli_error "Python venv is missing at $APP_ROOT/venv/bin/python."
         exit 1
     fi
     cd "$APP_ROOT"
@@ -67,14 +70,11 @@ python_app() {
 dashboard_urls() {
     local ip
     ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
-    echo "====================================================="
-    echo "  Hashcat WPA Server Dashboard"
-    echo "====================================================="
-    echo "  Local:   http://127.0.0.1:9111"
+    cli_heading "Hashcat WPA Server Dashboard"
+    cli_kv "Local" "http://127.0.0.1:9111"
     if [ -n "$ip" ]; then
-        echo "  Network: http://${ip}:9111"
+        cli_kv "Network" "http://${ip}:9111"
     fi
-    echo "====================================================="
 }
 
 confirm() {
@@ -90,7 +90,7 @@ require_option_value() {
     local option="$1"
     local value="${2:-}"
     if [ -z "$value" ]; then
-        echo "[!] ${option} requires a value."
+        cli_error "${option} requires a value."
         exit 2
     fi
 }
@@ -108,17 +108,17 @@ assert_safe_data_dir() {
     local normalized
     local critical_path
     if [ -z "$path" ]; then
-        echo "[!] Refusing to reset unsafe data path: '<empty>'"
+        cli_error "Refusing to reset unsafe data path: '<empty>'"
         exit 1
     fi
     normalized="$(normalize_path_for_guard "$path")"
     if [[ "$normalized" != /* ]]; then
-        echo "[!] Refusing to reset non-absolute data path: '$path'"
+        cli_error "Refusing to reset non-absolute data path: '$path'"
         exit 1
     fi
     for critical_path in "${CRITICAL_RESET_PATHS[@]}"; do
         if [ "$normalized" = "$critical_path" ]; then
-            echo "[!] Refusing to reset unsafe data path: '$normalized'"
+            cli_error "Refusing to reset unsafe data path: '$normalized'"
             exit 1
         fi
     done
@@ -254,7 +254,7 @@ set_login() {
         echo
     fi
     if [ -z "$password" ]; then
-        echo "[!] Password cannot be empty."
+        cli_error "Password cannot be empty."
         exit 2
     fi
 
@@ -428,7 +428,7 @@ upload_files() {
                 done
                 ;;
             -*)
-                echo "[!] Unknown upload option: $1"
+                cli_error "Unknown upload option: $1"
                 exit 2
                 ;;
             *)
@@ -462,7 +462,7 @@ upload_files() {
     done
     for file in "${files[@]}"; do
         if [ ! -f "$file" ]; then
-            echo "[!] Capture not found: $file"
+            cli_error "Capture not found: $file"
             exit 2
         fi
         curl_args+=(-F "capture=@${file}")
@@ -507,46 +507,45 @@ cloudflare_connect() {
     fi
     sudo -v
     printf '%s' "$token" | sudo "$(script_path install_cloudflare_tunnel.sh)" "$hostname"
-    echo "[+] Pwnagotchi plugin URL: https://${hostname}"
+    cli_success "Pwnagotchi plugin URL: https://${hostname}"
 }
 
 setup_wizard() {
     need_installed
-    echo "====================================================="
-    echo "  Hashcat WPA Server Setup"
-    echo "====================================================="
+    cli_heading "Hashcat WPA Server Setup"
     dashboard_urls
 
     if confirm "Set or reset the admin login now? [y/N]" "n"; then
+        cli_step "1/5" "Admin login"
         set_login
     fi
 
     if confirm "Enable autostart on boot? [Y/n]" "y"; then
-        sudo "$(script_path autostart_service.sh)" enable || echo "[!] Autostart could not be enabled on this host."
+        cli_step "2/5" "Autostart"
+        sudo "$(script_path autostart_service.sh)" enable || cli_warn "Autostart could not be enabled on this host."
     fi
 
     if confirm "Check NVIDIA/AMD GPU driver readiness now? [Y/n]" "y"; then
+        cli_step "3/5" "GPU driver readiness"
         sudo "$(script_path install_gpu_drivers.sh)" check
     fi
 
-    echo ""
-    echo "Remote access:"
-    echo "  1) Skip"
-    echo "  2) Tailscale private VPN"
-    echo "  3) Cloudflare Public Website"
+    cli_section "Remote access"
+    cli_kv "1" "Skip"
+    cli_kv "2" "Tailscale private VPN"
+    cli_kv "3" "Cloudflare Public Website"
     read -r -p "Choose [1]: " remote_choice
     case "${remote_choice:-1}" in
-        2) tailscale_connect ;;
-        3) cloudflare_connect ;;
-        *) echo "[*] Remote access skipped." ;;
+        2) cli_step "4/5" "Tailscale"; tailscale_connect ;;
+        3) cli_step "4/5" "Cloudflare"; cloudflare_connect ;;
+        *) cli_info "Remote access skipped." ;;
     esac
 
-    echo ""
-    echo "[*] Running doctor..."
+    cli_step "5/5" "Runtime doctor"
     sudo -u "$APP_USER" "$(script_path verify_runtime.sh)" || true
     echo ""
     dashboard_urls
-    echo "[+] Setup wizard finished."
+    cli_success "Setup wizard finished."
 }
 
 show_help() {
@@ -604,13 +603,13 @@ case "$command" in
         set_login "$@"
         ;;
     update)
-        echo "[*] Triggering safe automated update from GitHub..."
+        cli_heading "Hashcat WPA Safe Update"
+        cli_info "Triggering safe automated update from GitHub..."
         curl -sL https://raw.githubusercontent.com/EpicNori/Hashcat-Pwnagotchi-server/main/update.sh | sudo bash
         ;;
     reset)
-        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-        echo "!!! WARNING: THIS WILL WIPE ALL USERS AND RESULTS !!!"
-        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        cli_heading "Factory Reset"
+        cli_warn "THIS WILL WIPE ALL USERS AND RESULTS."
         echo "Data path: $DATA_DIR"
         if confirm "Are you sure you want a factory reset? [y/N]" "n"; then
             assert_safe_data_dir "$DATA_DIR"
@@ -619,7 +618,7 @@ case "$command" in
                 sudo find "$DATA_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
             fi
             sudo systemctl start "$SERVICE_NAME" || true
-            echo "[+] Factory reset complete."
+            cli_success "Factory reset complete."
         fi
         ;;
     start|stop|restart)
@@ -674,7 +673,7 @@ case "$command" in
         show_help
         ;;
     *)
-        echo "[!] Unknown command: $command"
+        cli_error "Unknown command: $command"
         echo ""
         show_help
         exit 2
